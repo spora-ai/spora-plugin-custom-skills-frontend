@@ -71,13 +71,17 @@ If a release is broken, do NOT delete + retag the same version. Git tags are imm
 
 ## Cross-repo contract to re-check before any release
 
-The bundle loads six host-provided globals. `spora-frontend/src/utils/publishPluginGlobals.ts` must publish all of them before the tag is cut — see README → "Host globals contract". `lucide-vue-next` and `dompurify` are not published yet; until that lands, the IIFE throws at load. If a release goes out with the gap, the panel is unreachable, not degraded.
+`spora-frontend/src/utils/publishPluginGlobals.ts` publishes exactly five globals: `Vue`, `Pinia`, `VueRouter`, `VueDraggablePlus` and `MdEditorV3`. This bundle externalises the first, second, third and fifth — see README → "Host globals contract".
+
+`lucide-vue-next` and `dompurify` are **deliberately bundled**, not externalised: the host does not publish them, and externalising an unpublished global makes the IIFE throw while resolving its argument list. That is a hard load failure, not a degraded panel — `window.SporaAppCustomSkills` is never assigned. If a future change adds either to `rollupOptions.external`, the release is broken.
+
+Before cutting the tag, confirm the host still publishes all four globals this bundle depends on. If one is dropped, the panel stops mounting and the size budget drops by roughly 60 KB.
 
 ## First release checklist (v0.1.0)
 
 The v0.1.0 release declares `extra.spora-plugin-slug = "custom-skills"` in `composer.json` so `SporaPluginFrontendInstaller` (in `spora-installer`) routes the bundle to `public/plugins/custom-skills/` — matching the slug emitted by the plugin's `plugin.json#slug` and consumed by the host SPA's `/plugins/<slug>/main.js` lazy-load. Without this field, the install fails loud. Confirm:
 
-- [ ] `spora-frontend` publishes `window.LucideVueNext` and `window.DOMPurify`
+- [x] `spora-frontend` publishes the four globals this bundle externalises: `Vue`, `Pinia`, `VueRouter`, `MdEditorV3` (plus `VueDraggablePlus`, which this bundle does not use)
 - [ ] `package.json` `version` is `0.1.0`
 - [ ] `composer.json` `dist.url` is `https://github.com/spora-ai/spora-plugin-custom-skills-frontend/releases/download/v0.1.0/spora-plugin-custom-skills-frontend-v0.1.0.tar.gz`
 - [ ] `composer.json` `extra.spora-plugin-slug` is `"custom-skills"` (matches `plugin.json#slug` in `spora-plugin-custom-skills`)

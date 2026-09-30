@@ -176,10 +176,12 @@ jobs:
         run: npm run build
 
       - name: Verify bundle size
-        # The current bundle is ~51 KB main.js + ~87 KB style.css
-        # (the stylesheet is mostly md-editor-v3, which IS externalised
-        # as JS but whose CSS the host still loads). The 2 MB ceiling is
-        # set well above that so the obvious regressions fail loudly:
+        # The current bundle is ~88 KB main.js + ~87 KB style.css (the
+        # main.js figure already includes the deliberately-bundled
+        # lucide-vue-next + dompurify; the stylesheet is mostly
+        # md-editor-v3, which IS externalised as JS but whose CSS the host
+        # still loads). The 2 MB ceiling is set well above that so the
+        # obvious regressions fail loudly:
         #   - accidentally re-bundling Vue / Pinia / vue-router (~150 KB)
         #   - dropping `md-editor-v3` from `rollupOptions.external`
         #     (CodeMirror 6 alone is ~800 KB raw)
