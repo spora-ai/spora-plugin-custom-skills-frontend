@@ -2,9 +2,9 @@
  * Custom Skills API client.
  *
  * Every route here is frozen in
- * `spora-workspace/plans/custom-skills-rest-contract.md` — do not
- * invent endpoints, rename fields, or relax the status codes without
- * updating the contract first.
+ * https://docs.spora-ai.com/reference/api#custom-skills-spora-plugin-custom-skills
+ * — do not invent endpoints, rename fields, or relax the status codes
+ * without updating the contract first.
  *
  * We route through the plugin-local `getApi()` container so the host's
  * `hostContext.api` is used verbatim — that preserves CSRF tokens, the

@@ -5,9 +5,9 @@ lazy-loads it at `/plugins/custom-skills/main.js` and mounts it into the
 `/apps/custom-skills` slot via the global `window.SporaAppCustomSkills`.
 
 The PHP half of the panel lives in `spora-plugin-custom-skills`; this repo
-ships only the built assets. The REST contract both halves speak is frozen in
-`spora-workspace/plans/custom-skills-rest-contract.md` — read it before
-changing anything under `src/api/`.
+ships only the built assets. The REST contract both halves speak is published at
+<https://docs.spora-ai.com/reference/api#custom-skills-spora-plugin-custom-skills>
+— read it before changing anything under `src/api/`.
 
 ## What the panel does
 
@@ -84,7 +84,7 @@ where **Duplicate** is reachable without horizontal scrolling.
 
 ## Host globals contract
 
-`vite.config.ts` externalises six modules and maps them to host globals:
+`vite.config.ts` externalises **four** modules and maps them to host globals:
 
 | Module | Global | Published by the host? |
 |---|---|---|
@@ -92,17 +92,26 @@ where **Duplicate** is reachable without horizontal scrolling.
 | `pinia` | `window.Pinia` | yes |
 | `vue-router` | `window.VueRouter` | yes |
 | `md-editor-v3` | `window.MdEditorV3` | yes |
-| `lucide-vue-next` | `window.LucideVueNext` | **no** |
-| `dompurify` | `window.DOMPurify` | **no** |
 
-> **Known gap.** `spora-frontend/src/utils/publishPluginGlobals.ts` currently
-> publishes only `Vue`, `Pinia`, `VueRouter`, `VueDraggablePlus` and
-> `MdEditorV3`. Until it also publishes `LucideVueNext` and `DOMPurify`, the
-> two mappings resolve to `undefined` and the IIFE throws at load.
-> `spora-frontend` has both as dependencies already; adding the two lines is
-> the fix. `scripts/smoke.js` asserts the four published globals are still
-> wired, and the `frontend/` size budget would drop by ~60 KB if the other
-> two were inlined instead — either signal means the contract drifted.
+`spora-frontend/src/utils/publishPluginGlobals.ts` publishes exactly **five**
+globals: `Vue`, `Pinia`, `VueRouter`, `VueDraggablePlus` and `MdEditorV3`. Four
+of them are consumed by this bundle; `VueDraggablePlus` is published for other
+plugins.
+
+`lucide-vue-next` and `dompurify` are **bundled, not externalised**, and must
+stay that way. The host does not publish them, and a bundle that externalises
+an unpublished global does not degrade — it throws while the IIFE argument list
+is being resolved, so `window.SporaAppCustomSkills` is never assigned and the
+panel is *unreachable*. `spora-plugin-memories-frontend` bundles the same two
+for the same reason; match it.
+
+Two signals mean the contract drifted:
+
+- `scripts/smoke.js` failing to find `window.Vue` / `window.Pinia` /
+  `window.VueRouter` / `window.MdEditorV3` in the bundle — an external got
+  inlined or dropped.
+- `frontend/main.js` shrinking by roughly 60 KB — the two deliberately-bundled
+  libraries got externalised.
 
 ## Commands
 

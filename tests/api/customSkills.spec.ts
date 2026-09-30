@@ -5,8 +5,8 @@
  * The store-level spec (`tests/stores/skills.spec.ts`) mocks the API
  * module wholesale, so its real implementation never runs there. This
  * spec fills that gap by stubbing `hostContext.api` and asserting the
- * path, body and envelope unwrap match the frozen REST contract
- * (see `spora-workspace/plans/custom-skills-rest-contract.md`).
+ * path, body and envelope unwrap match the published REST contract
+ * (see https://docs.spora-ai.com/reference/api#custom-skills-spora-plugin-custom-skills).
  *
  * The path assertions are the load-bearing part: `?principal_id=` is
  * threaded by hand (the host client takes a `query` object for GET but

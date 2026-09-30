@@ -1,10 +1,10 @@
 /**
  * Wire shapes for the custom-skills admin panel.
  *
- * `CustomSkillResource` mirrors the frozen REST contract in
- * `spora-workspace/plans/custom-skills-rest-contract.md` field for
- * field. Do not rename or re-type anything here without updating the
- * contract — the PHP `CustomSkillResource` serialiser is the other
+ * `CustomSkillResource` mirrors the published REST contract in
+ * https://docs.spora-ai.com/reference/api#custom-skills-spora-plugin-custom-skills
+ * field for field. Do not rename or re-type anything here without
+ * updating the contract — the PHP `CustomSkillResource` serialiser is the other
  * half of this pair and the two are not derivable from each other.
  */
 
