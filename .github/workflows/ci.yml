@@ -1,0 +1,405 @@
+name: CI
+
+# External actions are pinned to full commit SHAs to prevent supply-chain
+# attacks via tag reassignment. Run `gh api repos/OWNER/REPO/git/refs/tags/vN`
+# to look up the current SHA when upgrading. Review SonarCloud hotspots
+# (rule githubactions:S7637) periodically.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    name: Lint + Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        # `npm run lint` runs ESLint over `src/` + `tests/` + `*.{ts,vue}`.
+        run: npm run lint
+
+      - name: Static analysis (TypeScript)
+        # `vue-tsc --noEmit` is the same gate that runs at the start of
+        # `npm run build`, broken out so a type regression surfaces as a
+        # dedicated failing job rather than getting swallowed by Vite.
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Code style
+        # ESLint already carries the style rules; this step re-runs it in
+        # autofix mode and fails when anything would change, so a
+        # formatting-only PR cannot merge against a red default.
+        run: npx eslint . --max-warnings 0
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0   # sonar-scan needs full history for blame / new-code
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      - name: Verify coverage report
+        run: |
+          set -euo pipefail
+          if [ ! -s coverage/lcov.info ]; then
+            echo "::error::coverage/lcov.info is missing or empty — the scanner would publish 0% coverage."
+            echo "::error::Check that 'npm run test:coverage' succeeded and emitted ./coverage/lcov.info."
+            exit 1
+          fi
+          echo "coverage/lcov.info size: $(wc -c < coverage/lcov.info) bytes"
+          echo "covered files: $(grep -c '^SF:' coverage/lcov.info)"
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  build:
+    name: Build + smoke
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        # Runs `vue-tsc && vite build` — emits frontend/main.js + style.css.
+        run: npm run build
+
+      - name: Verify build artifacts
+        # The runtime contract depends on `frontend/main.js` existing —
+        # that's the file `SporaPluginFrontendInstaller` copies to
+        # `public/plugins/custom-skills/main.js`. `frontend/style.css` is
+        # expected here: `App.vue` imports `src/style.css` (the scoped
+        # Tailwind entry) and `SkillEditor` pulls in md-editor-v3's
+        # stylesheet, so Vite always emits one. A missing stylesheet
+        # means the plugin CSS scope silently went away — which is what
+        # the smoke test below guards, and this makes the failure
+        # explicit rather than a blank panel.
+        run: |
+          set -euo pipefail
+          if [ ! -s frontend/main.js ]; then
+            echo "::error::frontend/main.js missing or empty — the SporaPluginFrontendInstaller would skip this package."
+            exit 1
+          fi
+          echo "frontend/main.js size: $(wc -c < frontend/main.js) bytes"
+          if [ ! -s frontend/style.css ]; then
+            echo "::error::frontend/style.css missing — the #spora-plugin-custom-skills scope is not being emitted."
+            exit 1
+          fi
+          echo "frontend/style.css size: $(wc -c < frontend/style.css) bytes"
+
+      - name: Smoke test
+        # Asserts the IIFE bundle registers `window.SporaAppCustomSkills`
+        # with both `mount(target, ctx)` and `unmount(target)`, and that
+        # the stylesheet stays scoped beneath `#spora-plugin-custom-skills`.
+        run: npm run smoke
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: plugin-frontend-bundle
+          path: |
+            frontend/main.js
+            frontend/style.css
+          if-no-files-found: ignore
+          retention-days: 14
+
+  size-budget:
+    name: Bundle size budget
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify bundle size
+        # The current bundle is ~51 KB main.js + ~87 KB style.css
+        # (the stylesheet is mostly md-editor-v3, which IS externalised
+        # as JS but whose CSS the host still loads). The 2 MB ceiling is
+        # set well above that so the obvious regressions fail loudly:
+        #   - accidentally re-bundling Vue / Pinia / vue-router (~150 KB)
+        #   - dropping `md-editor-v3` from `rollupOptions.external`
+        #     (CodeMirror 6 alone is ~800 KB raw)
+        # Both are silent locally — the panel still renders — so this is
+        # the only place they surface before a release tarball ships.
+        run: |
+          set -euo pipefail
+          MAIN=$(stat -c%s frontend/main.js)
+          CSS=$(stat -c%s frontend/style.css)
+          TOTAL=$((MAIN + CSS))
+          echo "main.js=${MAIN}B style.css=${CSS}B total=${TOTAL}B"
+          if [ $TOTAL -gt 2097152 ]; then
+            echo "::error::Bundle exceeded the 2 MB budget (got ${TOTAL}B)"
+            echo "::error::Check that md-editor-v3, vue, pinia and vue-router are still in rollupOptions.external."
+            exit 1
+          fi
+
+  sonarqube:
+    name: SonarQube scan
+    # Runs after the test step so coverage is already generated. Mirrors
+    # the memories-frontend pattern: skip on tag pushes (SonarCloud's
+    # new-code baseline has no previous version to diff against on a ref
+    # it has never seen).
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0   # sonar-scan needs full history for blame / new-code
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # Vitest v8 emits coverage/lcov.info at the project root when run
+      # with the coverage reporter. The action reads
+      # sonar-project.properties, which references this exact path.
+      # Skipping this step is the #1 cause of "Coverage is not yet
+      # visible" in SonarCloud.
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      # Verify the report exists and is non-empty BEFORE invoking the
+      # scanner. If coverage/lcov.info is missing the scanner reports a
+      # successful analysis with 0% coverage and the dashboard shows
+      # "Coverage is not yet visible" — failing here makes the cause
+      # obvious in the workflow run.
+      - name: Verify coverage report
+        run: |
+          set -euo pipefail
+          if [ ! -s coverage/lcov.info ]; then
+            echo "::error::coverage/lcov.info is missing or empty — the scanner would publish 0% coverage."
+            exit 1
+          fi
+          echo "coverage/lcov.info size: $(wc -c < coverage/lcov.info) bytes"
+          echo "covered files: $(grep -c '^SF:' coverage/lcov.info)"
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-sonarqube
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # SonarQube Cloud analysis. The action wraps sonar-scanner, so we
+      # don't invoke `npx sonar-scanner` manually — that path has caused
+      # "Coverage is not yet visible" warnings in the past because
+      # PR-key branching and decoration are not set up by hand.
+      #
+      # REQUIRED REPO SECRETS:
+      #   - SONAR_TOKEN: a SonarCloud authentication token. Create one at
+      #     https://sonarcloud.io/account/security and add it as a repo
+      #     secret. Until this is set, the action exits 0 silently —
+      #     coverage will not appear and the PR is green until then.
+      #   - GITHUB_TOKEN: provided automatically by GitHub Actions;
+      #     forwarded so the action can mark PR check runs.
+      #
+      # REQUIRED SONARCLOUD PROJECT:
+      #   - A project with key
+      #     `spora-ai_spora-plugin-custom-skills-frontend` must exist on
+      #     SonarCloud under the `spora-ai` organization. Either bind it
+      #     through the SonarCloud UI (Import from GitHub) or pass
+      #     `-Dsonar.newCodeReferenceBranch=main` to enable the new-code
+      #     baseline on the first scan.
+      - name: SonarQube Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Pinned to the v8.2.0 commit SHA — the recommended successor to
+        # sonarsource/sonarcloud-github-action, which is now deprecated
+        # upstream. See
+        # https://github.com/SonarSource/sonarqube-scan-action/releases/tag/v8.2.0
+        uses: sonarsource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
+        with:
+          # The action reads sonar-project.properties for everything
+          # except the token, which must come from a secret. Explicit
+          # args here override properties if needed; we keep them minimal
+          # so the properties file is the single source of truth.
+          args: >
+            -Dsonar.organization=spora-ai
+            -Dsonar.projectKey=spora-ai_spora-plugin-custom-skills-frontend
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+
+  # Tags only. Builds the bundle, packages ONLY `frontend/` (the
+  # SporaPluginFrontendInstaller source dir) under a versioned root,
+  # and creates the GitHub Release with the tarball attached.
+  # `composer install` on operator hosts reads `dist.url` from the
+  # tagged composer.json — see RELEASING.md for the full flow.
+  build-and-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        # vue-tsc + vite build, output goes to frontend/ (per vite.config.ts).
+        run: npm run build
+
+      - name: Verify dist.url matches the release tag
+        run: |
+          TAG_V="${GITHUB_REF_NAME}"
+          EXPECTED="https://github.com/${{ github.repository }}/releases/download/${TAG_V}/spora-plugin-custom-skills-frontend-${TAG_V}.tar.gz"
+          ACTUAL=$(jq -r .dist.url composer.json)
+          echo "Tag:        ${TAG_V}"
+          echo "Expected:   ${EXPECTED}"
+          echo "Actual:     ${ACTUAL}"
+          if [ "${ACTUAL}" != "${EXPECTED}" ]; then
+            echo "::error::composer.json dist.url does not match the release tag. Update composer.json BEFORE tagging."
+            echo "::error::Expected: ${EXPECTED}"
+            echo "::error::Actual:   ${ACTUAL}"
+            exit 1
+          fi
+
+      - name: Verify only frontend/ is shipped
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          # The release artifact must contain ONLY the contents of frontend/
+          # (main.js + style.css, the Vite IIFE bundle) under a single
+          # spora-plugin-custom-skills-frontend-v<VERSION>/ root directory.
+          # Nothing else — no source code, no node_modules, no build
+          # configs. The versioned root is what Composer's TarDownloader
+          # (PHP's PharData) requires to extract the archive cleanly.
+          # The frontend/ subdir MUST be preserved verbatim so
+          # SporaPluginFrontendInstaller can find it after extraction.
+          set -e
+          STAGING=$(mktemp -d)
+          mkdir -p "$STAGING/spora-plugin-custom-skills-frontend-${TAG}"
+          cp -R frontend "$STAGING/spora-plugin-custom-skills-frontend-${TAG}/"
+          tar -czf /tmp/release-check.tar.gz -C "$STAGING" "spora-plugin-custom-skills-frontend-${TAG}"
+          PREFIX="spora-plugin-custom-skills-frontend-${TAG}/"
+          tar -tzf /tmp/release-check.tar.gz | head -20
+          echo
+          echo "Release artifact contains $(tar -tzf /tmp/release-check.tar.gz | wc -l | tr -d ' ') entries."
+
+          # Deny list: fail loudly if any of these ever sneak into the
+          # release tarball. Add to this list if a new non-runtime path
+          # starts shipping by accident. Strip the versioned root before
+          # matching so the regex sees only real frontend/ entries.
+          # main.js and style.css are ALLOWED inside frontend/ but DENIED
+          # at the top level (where they used to ship pre-v0.1.3).
+          DENY_PATTERNS='^((\.git|\.github|node_modules|src|tests|coverage|scripts|package\.json|package-lock\.json|composer\.json|composer\.lock|vite\.config\.ts|tsconfig\.json|tailwind\.config\.ts|postcss\.config\.js|eslint\.config\.js|sonar-project\.properties|index\.html|README\.md|RELEASING\.md|main\.js|style\.css)/?)$'
+          LEAKED=$(tar -tzf /tmp/release-check.tar.gz | grep -E "^${PREFIX}" | sed "s|^${PREFIX}||" | grep -E "$DENY_PATTERNS" || true)
+          if [ -n "$LEAKED" ]; then
+            echo "::error::Release artifact contains non-runtime paths:"
+            echo "$LEAKED"
+            exit 1
+          fi
+
+          # Allow list: confirm the expected frontend/ entries are
+          # present, each under the versioned root.
+          for REQUIRED in main.js style.css; do
+            if ! tar -tzf /tmp/release-check.tar.gz | grep -qx "^${PREFIX}frontend/${REQUIRED}"; then
+              echo "::error::Release artifact is missing required entry: ${PREFIX}frontend/${REQUIRED}"
+              exit 1
+            fi
+          done
+
+          echo "OK: release artifact shape is correct (only frontend/ contents, under spora-plugin-custom-skills-frontend-${TAG}/frontend/)."
+
+      - name: Package
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          # Ship ONLY the Vite frontend/ output, packaged under a single
+          # versioned root directory so Composer's TarDownloader (PHP's
+          # PharData) can extract the archive cleanly. The archive's top
+          # entry must be "spora-plugin-custom-skills-frontend-${TAG}/",
+          # not "./" — the latter is what made spora-frontend v0.1.3 fail
+          # with "Cannot extract '.', internal error". The frontend/
+          # subdir is preserved so SporaPluginFrontendInstaller's
+          # copyFrontend() can find it after LibraryInstaller extracts.
+          rm -rf staging
+          mkdir -p "staging/spora-plugin-custom-skills-frontend-${TAG}"
+          cp -R frontend "staging/spora-plugin-custom-skills-frontend-${TAG}/"
+          tar -czf "spora-plugin-custom-skills-frontend-${TAG}.tar.gz" -C staging "spora-plugin-custom-skills-frontend-${TAG}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: spora-plugin-custom-skills-frontend-${{ github.ref_name }}.tar.gz
+          generate_release_notes: true

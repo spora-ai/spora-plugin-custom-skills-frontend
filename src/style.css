@@ -1,0 +1,8 @@
+/*
+ * Plugin-side Tailwind entry. The host owns document-level resets, so this
+ * bundle omits preflight. `tailwind.config.ts` scopes every generated utility
+ * beneath `#spora-plugin-custom-skills` to prevent plugin classes from
+ * overriding the host SPA or another plugin.
+ */
+@tailwind components;
+@tailwind utilities;

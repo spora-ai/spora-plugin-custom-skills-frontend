@@ -1,0 +1,31 @@
+<script setup lang="ts">
+/**
+ * AlertBanner — small status banner used by the skills page.
+ *
+ * Verbatim copy of `spora-frontend/src/components/ui/AlertBanner.vue`.
+ * The plugin is isolated from the host's UI library, so we ship the
+ * same component locally. If the host redesigns its banner, this one
+ * will drift — that's intentional, since the plugin is its own design
+ * surface until a shared component library lands.
+ */
+defineProps<{
+    type: 'success' | 'error' | 'warning'
+    message: string
+}>()
+</script>
+
+<template>
+    <div
+        role="alert"
+        class="rounded-lg px-4 py-3 text-sm"
+        :class="
+            type === 'success'
+                ? 'bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300'
+                : type === 'warning'
+                    ? 'bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-300'
+                    : 'border border-destructive/30 bg-destructive/10 text-destructive'
+        "
+    >
+        {{ message }}
+    </div>
+</template>
