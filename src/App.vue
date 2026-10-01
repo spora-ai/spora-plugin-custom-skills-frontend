@@ -3,24 +3,16 @@ import SkillsPage from './pages/SkillsPage.vue'
 import './style.css'
 
 /**
- * App.vue — entry component.
+ * Entry component.
  *
- * The `#spora-plugin-custom-skills` wrapper is the CSS scope every
- * Tailwind utility in the bundle is nested beneath (see
- * `tailwind.config.ts → important`). Removing the id, or rendering the
- * page without it, silently unscopes the plugin's CSS into the host —
- * which is exactly what `scripts/smoke.js` fails the build for.
+ * The `#spora-plugin-custom-skills` wrapper is the CSS scope every Tailwind
+ * utility in the bundle nests beneath (see `tailwind.config.ts → important`);
+ * removing it silently unscopes the plugin's CSS into the host, which is what
+ * `scripts/smoke.js` fails the build for.
  *
- * The plugin-local router is built and installed in `main.ts → mount()`
- * (and mirrored in `dev-main.ts` for the dev sandbox). This file
- * intentionally does not create a router of its own: a second
- * `createRouter()` instance here would never be `app.use()`'d, leaving
- * `useRoute()`/`useRouter()` in the descendants unbound and silently
- * swallowing navigation.
- *
- * `hostContext` is provided via `provide(...)` in `main.ts → mount()`
- * so descendants (`SkillEditor`, the page) can inject it without
- * prop-drilling.
+ * The router and `hostContext` are installed in `main.ts → mount()`. A second
+ * `createRouter()` here would never be `app.use()`'d, leaving `useRoute()` /
+ * `useRouter()` in the descendants unbound and silently swallowing navigation.
  */
 
 const props = defineProps<{

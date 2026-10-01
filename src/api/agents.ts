@@ -1,14 +1,7 @@
 /**
- * Agents API client.
- *
- * Surfaces `/agents` with optional `?principal_id=` filtering so the
- * "Enable on agent…" control can only offer agents the caller owns
- * under the active principal. Multiple ids go on as repeatable query
- * keys, matching the host's `useAgentStore.fetchAgents(principalIds)`
- * convention exactly.
- *
- * Nothing here reaches beyond the plugin's shared `api/client.ts` host
- * bridge, so tests can mock this module or stub `hostContext.api`.
+ * Agents API client. `principal_id` goes on as a repeatable query key, matching
+ * the host's `useAgentStore.fetchAgents(principalIds)` convention, so the "Enable
+ * on agent…" control can only offer agents under the active principal.
  */
 import { getApi } from './client'
 import type { AgentSummary } from '../types'

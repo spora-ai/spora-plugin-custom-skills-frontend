@@ -18,10 +18,8 @@ import type {
 } from '../types'
 
 /**
- * Resolve the acting principal id lazily from the principals store.
- * Lives at module scope so SonarCloud's S7721 doesn't ask us to
- * hoist it out of every action — it's a closure-free one-liner and
- * the stateful binding happens through Pinia at call time.
+ * Module scope so SonarCloud's S7721 doesn't flag it inside every action; the
+ * stateful binding happens through Pinia at call time.
  */
 function currentPrincipalId(): number | null {
     return usePrincipalsStore().selectedPrincipalId
@@ -36,13 +34,10 @@ function isValidationEntry(value: unknown): value is SkillValidationEntry {
 /**
  * Pull the `ValidationResult` array out of a 422 `SKILL_INVALID`.
  *
- * The contract says the response "carries the ValidationResult array
- * in `data.errors`", but the host's api client unwraps the `{data: …}`
- * envelope on the success path and how it decorates the *error* object
- * is the host's business, not ours. Rather than hard-coding one
- * property name and rendering an empty form, probe the shapes the host
- * is known to produce and degrade to `[]` if none match — the
- * operator still sees the human-readable `message`.
+ * The contract promises `data.errors`, but how the host's client decorates the
+ * *error* object is its business — so probe the shapes it is known to produce and
+ * degrade to `[]` rather than hard-coding one property name and rendering an
+ * empty form. The operator still sees the human-readable `message`.
  */
 export function extractValidationErrors(e: unknown): SkillValidationEntry[] {
     if (Array.isArray(e)) return e.filter(isValidationEntry)
@@ -66,26 +61,17 @@ export function extractValidationErrors(e: unknown): SkillValidationEntry[] {
 }
 
 /**
- * Manages the two panes of the Custom Skills panel.
+ * Manages both panes of the Custom Skills panel.
  *
- * **Two sources, one store.** `skills` is the caller's principal's
- * custom skills (CRUD, from the plugin's own REST contract).
- * `preShipped` is read from the HOST's `GET /api/v1/skills` and is
- * never mutated here — the only thing the panel can do to a shipped
- * skill is `duplicateSkill()`, which POSTs a copy onto the principal.
- * Keeping both in one store is what lets the page's per-pane search
- * and the fork-name allocator see both name sets at once.
+ * `skills` is the acting principal's skills (CRUD); `preShipped` is the HOST's
+ * `GET /api/v1/skills` and is never mutated here — the only action is
+ * `duplicateSkill()`, which POSTs a copy. One store so the per-pane search and the
+ * fork-name allocator see both name sets at once.
  *
- * **Principal scoping:** every write reads `selectedPrincipalId` from
- * `usePrincipalsStore()` at call time and threads it to the API as
- * `?principal_id=N`. The `PrincipalChipRow` is the single source of
- * truth — the store doesn't take a separate principal arg, so callers
- * can't forget to forward it.
- *
- * **Loading triple:** `loading` (reads), `saving` (writes) and `error`
- * are kept separate so a slow background read never disables the Save
- * button, and so a failed write's message survives the read that
- * follows it.
+ * Every write resolves `selectedPrincipalId` from `usePrincipalsStore()` at call
+ * time and threads it as `?principal_id=N`, so callers cannot forget to.
+ * `loading` / `saving` / `error` stay separate so a slow background read never
+ * disables Save and a failed write's message survives the read after it.
  */
 export const useSkillsStore = defineStore('custom-skills', () => {
     const skills = ref<CustomSkillResource[]>([])
@@ -121,10 +107,8 @@ export const useSkillsStore = defineStore('custom-skills', () => {
         try {
             preShipped.value = await preshippedApi.listPreShippedSkills()
         } catch {
-            // The host catalogue is a different backend surface from the
-            // plugin's own; a failure there must not blank the "My
-            // skills" pane's error banner, so it lands in the pane's own
-            // state rather than the shared `error`.
+            // A different backend surface: a host-catalogue failure must not
+            // land in the shared `error` the "My skills" pane renders.
             preShipped.value = []
         } finally {
             preShippedLoading.value = false
@@ -138,9 +122,8 @@ export const useSkillsStore = defineStore('custom-skills', () => {
                 principalId === null ? null : [principalId],
             )
         } catch {
-            // The allowlist control degrades to "no agents to offer"
-            // rather than failing the page — the skill itself is still
-            // editable without it.
+            // Degrades to "no agents to offer" rather than failing the page;
+            // the skill itself is still editable without the control.
             agents.value = []
         }
     }
@@ -204,11 +187,8 @@ export const useSkillsStore = defineStore('custom-skills', () => {
     }
 
     /**
-     * Delete and report the blast radius. The caller is expected to
-     * have already shown `DeleteSkillResult.scrubbed_agents` (fetched
-     * from the allowlist endpoint) in the confirmation dialog — this
-     * return value is what the page uses to tell the operator, after
-     * the fact, which agents were actually scrubbed.
+     * `scrubbed_agents` is for reporting *after* the write; the confirmation
+     * dialog must already have named the blast radius from the allowlist read.
      */
     async function deleteSkill(name: string): Promise<DeleteSkillResult> {
         saving.value = true
@@ -246,10 +226,8 @@ export const useSkillsStore = defineStore('custom-skills', () => {
     }
 
     /**
-     * Fork a pre-shipped skill onto the acting principal. The name is
-     * allocated here, not by the caller, because it has to avoid both
-     * the principal's existing skills AND the shipped catalogue (a
-     * shipped name answers 409 `SKILL_NAME_RESERVED`).
+     * The name is allocated here, not by the caller: it must avoid the principal's
+     * skills AND the shipped catalogue, since a shipped name answers 409.
      */
     async function duplicateSkill(
         source: PreShippedSkillSummary,
@@ -276,9 +254,8 @@ export const useSkillsStore = defineStore('custom-skills', () => {
     }
 
     /**
-     * Add the skill to one agent's `allowed_skills`, then refresh the
-     * card's allowlist from the server so the row reflects the
-     * authoritative post-write state rather than an optimistic guess.
+     * Refreshes from the server so the row shows the authoritative post-write
+     * state rather than an optimistic guess.
      */
     async function enableOnAgent(name: string, agentId: number): Promise<void> {
         saving.value = true

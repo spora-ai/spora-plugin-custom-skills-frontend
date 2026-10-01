@@ -2,16 +2,10 @@
 /**
  * Principal chip row — the scope control above both panes.
  *
- * Renders one chip per principal the caller can see (their own
- * user-principal + every group-principal they're a member of). No
- * "ALL" / combined chip: a skill belongs to exactly one principal, so
- * a union view would be a lie. Selecting a chip re-scopes both panes;
- * the read is honest, the writes are not — a group the caller is a
- * plain member of answers 403 on write, and the store surfaces that
- * message rather than hiding the group.
- *
- * Loading state: skeletons until the principals store resolves
- * `/principals/me`. Error state: a single inline message.
+ * No "ALL" / combined chip: a skill belongs to exactly one principal, so a union
+ * view would be a lie. Selecting a chip re-scopes both panes; a group the caller
+ * is only a member of answers 403 on write, and the store surfaces that message
+ * rather than hiding the group.
  */
 import { onMounted } from 'vue'
 import { usePrincipalsStore } from '../stores/principals'
@@ -35,9 +29,8 @@ function chipClass(id: number): string {
 }
 
 /**
- * The own-principal chip is labelled "My skills" rather than
- * "User #7": the host names user-principals numerically and that
- * string is meaningless in a skills panel.
+ * "My skills", not the host's numeric "User #7", which is meaningless in a skills
+ * panel.
  */
 function chipLabel(p: { name: string; type: string }): string {
     return p.type === 'user' ? 'My skills' : p.name

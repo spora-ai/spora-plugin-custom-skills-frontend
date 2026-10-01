@@ -1,10 +1,6 @@
 /**
- * Principals API client.
- *
- * Wire shape matches `GET /api/v1/principals/me` from spora-core.
- * Returns the principals the caller can act as (their own
- * user-principal + group-principals they're a member of) so the chip
- * row can label entries without a second round-trip.
+ * Principals API client — `GET /api/v1/principals/me` returns the principals the
+ * caller can act as, so the chip row can label them without a second round-trip.
  */
 import { getApi } from './client'
 

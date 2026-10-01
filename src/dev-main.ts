@@ -1,20 +1,11 @@
 /**
- * Dev-only entry. Boots the same component tree as the production
- * bundle but renders it into `#app` instead of the host's plugin slot,
- * with a mock host context that lets the UI load data without a
- * backend.
+ * Dev-only entry: the same component tree as the production bundle, rendered into
+ * `#app` with a mock host context so the UI loads without a backend. The mock API
+ * lives in `./dev-mock` so it is testable without this bootstrap.
  *
- * The mock API + fixtures live in `./dev-mock` so they can be
- * unit-tested without triggering this bootstrap. The production bundle
- * (`./main.ts`) is unaffected.
- *
- * For end-to-end testing against a real backend, run the host dev
- * flow:
- *   1. PHP at :8080 (`composer dev` in spora-local)
- *   2. Plugin dev at :5190 (`npm run dev` here)
- *   3. Host SPA at :5173 (`npm run dev` in spora-frontend)
- * The host's `vite.config.ts → SPORA_PLUGIN_DEV_PORTS` then forwards
- * `/api` to PHP and `/plugins/custom-skills/*` to this dev server.
+ * For end-to-end testing against a real backend use the host dev flow — PHP on
+ * :8080, this server on :5190, host SPA on :5173 — which forwards `/api` to PHP
+ * and `/plugins/custom-skills/*` here.
  */
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
@@ -25,8 +16,8 @@ import { HOST_CONTEXT_KEY, type PluginHostContext } from './shims'
 import { setApi } from './api/client'
 import { createMockApi } from './dev-mock'
 
-// One-line banner so the developer knows they're in sandbox mode and
-// doesn't waste time wondering why their real backend isn't responding.
+// Banner so a developer doesn't waste time wondering why their backend isn't
+// responding.
 console.info('[spora/custom-skills] dev sandbox — using in-memory fixtures (no backend)')
 
 const mockApi = createMockApi()
@@ -43,11 +34,8 @@ const hostContext: PluginHostContext = {
     },
 }
 
-// Plugin-local router mirroring the production slot — without
-// `app.use(router)` the `useRoute()` inject keys are missing and
-// `SkillsPage` emits `[Vue warn]: injection "Symbol(route
-// location)" not found`. Same route names as `main.ts` so the page
-// behaves identically in both surfaces.
+// Without `app.use(router)` the `useRoute()` inject keys are missing and
+// `SkillsPage` warns. Same route names as `main.ts` so both surfaces behave alike.
 const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -61,8 +49,6 @@ if (target) {
     const app = createApp(App, { hostContext })
     app.use(createPinia())
     app.use(router)
-    // Mirror `src/main.ts → mount()` so the dev sandbox presents the
-    // same Vue inject() tree as the production slot.
     app.provide(HOST_CONTEXT_KEY, hostContext)
     app.config.globalProperties.$host = hostContext
     app.mount(target)

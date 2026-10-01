@@ -1,16 +1,9 @@
 /**
- * Pre-shipped skills API client — reads the HOST's catalogue.
- *
- * Pre-shipped skills are served by `spora-core`'s `SkillController` at
- * `GET /api/v1/skills`, NOT by this plugin. The frozen contract is
- * explicit about it ("Not endpoints (deliberately)"): re-fetching them
- * from the plugin would produce a second, drifting copy of the truth.
- * The request therefore goes through the same host api client — we just
- * point it at the host's route.
- *
- * Read-only by design. The only mutation this panel can perform on a
- * pre-shipped skill is `Duplicate`, which POSTs a *copy* onto the
- * principal (see `api/customSkills.ts → forkSkill`).
+ * Pre-shipped skills API client — reads the HOST's catalogue at
+ * `GET /api/v1/skills`, which the contract lists under "Not endpoints
+ * (deliberately)": re-serving it here would produce a second, drifting copy.
+ * Read-only; the only mutation is Duplicate, which POSTs a *copy* onto the
+ * principal.
  */
 import { getApi } from './client'
 import type { PreShippedSkillDetail, PreShippedSkillSummary } from '../types'

@@ -1,10 +1,8 @@
 /**
- * `src/dev-mock.ts` — the in-memory host behind `npm run dev`.
- *
- * It ships in the analysis but never in the bundle's critical path, so
- * the only risk it carries is drift: a route shape that no longer
- * matches the frozen contract would make the dev sandbox agree with
- * nothing. These assertions pin the envelopes the panel actually reads.
+ * The in-memory host behind `npm run dev`. It never ships in the bundle's critical
+ * path, so its only risk is drift: a route shape that no longer matches the frozen
+ * contract would make the dev sandbox agree with nothing. These pin the envelopes
+ * the panel actually reads.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createMockApi, type MockApi } from '../src/dev-mock'

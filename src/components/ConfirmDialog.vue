@@ -4,23 +4,18 @@ import { AlertTriangle, Inbox, Trash2 } from 'lucide-vue-next'
 /**
  * Confirmation dialog for destructive, multi-agent writes.
  *
- * The only caller is skill deletion, and the only reason this is a
- * component rather than a `confirm()` call is `lines`: the caller
- * passes the agents whose `allowed_skills` the delete will scrub,
- * fetched from the allowlist endpoint *before* the write. Deleting a
- * skill is a silent multi-agent config change otherwise — the
- * operator finds out from an agent that suddenly can't find the
- * skill, days later, with no link back to the click that removed it.
+ * The only caller is skill deletion, and the reason this is a component rather
+ * than a `confirm()` call is `affectedAgents`: a delete is a silent multi-agent
+ * config change otherwise — the operator finds out days later from an agent that
+ * suddenly can't find the skill, with no link back to the click.
  *
- * A native `<dialog>` would be the obvious element, but happy-dom and
- * the host's slot both make `showModal()` unreliable; a `role="dialog"`
- * div with an explicit focus target behaves identically in both.
+ * A `role="dialog"` div rather than a native `<dialog>`: `showModal()` is
+ * unreliable in happy-dom and in the host's slot.
  */
 defineProps<{
     open: boolean
     title: string
     body: string
-    /** Agent names the write will affect, stated before confirming. */
     affectedAgents?: string[]
     confirmLabel?: string
     busy?: boolean

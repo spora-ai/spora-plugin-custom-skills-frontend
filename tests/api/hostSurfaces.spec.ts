@@ -1,14 +1,11 @@
 /**
- * Host-surface API clients — the routes this plugin reads but does not
- * own: the pre-shipped catalogue, per-agent `allowed_skills`, agents
- * and principals.
+ * The routes this plugin reads but does not own: the pre-shipped catalogue,
+ * per-agent `allowed_skills`, agents and principals.
  *
- * These exist because the affordances they back are the ones that turn
- * a silent failure into a visible one. The `allowed_skills` writes in
- * particular have two non-obvious properties worth pinning: the read
- * needs `?raw=true` (without it the controller annotates the value and
- * `JSON.parse` throws), and every write is a read-modify-write, so a
- * naive implementation would drop the slugs already on the list.
+ * The `allowed_skills` writes have two non-obvious properties worth pinning: the
+ * read needs `?raw=true` (without it the controller annotates the value and
+ * `JSON.parse` throws), and every write is a read-modify-write, so a naive
+ * implementation would drop the slugs already on the list.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setApi } from '../../src/api/client'

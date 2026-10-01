@@ -1,17 +1,11 @@
 /**
- * Pure display/derivation helpers for the skills panel.
- *
- * Kept out of the store and the components so the awkward bits — which
- * validator `path` maps to which input, what "last edited" means when
- * an agent rewrote the skill, what to call a forked skill — are tested
- * once against plain values instead of through a mounted component.
+ * Pure display/derivation helpers, kept out of the store and components so the
+ * awkward derivations (validator `path` → input, "last edited" after an agent
+ * rewrite, fork naming) are tested against plain values.
  */
 import type { CustomSkillResource, SkillValidationEntry } from '../types'
 
-/**
- * Form fields the editor renders, in DOM order. Also the set of
- * frontmatter keys a `SkillValidator` finding can be anchored to.
- */
+/** Also the set of frontmatter keys a `SkillValidator` finding can anchor to. */
 export const SKILL_FIELDS = [
     'name',
     'description',
@@ -26,13 +20,9 @@ export type SkillField = (typeof SKILL_FIELDS)[number]
 const FIELD_SET: ReadonlySet<string> = new Set(SKILL_FIELDS)
 
 /**
- * Map a validator `path` onto an editor field.
- *
- * The validator reads the raw frontmatter, where the key is spelled
- * `allowed-tools`; the API field and the input's model are
- * `allowed_tools`. Anything unrecognised (e.g. a `metadata` finding)
- * returns `null` so the caller routes it to the banner instead of
- * guessing a field.
+ * The validator reads raw frontmatter, where the key is `allowed-tools`, while the
+ * API field is `allowed_tools`. Anything unrecognised (e.g. a `metadata` finding)
+ * returns `null` so the caller routes it to the banner instead of guessing.
  */
 export function fieldForPath(path: string | undefined | null): SkillField | null {
     if (typeof path !== 'string' || path === '') return null
@@ -40,7 +30,6 @@ export function fieldForPath(path: string | undefined | null): SkillField | null
     return FIELD_SET.has(normalized) ? (normalized as SkillField) : null
 }
 
-/** Findings anchored to `field`, in validator order. */
 export function errorsForField(
     entries: SkillValidationEntry[],
     field: SkillField,
@@ -48,22 +37,15 @@ export function errorsForField(
     return entries.filter((e) => e.severity === 'error' && fieldForPath(e.path) === field)
 }
 
-/**
- * Errors that no field claims. These still have to reach the operator
- * somewhere, so the editor shows them in the same banner as the
- * warnings rather than dropping them.
- */
+/** Errors no field claims still have to reach the operator, so the banner shows them. */
 export function unattachedErrors(entries: SkillValidationEntry[]): SkillValidationEntry[] {
     return entries.filter((e) => e.severity === 'error' && fieldForPath(e.path) === null)
 }
 
 /**
- * `HH:MM` out of a `YYYY-MM-DD HH:MM:SS` server timestamp.
- *
- * Deliberately a substring slice, not `new Date(...)`: the contract
- * sends the server's own wall-clock with no timezone, and the browser
- * would re-interpret it in the operator's locale offset, shifting the
- * displayed time by hours.
+ * Deliberately a substring slice, not `new Date(...)`: the contract sends the
+ * server's own wall-clock with no timezone, and the browser would re-interpret
+ * it in the operator's locale offset, shifting the time by hours.
  */
 export function clockTime(updatedAt: string): string {
     const match = /\d{2}:\d{2}/.exec(updatedAt)
@@ -71,12 +53,10 @@ export function clockTime(updatedAt: string): string {
 }
 
 /**
- * "Last edited by agent · 14:02" / "Last edited by you · 14:02".
- *
  * `provenance` says *how* the last write happened; `updated_by_user_id`
- * disambiguates the `human` case — a human-provenance write made by
- * someone other than the creator (a teammate, or the operator on a
- * shared principal) is attributed to them rather than to "you".
+ * disambiguates the `human` case — a human write by anyone other than the creator
+ * (a teammate, or the operator on a shared principal) is attributed to them rather
+ * than to "you".
  */
 export function lastEditedLabel(
     skill: Pick<CustomSkillResource, 'provenance' | 'updated_by_user_id' | 'created_by_user_id' | 'updated_at'>,
@@ -92,10 +72,8 @@ export function lastEditedLabel(
 }
 
 /**
- * Name for a fork of `sourceName` that doesn't collide with anything in
- * `taken`. The shipped slug itself is reserved server-side (409
- * `SKILL_NAME_RESERVED`), so the suffix is always appended — even when
- * the plain name looks free.
+ * The shipped slug is reserved server-side (409 `SKILL_NAME_RESERVED`), so the
+ * suffix is appended even when the plain name looks free.
  */
 export function forkName(sourceName: string, taken: ReadonlySet<string>): string {
     const base = `${sourceName}-copy`
@@ -110,7 +88,6 @@ export function sidecarFiles(skill: CustomSkillResource) {
     return skill.files.filter((f) => f.path !== 'SKILL.md')
 }
 
-/** Human-readable byte count for the file manifest. */
 export function formatBytes(bytes: number): string {
     if (!Number.isFinite(bytes) || bytes < 0) return '—'
     if (bytes < 1024) return `${bytes} B`

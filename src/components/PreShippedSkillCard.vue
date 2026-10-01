@@ -1,28 +1,25 @@
 <script setup lang="ts">
-import { AlertTriangle, Copy, FileText, Package } from 'lucide-vue-next'
+import { AlertTriangle, Copy, Eye, FileText, Package } from 'lucide-vue-next'
 import type { PreShippedSkillSummary } from '../types'
 
 /**
- * Card for one entry of the host's pre-shipped catalogue.
- *
- * Read-only by construction: the contract lists pre-shipped skills
- * under "Not endpoints (deliberately)", so there is no PUT and no
- * DELETE for them here. The single action is **Duplicate**, which
- * fetches the full detail and POSTs a copy onto the acting principal.
- *
- * That action is not a convenience. A skills panel where the shipped
- * catalogue is display-only gives a first-time author exactly one path
- * — start from a blank editor — and the shipped skills are the worked
- * examples people copy from. Forks also get a non-reserved name
- * (`forkName()`), because reusing a shipped slug answers
- * 409 `SKILL_NAME_RESERVED`.
+ * Card for one entry of the host's pre-shipped catalogue. Read-only by contract
+ * ("Not endpoints (deliberately)"), so the only action is **Duplicate** — it
+ * fetches the full detail and POSTs a copy onto the acting principal. A panel
+ * with a display-only catalogue leaves a first-time author one path: a blank
+ * editor, when the shipped skills are the worked examples people copy from.
+ * Forks get a non-reserved name (`forkName()`); a shipped slug answers 409
+ * `SKILL_NAME_RESERVED`.
  */
 defineProps<{
     skill: PreShippedSkillSummary
     busy?: boolean
 }>()
 
-const emit = defineEmits<{ duplicate: [skill: PreShippedSkillSummary] }>()
+const emit = defineEmits<{
+    view: [skill: PreShippedSkillSummary]
+    duplicate: [skill: PreShippedSkillSummary]
+}>()
 </script>
 
 <template>
@@ -48,6 +45,18 @@ const emit = defineEmits<{ duplicate: [skill: PreShippedSkillSummary] }>()
                 </p>
             </div>
 
+            <!-- Duplicating to *look* is destructive — it writes a row, consumes
+                 a name and has to be deleted again — so reading is its own, free
+                 action. -->
+            <button
+                type="button"
+                class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+                data-test="view-skill"
+                @click="emit('view', skill)"
+            >
+                <Eye class="h-3.5 w-3.5" />
+                View
+            </button>
             <button
                 type="button"
                 :disabled="busy"

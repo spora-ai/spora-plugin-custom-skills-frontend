@@ -1,18 +1,10 @@
 /**
- * In-memory host for `npm run dev`.
+ * In-memory host for `npm run dev`, stubbing both the plugin's REST contract and
+ * the host's `GET /api/v1/skills`.
  *
- * The plugin's own REST contract and the host's `GET /api/v1/skills`
- * are both stubbed here so the whole panel can be exercised in a
- * browser with no PHP behind it. The mock implements the *shapes*
- * from the frozen contract, not the validation — a fake that
- * validated would hide exactly the affordances the panel exists to
- * surface (a 422 with a `ValidationResult` is the interesting case).
- *
- * Kept out of `dev-main.ts` so the bootstrap itself stays testable
- * without booting an app. The fixtures are deliberately lopsided: one
- * skill with a sidecar, a warning and a previous version; one skill on
- * an agent's allowlist and one on nobody's; three shipped skills across
- * two `source` groups.
+ * Implements the *shapes* from the frozen contract, not the validation: a mock
+ * that validated would hide the 422 `ValidationResult` case, which is the
+ * interesting one. Kept out of `dev-main.ts` so the bootstrap stays testable.
  */
 import type { PluginHostContext } from './shims'
 import type {
@@ -90,9 +82,8 @@ const MOCK_PRINCIPALS = [
 ]
 
 /**
- * The returned object carries two `__seed*` helpers on top of the host
- * api surface. They exist so the dev sandbox (and `tests/dev-mock.spec.ts`)
- * can set up an "N agents allowlist this skill" state without a backend.
+ * `__seed*` helpers let the sandbox and its spec build an "N agents allowlist this
+ * skill" state without a backend.
  */
 export type MockApi = PluginHostContext['api'] & {
     __seedAllowlist(name: string, entries: SkillAllowlistEntry[]): void

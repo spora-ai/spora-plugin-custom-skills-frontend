@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Package, Plus, Search, Sparkles } from 'lucide-vue-next'
 import PrincipalChipRow from '../components/PrincipalChipRow.vue'
@@ -7,6 +7,7 @@ import PaneSearch from '../components/PaneSearch.vue'
 import SkillCard from '../components/SkillCard.vue'
 import PreShippedSkillCard from '../components/PreShippedSkillCard.vue'
 import SkillEditor from '../components/SkillEditor.vue'
+import SkillViewer from '../components/SkillViewer.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import AlertBanner from '../components/AlertBanner.vue'
 import { useSkillsStore } from '../stores/skills'
@@ -18,39 +19,23 @@ import { HOST_CONTEXT_KEY, type PluginHostContext } from '../shims'
 import type {
     CreateSkillDto,
     CustomSkillResource,
+    PreShippedSkillDetail,
     PreShippedSkillSummary,
     UpdateSkillDto,
 } from '../types'
 
 /**
- * SkillsPage — the whole Custom Skills panel.
+ * The whole panel, split by *provenance*: "My skills" is the caller's principal
+ * (full CRUD, this plugin's REST contract), "Pre-shipped" is the host catalogue at
+ * `GET /api/v1/skills` (read-only, grouped by `source`; never re-served here, or
+ * the copies drift).
  *
- * Two panes, and the split is a *provenance* split, not a
- * feature split:
+ * The breakpoint is `lg`, not `md`: at `md` the pre-shipped cards compress past the
+ * point where `Duplicate` needs horizontal scrolling.
  *
- *   - **My skills** — the caller's principal's custom skills, full
- *     CRUD. Sourced from this plugin's REST contract.
- *   - **Pre-shipped** — the host catalogue from `GET /api/v1/skills`,
- *     read-only, grouped by `source` so "what came with the box" and
- *     "what came from another plugin" are visually separable. The
- *     contract lists these under "Not endpoints (deliberately)": the
- *     plugin must never re-serve them, or the two copies drift.
- *
- * **Responsive rule.** Under `lg` the two panes stack in source order
- * — "My skills" first, because every write happens there — and the
- * editor drops out of flow into a full-width panel below them. At
- * `lg` and up they sit side by side in a fixed 2-column grid. The
- * breakpoint is `lg` (not `md`) deliberately: each card carries a
- * description, a file manifest and an allowlist row, and at `md` the
- * pre-shipped pane's cards are compressed past the point where the
- * `Duplicate` button stops being reachable without horizontal
- * scrolling.
- *
- * **Delete is a two-step, read-then-write.** Clicking Delete fetches
- * `GET …/{name}/allowlist` and names the affected agents in the
- * confirmation, *before* `DELETE` runs. The `scrubbed_agents` on the
- * delete response arrive too late to warn anyone; they are used only
- * to report what actually changed.
+ * **Delete is read-then-write.** The allowlist is fetched and its agents named in
+ * the confirmation *before* `DELETE` runs; `scrubbed_agents` on the response
+ * arrive too late to warn anyone.
  */
 const route = useRoute()
 const router = useRouter()
@@ -63,6 +48,15 @@ const preSearch = ref('')
 const notice = ref<string | null>(null)
 const fileContents = ref<Record<string, string>>({})
 
+/**
+ * So a mode transition can scroll the newly opened pane into view. That scroll is
+ * the fix for the reported "New skill does nothing": the pane rendered below both
+ * lists, so on a ~20-skill catalogue the editor landed thousands of pixels below
+ * the fold and the click produced no visible change.
+ */
+const editorPane = ref<HTMLElement | null>(null)
+const viewerPane = ref<HTMLElement | null>(null)
+
 const pendingDelete = ref<string | null>(null)
 const deleteBlastRadius = ref<string[]>([])
 
@@ -72,9 +66,32 @@ const openSkillName = computed(() => {
 })
 const isCreating = computed(() => route.query.create === '1')
 
+/*
+ * Viewer state: a third mode alongside create and edit, held in the query string
+ * (`?view=<name>`) so it is linkable the same way the editor's location is.
+ * Deliberately not a route param: `/:name` is the *edit* route, and a shipped
+ * skill is not in `store.skillsByName` at all.
+ */
+const viewingName = computed(() => {
+    const query = route.query.view
+    return typeof query === 'string' && query !== '' ? query : null
+})
+const viewingShipped = ref<PreShippedSkillDetail | null>(null)
+const viewingShippedLoading = ref(false)
+
 const openSkill = computed<CustomSkillResource | null>(
     () => store.skillsByName[openSkillName.value ?? ''] ?? null,
 )
+
+/**
+ * `prefers-reduced-motion` is honoured: the scroll is a convenience, and animating
+ * it for someone who asked the OS not to is impossible to notice when it works.
+ */
+function revealPane(el: HTMLElement | null): void {
+    if (!el) return
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' })
+}
 
 function matches(haystack: readonly string[], needle: string): boolean {
     if (needle === '') return true
@@ -87,8 +104,7 @@ const filteredMySkills = computed(() =>
 )
 
 /**
- * Pre-shipped skills grouped by `source`, preserving the alphabetical
- * order the host returns within each group so re-grouping never
+ * Preserving the order the host returns within each group, so re-grouping never
  * reorders a card an operator was reading.
  */
 const groupedPreShipped = computed(() => {
@@ -108,23 +124,74 @@ const preShippedVisibleCount = computed(() =>
     groupedPreShipped.value.reduce((n, g) => n + g.items.length, 0),
 )
 
-function pushRoute(name: string | null, create = false): void {
-    void router.push(create ? { name: 'skills', query: { create: '1' } } : name ? { name: 'skill', params: { name } } : { name: 'skills' })
+/**
+ * Every push funnels through here so a mode transition clears the other modes'
+ * query keys. Vue Router *merges* query on `push`, so a leftover `view=` behind
+ * a `create=1` would stack both panes — a real failure mode, not a hypothetical.
+ */
+async function goTo(query: Record<string, string>, name?: string): Promise<void> {
+    await router.push(
+        name
+            ? { name: 'skill', params: { name }, query }
+            : { name: 'skills', query },
+    )
+    await nextTick()
+    revealPane(editorPane.value ?? viewerPane.value)
 }
 
 function openEditor(name: string): void {
     fileContents.value = {}
-    pushRoute(name)
+    viewingShipped.value = null
+    void goTo({}, name)
 }
 
 function startCreate(): void {
     fileContents.value = {}
-    pushRoute(null, true)
+    viewingShipped.value = null
+    void goTo({ create: '1' })
 }
 
 function closeEditor(): void {
     fileContents.value = {}
-    pushRoute(null)
+    void goTo({})
+}
+
+/**
+ * A custom skill is already in the store, so only the shipped path needs a fetch —
+ * and that fetch is what makes "explore before you duplicate" work.
+ */
+async function openViewer(name: string): Promise<void> {
+    viewingShipped.value = null
+    if (store.skillsByName[name]) {
+        fileContents.value = {}
+        await goTo({ view: name })
+        return
+    }
+
+    viewingShippedLoading.value = true
+    try {
+        viewingShipped.value = await preshippedApi.getPreShippedSkill(name)
+        await goTo({ view: name })
+    } catch {
+        // `store.error` is scoped to the custom-skills pane, so this surfaces inline.
+        notice.value = `Could not load the shipped skill “${name}”.`
+    } finally {
+        viewingShippedLoading.value = false
+    }
+}
+
+function closeViewer(): void {
+    viewingShipped.value = null
+    void goTo({})
+}
+
+function duplicateViewedShipped(name: string): void {
+    const summary = store.preShipped.find((s) => s.name === name)
+    if (!summary) {
+        void goTo({})
+        return
+    }
+    void goTo({}).then(() => handleDuplicate(summary))
 }
 
 async function loadSidecarFiles(name: string): Promise<void> {
@@ -137,10 +204,9 @@ async function loadSidecarFiles(name: string): Promise<void> {
             const content = await api.getSkillFile(name, file.path, principalsStore.selectedPrincipalId)
             contents[file.path] = content.content
         } catch {
-            // A sidecar that can't be read (413 over the 50 000-byte cap,
-            // or removed underneath us) is left blank; the manifest on
-            // the card still tells the operator the file is there, and
-            // the save-time error from the server is the real signal.
+            // A sidecar that can't be read (413 over the 50 000-byte cap, or
+            // removed underneath us) is left blank: the card's manifest still
+            // lists it, and the save-time server error is the real signal.
             contents[file.path] = ''
         }
     }
@@ -157,9 +223,8 @@ async function handleSave(data: CreateSkillDto | UpdateSkillDto): Promise<void> 
             : null
         openEditor(saved.name)
     } catch {
-        // The store has already surfaced `error` and `validationErrors`;
-        // the editor renders the latter inline. Swallowing here keeps
-        // the form open with the operator's input intact.
+        // The store already surfaced `error` and `validationErrors`; the editor
+        // renders the latter inline. Swallowing keeps the form and its input.
     }
 }
 
@@ -167,12 +232,10 @@ async function handleDuplicate(skill: PreShippedSkillSummary): Promise<void> {
     store.clearError()
     try {
         const detail = await preshippedApi.getPreShippedSkill(skill.name)
-        // The host's SkillController exposes only `index` and `show` —
-        // there is no per-file read for a shipped skill, so a fork can
-        // copy the frontmatter and the SKILL.md body but NOT the sidecar
-        // contents. Copying empty placeholders would overwrite the file
-        // set with blanks on the next save, so the operator is told
-        // which files they need to re-add instead.
+        // The host's SkillController exposes only `index` and `show` — no per-file
+        // read for a shipped skill — so a fork copies the frontmatter and SKILL.md
+        // body but NOT sidecar contents. Empty placeholders would overwrite the file
+        // set with blanks on the next save, so the operator is told which to re-add.
         const taken = new Set(store.skills.map((s) => s.name))
         const created = await store.duplicateSkill(
             skill,
@@ -205,10 +268,7 @@ async function handleRestore(name: string): Promise<void> {
     }
 }
 
-/**
- * Read the allowlist *before* opening the dialog. The write happens on
- * confirm; this read is what makes the confirmation honest.
- */
+/** The write happens on confirm, so this read is what makes the confirmation honest. */
 async function requestDelete(name: string): Promise<void> {
     store.clearError()
     deleteBlastRadius.value = []
@@ -216,9 +276,8 @@ async function requestDelete(name: string): Promise<void> {
         const agents = await api.getSkillAllowlist(name, principalsStore.selectedPrincipalId)
         deleteBlastRadius.value = agents.map((a) => a.name)
     } catch {
-        // If the preview can't be read we still allow the delete, but
-        // the dialog's fallback copy says the state is unknown rather
-        // than claiming nothing is affected.
+        // The delete still proceeds, but the dialog says the state is unknown
+        // rather than claiming nothing is affected.
         deleteBlastRadius.value = []
     }
     pendingDelete.value = name
@@ -310,6 +369,59 @@ watch(
             <AlertBanner v-if="store.error" type="error" :message="store.error" />
             <AlertBanner v-if="notice" type="success" :message="notice" />
 
+            <!--
+                The editor and the inspector sit ABOVE the two lists, not after
+                them: the grid below renders the whole shipped catalogue
+                unpaginated, so a form inserted beneath it lands thousands of
+                pixels below the fold and reads as a dead button. The
+                scroll-into-view in `goTo()` is belt-and-braces; the ordering is
+                the fix.
+            -->
+            <section
+                v-if="openSkill || isCreating"
+                ref="editorPane"
+                class="rounded-xl border border-border bg-card p-5"
+                data-test="editor-pane"
+            >
+                <SkillEditor
+                    :skill="openSkill"
+                    :saving="store.saving"
+                    :validation-errors="store.validationErrors"
+                    :file-contents="fileContents"
+                    :theme="hostContext?.theme"
+                    @save="handleSave"
+                    @delete="requestDelete"
+                    @restore="handleRestore"
+                    @cancel="closeEditor"
+                    @load-files="loadSidecarFiles"
+                />
+            </section>
+
+            <section
+                v-if="viewingName"
+                ref="viewerPane"
+                data-test="viewer-host"
+            >
+                <div
+                    v-if="viewingShippedLoading"
+                    class="rounded-xl border border-border bg-card p-5 text-sm text-muted-foreground"
+                    data-test="viewer-loading"
+                >
+                    Loading {{ viewingName }}…
+                </div>
+                <SkillViewer
+                    v-else
+                    :skill="store.skillsByName[viewingName] ?? null"
+                    :shipped="viewingShipped"
+                    :file-contents="fileContents"
+                    :contents-unavailable="viewingShipped !== null"
+                    :theme="hostContext?.theme"
+                    @close="closeViewer"
+                    @edit="openEditor"
+                    @duplicate="duplicateViewedShipped"
+                />
+            </section>
+
             <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <section class="space-y-3" data-test="pane-mine">
                     <div class="flex flex-wrap items-center justify-between gap-2">
@@ -375,6 +487,7 @@ watch(
                             :allowlist-loaded="skill.name in store.allowlists"
                             :agents="store.agents"
                             :busy="store.saving"
+                            @view="openViewer"
                             @edit="openEditor"
                             @delete="requestDelete"
                             @restore="handleRestore"
@@ -446,6 +559,7 @@ watch(
                                     :key="skill.name"
                                     :skill="skill"
                                     :busy="store.saving"
+                                    @view="(s) => openViewer(s.name)"
                                     @duplicate="handleDuplicate"
                                 />
                             </div>
@@ -453,25 +567,6 @@ watch(
                     </div>
                 </section>
             </div>
-
-            <section
-                v-if="openSkill || isCreating"
-                class="rounded-xl border border-border bg-card p-5"
-                data-test="editor-pane"
-            >
-                <SkillEditor
-                    :skill="openSkill"
-                    :saving="store.saving"
-                    :validation-errors="store.validationErrors"
-                    :file-contents="fileContents"
-                    :theme="hostContext?.theme"
-                    @save="handleSave"
-                    @delete="requestDelete"
-                    @restore="handleRestore"
-                    @cancel="closeEditor"
-                    @load-files="loadSidecarFiles"
-                />
-            </section>
         </main>
 
         <ConfirmDialog

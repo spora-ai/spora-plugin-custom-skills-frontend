@@ -1,10 +1,7 @@
 /**
- * Pure derivation helpers in `src/lib/skillFormat.ts`.
- *
- * These are the bits that are easy to get subtly wrong and expensive
- * to debug through a mounted component: which validator `path` lands
- * on which input, and what "last edited" means when an agent rewrote
- * the skill behind the operator's back.
+ * The derivations that are easy to get subtly wrong and expensive to debug through
+ * a mounted component: which validator `path` lands on which input, and what "last
+ * edited" means when an agent rewrote the skill.
  */
 import { describe, it, expect } from 'vitest'
 import {
@@ -87,8 +84,8 @@ describe('lastEditedLabel', () => {
 
 describe('forkName', () => {
     it('always suffixes, even when the plain name is free', () => {
-        // A shipped slug is reserved server-side (409
-        // SKILL_NAME_RESERVED), so the copy can never keep it.
+        // A shipped slug is reserved server-side (409), so the copy can never
+        // keep it.
         expect(forkName('code-review', new Set())).toBe('code-review-copy')
     })
 

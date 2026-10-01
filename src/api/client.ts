@@ -1,20 +1,8 @@
 /**
- * Plugin-local bridge to the host's typed REST client.
- *
- * The bundle is mounted by `spora-frontend`'s `apps/registry.ts` which
- * passes a `PluginHostContext` to `mount()`. The host's API client knows
- * about CSRF tokens, the `/api/v1` base, and the `{ data: T }` envelope
- * unwrap — we don't recreate any of that here, we just hand the passed-in
- * instance back to the rest of the plugin.
- *
- * The container holds one module-level reference. `setApi()` is called
- * once per `mount()`; `getApi()` is then used by `api/customSkills.ts`
- * and any plugin-local fetch helper. Tests can either `vi.mock()` this
- * module directly or re-`setApi()` with a stub.
- *
- * Mirrors the host's `spora-frontend/src/api/client.ts → ApiError` shape:
- * `{ message, code, status }`. Plugin code only needs `message` (for
- * surfacing errors in the `useSkillsStore` loading flags).
+ * Plugin-local bridge to the host's typed REST client, which owns CSRF, the
+ * `/api/v1` base and the `{ data: T }` unwrap. `setApi()` installs the instance
+ * the registry hands `mount()`; `getApi()` serves every `api/*` module. Tests
+ * either `vi.mock()` this module or `setApi()` a stub.
  */
 import type { PluginHostContext } from '../shims'
 
