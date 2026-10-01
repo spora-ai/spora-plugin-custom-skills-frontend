@@ -21,7 +21,7 @@ import { computed, ref, useId, watch } from 'vue'
 import { MdEditor, MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import DOMPurify from 'dompurify'
-import { ChevronDown, Copy, FileText, Lock, Plus, Save, Trash2 } from 'lucide-vue-next'
+import { ChevronDown, Copy, FileText, Lock, MoreHorizontal, Plus, Save, Trash2 } from 'lucide-vue-next'
 import { errorsForField, formatBytes, unattachedErrors, byteSize, lineCount, MAX_FILE_BYTES } from '../lib/skillFormat'
 import { MARKDOWN_LOCALE } from '../lib/markdownLocale'
 import type { CustomSkillResource, SkillValidationEntry, UpdateSkillDto } from '../types'
@@ -112,8 +112,24 @@ const sidecars = ref<Array<{ path: string; content: string }>>([])
 const storedSnapshot = ref('')
 const metadataError = ref<string | null>(null)
 
+/**
+ * The skill-level menu, which exists so the desk has exactly one delete on
+ * screen.
+ *
+ * Removing a sidecar and deleting the skill were both a bare trash icon about
+ * 30 px apart, one in the row with the filename and one in the row below — same
+ * icon, same shape, and the difference between them is the whole skill. The
+ * sidecar one names the file it removes; this one is behind a menu and says
+ * "Delete skill" in words.
+ */
+const menuOpen = ref(false)
+
 const instanceId = useId()
 const idFor = (field: string): string => `${instanceId}-${field}`
+
+function closeMenu(): void {
+    menuOpen.value = false
+}
 
 const activeSidecarIndex = computed(() => sidecars.value.findIndex((row) => row.path === activePath.value))
 const activeSidecar = computed(() =>
@@ -442,16 +458,40 @@ function handleSubmit(): void {
                             <Save class="h-3.5 w-3.5" />
                             {{ saving ? 'Saving…' : 'Save skill' }}
                         </button>
-                        <button
-                            type="button"
-                            :disabled="saving"
-                            class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-                            aria-label="Delete skill"
-                            data-test="desk-delete"
-                            @click="emit('delete', skill.name)"
-                        >
-                            <Trash2 class="h-3.5 w-3.5" />
-                        </button>
+                        <div class="relative shrink-0">
+                            <div
+                                v-if="menuOpen"
+                                class="fixed inset-0 z-10"
+                                data-test="desk-menu-backdrop"
+                                @click="closeMenu"
+                            />
+                            <button
+                                type="button"
+                                :disabled="saving"
+                                class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                                aria-label="More actions for this skill"
+                                data-test="desk-menu-trigger"
+                                @click="menuOpen = !menuOpen"
+                            >
+                                <MoreHorizontal class="h-3.5 w-3.5" />
+                            </button>
+
+                            <div
+                                v-if="menuOpen"
+                                class="absolute right-0 top-9 z-20 w-56 overflow-hidden rounded-xl border border-border bg-card text-left shadow-lg"
+                                data-test="desk-menu"
+                            >
+                                <button
+                                    type="button"
+                                    class="flex w-full items-center gap-2 px-3 py-2 text-xs text-destructive transition-colors hover:bg-destructive/10"
+                                    data-test="desk-delete"
+                                    @click="closeMenu(); emit('delete', skill.name)"
+                                >
+                                    <Trash2 class="h-3.5 w-3.5" />
+                                    Delete skill
+                                </button>
+                            </div>
+                        </div>
                     </template>
                 </div>
             </div>

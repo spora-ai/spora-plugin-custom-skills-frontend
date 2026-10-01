@@ -80,10 +80,43 @@ describe('SkillDesk → the header', () => {
         const wrapper = mountDesk()
         await wrapper.get('[data-test="desk-restore"]').trigger('click')
         await wrapper.get('[data-test="desk-cancel"]').trigger('click')
+        // Delete is behind the menu, so the trigger is part of the interaction.
+        await wrapper.get('[data-test="desk-menu-trigger"]').trigger('click')
         await wrapper.get('[data-test="desk-delete"]').trigger('click')
         expect(wrapper.emitted('restore')?.[0]).toEqual(['invoice-drafting'])
         expect(wrapper.emitted('cancel')).toHaveLength(1)
         expect(wrapper.emitted('delete')?.[0]).toEqual(['invoice-drafting'])
+    })
+
+    it('puts exactly one delete on screen, so the two are never confused', async () => {
+        // Removing a sidecar and deleting the skill were both a bare trash icon
+        // ~30px apart with the same shape. The worst case is a sidecar selected:
+        // its remove appears, directly under the skill's delete.
+        const wrapper = mountDesk({
+            skill: makeSkill({ files: [{ path: 'SKILL.md', bytes: 10 }, { path: 'examples/a.md', bytes: 4 }] }),
+        })
+        await wrapper.findAll('[data-test="rail-file"]')[0]?.trigger('click')
+
+        expect(wrapper.find('[data-test="desk-menu"]').exists(), 'the delete lives in the menu').toBe(false)
+        expect(wrapper.findAll('svg.lucide-trash-2')).toHaveLength(1)
+        // And the one that is on screen names the file it removes.
+        expect(wrapper.get('[data-test="remove-sidecar"]').text()).toContain('examples/a.md')
+    })
+
+    it('opens the delete behind a labelled menu item', async () => {
+        const wrapper = mountDesk()
+        await wrapper.get('[data-test="desk-menu-trigger"]').trigger('click')
+        const item = wrapper.get('[data-test="desk-delete"]')
+        expect(item.text()).toContain('Delete skill')
+    })
+
+    it('closes the menu on the backdrop without deleting', async () => {
+        const wrapper = mountDesk()
+        await wrapper.get('[data-test="desk-menu-trigger"]').trigger('click')
+        expect(wrapper.find('[data-test="desk-menu"]').exists()).toBe(true)
+        await wrapper.get('[data-test="desk-menu-backdrop"]').trigger('click')
+        expect(wrapper.find('[data-test="desk-menu"]').exists()).toBe(false)
+        expect(wrapper.emitted('delete')).toBeUndefined()
     })
 })
 

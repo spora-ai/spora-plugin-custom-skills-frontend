@@ -245,6 +245,7 @@ describe('SkillDeskPage → leaving', () => {
         ])
         const wrapper = await mountOn('invoice-drafting')
         await flushPromises()
+        await wrapper.get('[data-test="desk-menu-trigger"]').trigger('click')
         await wrapper.get('[data-test="desk-delete"]').trigger('click')
         await flushPromises()
         expect(useSkillsStore().pendingDelete).toBe('invoice-drafting')
