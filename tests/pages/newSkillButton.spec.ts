@@ -1,112 +1,94 @@
 /**
- * Reproduction: the "New skill" button. It calls `startCreate()`, which pushes
- * `{ create: '1' }` and relies on `isCreating` to reveal the editor. Duplication
- * works because it pushes a *different* route after the write lands, so the two
- * paths never exercise the same navigation.
+ * Reproduction: the "New skill" button.
  *
- * These drive the real button in the real router rather than calling
- * `startCreate()`, covering the click → push → render chain a handler unit test
- * would skip.
+ * The reported bug was that clicking it did nothing. The cause was structural — the
+ * editor rendered *below* both lists, so on a ~20-skill catalogue it landed
+ * thousands of pixels below the fold and the click produced no visible change.
+ *
+ * The fix is the page-per-destination shape, so the regression guard is positional
+ * in the other direction: the click must change the route, and the route must be
+ * what renders the form. These drive the real link in the real router rather than
+ * calling a handler, covering the click → navigate → render chain a unit test of the
+ * handler would skip.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
-import { createMemoryHistory, createRouter, type Router } from 'vue-router'
-import SkillsPage from '../../src/pages/SkillsPage.vue'
-import { HOST_CONTEXT_KEY, type PluginHostContext } from '../../src/shims'
-import { setApi } from '../../src/api/client'
+import type { Router } from 'vue-router'
+import PrincipalScopeBar from '../../src/components/PrincipalScopeBar.vue'
+import CreateSkillPage from '../../src/pages/CreateSkillPage.vue'
 import * as api from '../../src/api/customSkills'
-import * as preshippedApi from '../../src/api/preshippedSkills'
 import { usePrincipalsStore } from '../../src/stores/principals'
+import { makePrincipal, makeSkill } from '../fixtures'
+import { mountPage, stubRoutes } from '../mountPage'
 
 vi.mock('../../src/api/customSkills')
-vi.mock('../../src/api/preshippedSkills')
 
 const mockedApi = vi.mocked(api)
-const mockedPreshipped = vi.mocked(preshippedApi)
 
 let pinia: Pinia
 let router: Router
 
-function mountPage() {
-    router = createRouter({
-        history: createMemoryHistory(),
-        routes: [
-            { path: '/', name: 'skills', component: SkillsPage },
-            { path: '/:name', name: 'skill', component: SkillsPage },
-        ],
-    })
-    const hostContext: PluginHostContext = {
-        api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
-        pinia: null,
-        theme: 'light',
-        route: null,
-        router: null,
-    }
-    return mount(SkillsPage, {
-        global: {
-            plugins: [pinia, router],
-            provide: { [HOST_CONTEXT_KEY as symbol]: hostContext },
-        },
-    })
+function mountBar() {
+    // No `isReady()`: the bar is not a routed component, and nothing has started a
+    // navigation for it to wait on.
+    router = stubRoutes()
+    return mountPage(PrincipalScopeBar, pinia, router)
 }
 
-beforeEach(async () => {
+beforeEach(() => {
     pinia = createPinia()
     setActivePinia(pinia)
     vi.clearAllMocks()
-    setApi({
-        get: vi.fn().mockResolvedValue({ agents: [] }),
-        post: vi.fn(),
-        put: vi.fn(),
-        patch: vi.fn(),
-        delete: vi.fn(),
-    } as never)
-    mockedApi.listSkills.mockResolvedValue([])
-    mockedApi.listSkillFiles.mockResolvedValue([])
-    mockedApi.getSkillFile.mockResolvedValue({ path: 'x.md', content: 'x', bytes: 1 })
-    mockedApi.getSkillAllowlist.mockResolvedValue([])
-    mockedPreshipped.listPreShippedSkills.mockResolvedValue([])
+    mockedApi.createSkill.mockResolvedValue(makeSkill({ name: 'invoice-drafting' }))
 
     const principals = usePrincipalsStore()
-    principals.principals = [{ id: 7, type: 'user', name: 'User #7', user_id: 3, group_id: null }]
+    principals.principals = [makePrincipal()]
     principals.selectedPrincipalId = 7
 })
 
-describe('New skill button', () => {
-    it('opens a blank editor when clicked', async () => {
-        const wrapper = mountPage()
+describe('New skill', () => {
+    it('routes to the create form, which is a page rather than a pane below the list', async () => {
+        const wrapper = await mountBar()
+        expect(wrapper.find('[data-test="create-form"]').exists()).toBe(false)
+
+        await wrapper.get('[data-test="new-skill"]').trigger('click')
         await flushPromises()
+        expect(router.currentRoute.value.name).toBe('create')
 
-        expect(wrapper.find('[data-test="editor-pane"]').exists()).toBe(false)
-
-        await wrapper.find('[data-test="new-skill"]').trigger('click')
-        await flushPromises()
-
-        expect(wrapper.find('[data-test="editor-pane"]').exists()).toBe(true)
-        expect(router.currentRoute.value.query.create).toBe('1')
+        // The form is what the route resolves to, and it is mounted by the layout —
+        // so there is nothing to scroll down to.
+        await router.push('/new')
+        await router.isReady()
+        const form = mountPage(CreateSkillPage, pinia, router)
+        expect(form.find('[data-test="create-form"]').exists()).toBe(true)
     })
 
-    it('is a no-op-safe re-click: clicking twice keeps the editor open', async () => {
-        const wrapper = mountPage()
+    it('is a no-op-safe re-click: clicking twice keeps the same destination', async () => {
+        const wrapper = await mountBar()
+        await wrapper.get('[data-test="new-skill"]').trigger('click')
         await flushPromises()
-
-        await wrapper.find('[data-test="new-skill"]').trigger('click')
+        await wrapper.get('[data-test="new-skill"]').trigger('click')
         await flushPromises()
-        await wrapper.find('[data-test="new-skill"]').trigger('click')
-        await flushPromises()
-
-        expect(wrapper.find('[data-test="editor-pane"]').exists()).toBe(true)
+        expect(router.currentRoute.value.path).toBe('/new')
     })
 
-    it('does not fire a create request just from opening the editor', async () => {
-        const wrapper = mountPage()
+    it('does not write anything just from opening the form', async () => {
+        const wrapper = await mountBar()
+        await wrapper.get('[data-test="new-skill"]').trigger('click')
         await flushPromises()
-        mockedApi.createSkill.mockClear()
+        // No nameless draft may exist at any point: the contract rejects a rename,
+        // so the name is fixed at birth and the row is created on submit.
+        expect(mockedApi.createSkill).not.toHaveBeenCalled()
+    })
 
-        await wrapper.find('[data-test="new-skill"]').trigger('click')
+    it('goes home from the form without writing anything', async () => {
+        await router.push('/new')
+        await router.isReady()
+        const form = mountPage(CreateSkillPage, pinia, router)
+        await form.get('[data-test="create-back"]').trigger('click')
         await flushPromises()
-
+        expect(router.currentRoute.value.path).toBe('/')
         expect(mockedApi.createSkill).not.toHaveBeenCalled()
     })
 })

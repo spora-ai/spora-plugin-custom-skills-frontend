@@ -72,10 +72,14 @@ vi.mock('md-editor-v3', async () => {
     const MdPreview = defineComponent({
         name: 'MdPreview',
         props: ['modelValue', 'theme', 'language'],
-        setup(props) {
+        setup(props, { attrs }) {
             return () => h('div', {
                 'data-testid': 'md-preview-stub',
                 'data-md-preview': 'true',
+                // The production template sets a class for the hand-written preview
+                // typography, and the stub has to keep it for a test to be able to
+                // assert the class is on the rendered node.
+                class: attrs['class'] as string | undefined,
             }, (props.modelValue as string | null | undefined) ?? '')
         },
     })

@@ -14,8 +14,11 @@ function makeHostContext(): PluginHostContext {
     // `SkillsPage` fetches these four envelopes on mount; empty ones resolve
     // instead of blowing up with "Cannot read properties of undefined".
     const get = vi.fn().mockImplementation((path: string) => {
-        if (path === '/principals/me') return Promise.resolve({ principals: [] })
-        if (path === '/custom-skills') return Promise.resolve({ skills: [] })
+        // A principal, so the scope bar and the home heading have something to name.
+        if (path === '/principals/me') {
+            return Promise.resolve({ principals: [{ id: 7, type: 'user', name: 'Maya Fischer', user_id: 3, group_id: null }] })
+        }
+        if (path === '/custom-skills' || path.startsWith('/custom-skills?')) return Promise.resolve({ skills: [] })
         if (path === '/skills') return Promise.resolve({ skills: [] })
         if (path === '/agents') return Promise.resolve({ agents: [] })
         return Promise.resolve(undefined)
@@ -73,7 +76,7 @@ describe('SporaApp (main.ts mount contract)', () => {
         // `#spora-plugin-custom-skills` is the anchor every Tailwind utility nests
         // beneath; losing it unscopes the plugin CSS into the host.
         expect(target.querySelector('#spora-plugin-custom-skills')).not.toBeNull()
-        expect(target.querySelector('main')).not.toBeNull()
+        expect(target.querySelector('[data-test="home-page"]')).not.toBeNull()
     })
 
     it('mount() wires hostContext.api into the plugin-local api/client bridge', async () => {
@@ -104,15 +107,17 @@ describe('SporaApp (main.ts mount contract)', () => {
         expect(injectionWarnings).toEqual([])
     })
 
-    it('mount() installs a local router so the page can read the selected skill', async () => {
+    it('mount() installs a local router so the scope bar can read the current route', async () => {
         const main = await import('../src/main')
         const target = makeTarget()
         await main.default.mount(target, makeHostContext())
         await new Promise((r) => setTimeout(r, 0))
-        // `SkillsPage` calls `useRoute()` / `useRouter()` unconditionally; an
-        // unbound router leaves the selected skill unaddressable and warns.
-        expect(target.querySelector('[data-test="pane-mine"]')).not.toBeNull()
-        expect(target.querySelector('[data-test="pane-preshipped"]')).not.toBeNull()
+        // The scope bar calls `useRoute()` / `useRouter()` unconditionally; an
+        // unbound router leaves it on `START_LOCATION` and warns, so every section
+        // would read as current at once.
+        const skills = target.querySelector('[data-test="section-skills"]')
+        expect(skills?.getAttribute('aria-current')).toBe('page')
+        expect(target.querySelector('[data-test="section-catalogue"]')?.getAttribute('aria-current')).toBeNull()
     })
 
     it('unmount() removes the mounted Vue app from the DOM', async () => {
@@ -120,9 +125,9 @@ describe('SporaApp (main.ts mount contract)', () => {
         const target = makeTarget()
         await main.default.mount(target, makeHostContext())
         await new Promise((r) => setTimeout(r, 0))
-        expect(target.querySelector('main')).not.toBeNull()
+        expect(target.querySelector('#spora-plugin-custom-skills')).not.toBeNull()
         main.default.unmount(target)
-        expect(target.querySelector('main')).toBeNull()
+        expect(target.querySelector('#spora-plugin-custom-skills')).toBeNull()
     })
 
     it('unmount() is a no-op when no app is mounted on the target', async () => {
@@ -145,11 +150,11 @@ describe('SporaApp (main.ts mount contract)', () => {
         const hostContext = makeHostContext()
         await main.default.mount(target, hostContext)
         await new Promise((r) => setTimeout(r, 0))
-        const first = target.querySelector('main')
+        const first = target.querySelector('[data-test="home-page"]')
         expect(first).not.toBeNull()
         await main.default.mount(target, hostContext)
         await new Promise((r) => setTimeout(r, 0))
-        const second = target.querySelector('main')
+        const second = target.querySelector('[data-test="home-page"]')
         expect(second).not.toBeNull()
         expect(second).not.toBe(first)
     })

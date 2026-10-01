@@ -3,6 +3,7 @@
  * awkward derivations (validator `path` → input, "last edited" after an agent
  * rewrite, fork naming) are tested against plain values.
  */
+import type { Principal } from '../api/principals'
 import type { CustomSkillResource, SkillValidationEntry } from '../types'
 
 /** Also the set of frontmatter keys a `SkillValidator` finding can anchor to. */
@@ -14,6 +15,174 @@ export const SKILL_FIELDS = [
     'allowed_tools',
     'body',
 ] as const
+
+/** `CustomSkillLimits::SKILLS_PER_PRINCIPAL` — 422 `SKILL_LIMIT_REACHED`. */
+export const SKILL_LIMIT = 25
+
+/**
+ * `SkillProviderInterface::MAX_FILE_BYTES`, restated only for the desk's size
+ * readout. A 50 KB file is a 413 `FILE_TOO_LARGE` on read and a 422 on write, so
+ * the ceiling is worth showing while there is still room to get under it.
+ */
+export const MAX_FILE_BYTES = 50_000
+
+/**
+ * The server's slug rule, mirrored from `SkillValidator::NAME_PATTERN`
+ * (spora-core `app/Skills/SkillValidator.php:29`): 1–64 characters of lowercase
+ * alphanumerics and single hyphens, no leading or trailing hyphen. Checked as the
+ * operator types because a create rejected for its *name* is otherwise found out
+ * about after the body has been written.
+ */
+const SKILL_NAME_PATTERN = /^(?![a-z0-9-]*--)[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$/
+
+export function isValidSkillName(name: string): boolean {
+    return SKILL_NAME_PATTERN.test(name)
+}
+
+/**
+ * Which of the two 409s a name would earn. Both name sets are already in the
+ * store, so the collision is knowable before the POST rather than after it.
+ */
+export type SkillNameConflict = 'own' | 'shipped' | null
+
+export function skillNameConflict(
+    name: string,
+    own: ReadonlySet<string>,
+    shipped: ReadonlySet<string>,
+): SkillNameConflict {
+    if (own.has(name)) return 'own'
+    if (shipped.has(name)) return 'shipped'
+    return null
+}
+
+const SKILL_OUTLINE = `# %TITLE%
+
+## When to use this
+
+Describe the situation that should make an agent reach for this skill.
+
+## Instructions
+
+1. The first thing to do.
+2. The next thing.
+
+## Never
+
+What this skill must not do, however the request is phrased.
+`
+
+/**
+ * The body every new skill is created with. A skill file that opens empty reads
+ * as "nothing here", and the outline is three headings of deletable text to argue
+ * with rather than a blank textarea.
+ */
+export function starterBody(name: string): string {
+    const words = name.split('-').filter((part) => part !== '')
+    const title = words.length === 0
+        ? name
+        : words.join(' ').replace(/^./, (first) => first.toUpperCase())
+    return SKILL_OUTLINE.replace('%TITLE%', title)
+}
+
+/** UTF-8 byte length, which is what both the cap and the contract count. */
+export function byteSize(text: string): number {
+    return new TextEncoder().encode(text).length
+}
+
+export function lineCount(text: string): number {
+    return text === '' ? 0 : text.split('\n').length
+}
+
+const DAY_MS = 86_400_000
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/**
+ * The contract sends the server's own wall clock with no timezone, so the
+ * timestamp is read as UTC and `now` is shifted by the operator's own offset into
+ * that same frame — a single-host deployment is exact, and a server in another
+ * zone can only be wrong about which *day* a change landed on.
+ */
+function parseServerStamp(value: string): number | null {
+    const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(value)
+    if (!match) return null
+    return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]))
+}
+
+/** `now` expressed on the server's wall clock rather than the browser's. */
+function inServerFrame(now: number): number {
+    return now - new Date(now).getTimezoneOffset() * 60_000
+}
+
+/**
+ * How a row says when it last changed: the time today, a weekday this week, a
+ * date beyond that. `now` is a parameter so the boundary cases are testable
+ * rather than dependent on the day the suite runs.
+ */
+export function updatedLabel(updatedAt: string, now: number = Date.now()): string {
+    const stamp = parseServerStamp(updatedAt)
+    if (stamp === null) return ''
+    const elapsed = inServerFrame(now) - stamp
+    if (elapsed < DAY_MS) return clockTime(updatedAt)
+    if (elapsed < 7 * DAY_MS) return WEEKDAYS[new Date(stamp).getUTCDay()] ?? ''
+    const date = new Date(stamp)
+    const label = `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`
+    return date.getUTCFullYear() === new Date(inServerFrame(now)).getUTCFullYear()
+        ? label
+        : `${label} ${date.getUTCFullYear()}`
+}
+
+/**
+ * Who the skills on screen belong to, in the page's own words. The two branches
+ * differ because the contract does: a user-principal's skills are private, a
+ * group's are readable by any member and writable only by an owner or admin.
+ */
+export function principalScopeBlurb(principal: Principal | null): string {
+    if (principal === null) return 'No principal is selected.'
+    return principal.type === 'user'
+        ? 'Your personal skills. Only you can see and edit these.'
+        : `Skills owned by ${principal.name}. Everyone in the group can read them; writing needs to be an owner or an admin.`
+}
+
+export const HOME_SORT_OPTIONS = [
+    { value: 'updated', label: 'Recently updated' },
+    { value: 'created', label: 'Recently created' },
+    { value: 'name-asc', label: 'Name (A–Z)' },
+    { value: 'name-desc', label: 'Name (Z–A)' },
+] as const
+
+export type SkillSort = (typeof HOME_SORT_OPTIONS)[number]['value']
+export type NameSort = 'name-asc' | 'name-desc'
+
+/**
+ * "Recently used" is deliberately not offered: nothing records a skill's last
+ * invocation, and a sort that silently returns the wrong order is worse than no
+ * sort. The timestamps compare as strings because the contract's
+ * `YYYY-MM-DD HH:MM:SS` is already in ascending order.
+ */
+export function sortSkills(skills: readonly CustomSkillResource[], sort: SkillSort): CustomSkillResource[] {
+    const next = [...skills]
+    switch (sort) {
+        case 'updated':
+            return next.sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+        case 'created':
+            return next.sort((a, b) => b.created_at.localeCompare(a.created_at))
+        case 'name-desc':
+            return next.sort((a, b) => b.name.localeCompare(a.name))
+        case 'name-asc':
+            return next.sort((a, b) => a.name.localeCompare(b.name))
+    }
+}
+
+/** The catalogue summary carries no timestamps, so only the name orders are offered. */
+export const CATALOGUE_SORT_OPTIONS = [
+    { value: 'name-asc', label: 'Name (A–Z)' },
+    { value: 'name-desc', label: 'Name (Z–A)' },
+] as const
+
+export function sortByName<T extends { name: string }>(items: readonly T[], sort: NameSort): T[] {
+    return [...items].sort((a, b) => (sort === 'name-asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)))
+}
 
 export type SkillField = (typeof SKILL_FIELDS)[number]
 

@@ -2,7 +2,11 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import App from './App.vue'
-import SkillsPage from './pages/SkillsPage.vue'
+import HomePage from './pages/HomePage.vue'
+import CreateSkillPage from './pages/CreateSkillPage.vue'
+import SkillDeskPage from './pages/SkillDeskPage.vue'
+import CataloguePage from './pages/CataloguePage.vue'
+import SkillViewerPage from './pages/SkillViewerPage.vue'
 import { setApi } from './api/client'
 import { HOST_CONTEXT_KEY, type PluginHostContext } from './shims'
 
@@ -15,6 +19,11 @@ import { HOST_CONTEXT_KEY, type PluginHostContext } from './shims'
  * The plugin uses a *local* Pinia and a *local* router (`createMemoryHistory`,
  * since the host owns the address bar) so plugin-only state never pollutes host
  * stores; host services are reached through the passed-in `hostContext.api`.
+ *
+ * The routes are page-per-destination: home, create, the desk, the catalogue and
+ * the shipped-skill viewer. The principal is deliberately *not* in the URL — it
+ * lives in the Pinia store, and a scope change navigates to home rather than
+ * re-pointing a detail route at another principal's identically-named skill.
  */
 
 interface MountContract {
@@ -40,15 +49,20 @@ const SporaApp: MountContract = {
 
         app.use(createPinia())
 
-        // The selected skill is a *location*, not local state: it has to survive a
-        // pane re-render, be linkable from the host's breadcrumbs and let the
-        // operator go "back" after opening an editor. Memory history keeps the URL
-        // out of the address bar — the host renders `/apps/custom-skills`.
+        // One page per destination, each with a subject of its own. Two of the
+        // paths are deliberately not nested: `/new` is top-level because
+        // `/skills/new` would shadow a skill literally named `new` (a legal slug),
+        // and `/library/:name` is separate from `/skills/:name` because a shipped
+        // skill is global and read-only while a custom one is principal-scoped and
+        // writable.
         const router = createRouter({
             history: createMemoryHistory(),
             routes: [
-                { path: '/', name: 'skills', component: SkillsPage },
-                { path: '/:name', name: 'skill', component: SkillsPage },
+                { path: '/', name: 'home', component: HomePage },
+                { path: '/new', name: 'create', component: CreateSkillPage },
+                { path: '/skills/:name', name: 'desk', component: SkillDeskPage },
+                { path: '/library', name: 'catalogue', component: CataloguePage },
+                { path: '/library/:name', name: 'library', component: SkillViewerPage },
             ],
         })
         app.use(router)

@@ -5,6 +5,7 @@ import * as api from '../api/customSkills'
 import * as preshippedApi from '../api/preshippedSkills'
 import * as allowlistApi from '../api/agentAllowlist'
 import * as agentsApi from '../api/agents'
+import { forkName } from '../lib/skillFormat'
 import { usePrincipalsStore } from './principals'
 import type {
     AgentSummary,
@@ -61,12 +62,11 @@ export function extractValidationErrors(e: unknown): SkillValidationEntry[] {
 }
 
 /**
- * Manages both panes of the Custom Skills panel.
- *
- * `skills` is the acting principal's skills (CRUD); `preShipped` is the HOST's
- * `GET /api/v1/skills` and is never mutated here — the only action is
- * `duplicateSkill()`, which POSTs a copy. One store so the per-pane search and the
- * fork-name allocator see both name sets at once.
+ * Manages the whole panel: the acting principal's skills (CRUD), the HOST's
+ * `GET /api/v1/skills` catalogue (never mutated here), and the transient state
+ * that has to outlive a single page — the delete confirmation, because a delete
+ * is a multi-agent config change and its dialog is raised from a row on one page
+ * and confirmed on whichever page the operator has since moved to.
  *
  * Every write resolves `selectedPrincipalId` from `usePrincipalsStore()` at call
  * time and threads it as `?principal_id=N`, so callers cannot forget to.
@@ -78,16 +78,32 @@ export const useSkillsStore = defineStore('custom-skills', () => {
     const preShipped = ref<PreShippedSkillSummary[]>([])
     const agents = ref<AgentSummary[]>([])
     const allowlists = ref<Record<string, SkillAllowlistEntry[]>>({})
+    /**
+     * Skills per principal, keyed by id, for the scope control. The contract
+     * returns one principal's skills per call and has no count endpoint, so each
+     * entry is a `GET /custom-skills?principal_id=N` of its own; they are cached
+     * because the entry's job is to show the shape of a scope *before* choosing it.
+     */
+    const principalSkillCounts = ref<Record<number, number>>({})
 
     const loading = ref(false)
     const preShippedLoading = ref(false)
     const saving = ref(false)
     const error = ref<string | null>(null)
+    const notice = ref<string | null>(null)
     const validationErrors = ref<SkillValidationEntry[]>([])
+
+    const pendingDelete = ref<string | null>(null)
+    const deleteBlastRadius = ref<string[]>([])
 
     function clearError(): void {
         error.value = null
         validationErrors.value = []
+    }
+
+    /** Out-of-band confirmation ("Deleted x…"), as opposed to a failure in `error`. */
+    function setNotice(message: string | null): void {
+        notice.value = message
     }
 
     async function loadSkills(): Promise<void> {
@@ -95,10 +111,26 @@ export const useSkillsStore = defineStore('custom-skills', () => {
         error.value = null
         try {
             skills.value = await api.listSkills(currentPrincipalId())
+            // The selected principal's own count is already in hand.
+            const principalId = currentPrincipalId()
+            if (principalId !== null) {
+                principalSkillCounts.value = { ...principalSkillCounts.value, [principalId]: skills.value.length }
+            }
         } catch (e) {
             error.value = e instanceof ApiError ? e.message : 'Failed to load skills.'
         } finally {
             loading.value = false
+        }
+    }
+
+    /** Best-effort: a principal the caller cannot even read simply shows no count. */
+    async function loadPrincipalSkillCount(principalId: number): Promise<void> {
+        try {
+            const forPrincipal = await api.listSkills(principalId)
+            principalSkillCounts.value = { ...principalSkillCounts.value, [principalId]: forPrincipal.length }
+        } catch {
+            // 404 for a principal that is not visible, 403 for one that is not
+            // writable. Either way the entry is shown without a number.
         }
     }
 
@@ -209,6 +241,48 @@ export const useSkillsStore = defineStore('custom-skills', () => {
         }
     }
 
+    /**
+     * Read-then-write, in that order: the allowlist is fetched and its agents held
+     * for the dialog *before* any caller is allowed to confirm. A caller that
+     * skipped the read would have nothing to name.
+     */
+    async function requestDelete(name: string): Promise<void> {
+        error.value = null
+        deleteBlastRadius.value = []
+        try {
+            const agents = await api.getSkillAllowlist(name, currentPrincipalId())
+            deleteBlastRadius.value = agents.map((a) => a.name)
+        } catch {
+            // The delete still proceeds; the dialog says the state is unknown
+            // rather than claiming nothing is affected.
+            deleteBlastRadius.value = []
+        }
+        pendingDelete.value = name
+    }
+
+    function cancelDelete(): void {
+        pendingDelete.value = null
+        deleteBlastRadius.value = []
+    }
+
+    async function confirmDelete(): Promise<string | null> {
+        const name = pendingDelete.value
+        if (name === null) return null
+        try {
+            const result = await deleteSkill(name)
+            const scrubbed = result.scrubbed_agents.map((a) => a.name)
+            notice.value = scrubbed.length > 0
+                ? `Deleted ${result.name} and removed it from ${scrubbed.length} agent${scrubbed.length === 1 ? '' : 's'}: ${scrubbed.join(', ')}.`
+                : `Deleted ${result.name}.`
+            return result.name
+        } catch {
+            // `error` carries the message.
+            return null
+        } finally {
+            cancelDelete()
+        }
+    }
+
     async function restoreSkill(name: string): Promise<CustomSkillResource> {
         saving.value = true
         error.value = null
@@ -226,8 +300,39 @@ export const useSkillsStore = defineStore('custom-skills', () => {
     }
 
     /**
-     * The name is allocated here, not by the caller: it must avoid the principal's
-     * skills AND the shipped catalogue, since a shipped name answers 409.
+     * Fork a shipped skill onto the acting principal. The host's
+     * `SkillController::detail()` is the only read it exposes — `files` as
+     * `{path, bytes}` with no per-file endpoint — so a fork copies the
+     * frontmatter and the `SKILL.md` body but NOT sidecar contents. Empty
+     * placeholders would overwrite the file set with blanks on the next save, so
+     * the operator is told which paths to re-add.
+     */
+    async function duplicateShippedSkill(source: PreShippedSkillSummary): Promise<CustomSkillResource> {
+        const detail = await preshippedApi.getPreShippedSkill(source.name)
+        const taken = new Set(skills.value.map((s) => s.name))
+        const created = await duplicateSkill(
+            source,
+            {
+                body: detail.body,
+                license: detail.license,
+                compatibility: detail.compatibility,
+                allowed_tools: detail.allowed_tools,
+                metadata: detail.metadata,
+                files: {},
+            },
+            forkName(source.name, taken),
+        )
+        const missing = detail.files.filter((f) => f.path !== 'SKILL.md')
+        notice.value = missing.length > 0
+            ? `Created “${created.name}” from ${source.name}. The host has no per-file read for shipped skills, so re-add ${missing.length} sidecar ${missing.length === 1 ? 'file' : 'files'} (${missing.map((f) => f.path).join(', ')}). It is not on any agent's allowlist yet.`
+            : `Created “${created.name}” from ${source.name}. It is not on any agent's allowlist yet.`
+        return created
+    }
+
+    /**
+     * The name is allocated by the caller here, not by `createSkill`: it must
+     * avoid the principal's skills AND the shipped catalogue, since a shipped name
+     * answers 409.
      */
     async function duplicateSkill(
         source: PreShippedSkillSummary,
@@ -295,23 +400,33 @@ export const useSkillsStore = defineStore('custom-skills', () => {
         preShipped,
         agents,
         allowlists,
+        principalSkillCounts,
         loading,
         preShippedLoading,
         saving,
         error,
+        notice,
         validationErrors,
+        pendingDelete,
+        deleteBlastRadius,
         skillsByName,
         clearError,
+        setNotice,
         loadSkills,
         loadPreShippedSkills,
+        loadPrincipalSkillCount,
         loadAgents,
         loadAllowlist,
         allowlistFor,
+        requestDelete,
+        cancelDelete,
+        confirmDelete,
         createSkill,
         updateSkill,
         deleteSkill,
         restoreSkill,
         duplicateSkill,
+        duplicateShippedSkill,
         enableOnAgent,
         disableOnAgent,
     }

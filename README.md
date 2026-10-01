@@ -11,51 +11,84 @@ ships only the built assets. The REST contract both halves speak is published at
 
 ## What the panel does
 
-Two panes, split by **provenance** rather than by feature:
+**One page per destination, each with a subject of its own.** The panel used to be
+a workspace: one route rendering the editor above two lists, a second route pushing
+a name into the same screen, and a query param for the third case. That holds only
+while there is exactly one thing to do.
 
-| Pane | Source | Mutability |
-|---|---|---|
-| **My skills** | `GET /api/v1/custom-skills` (this plugin) | full CRUD + restore |
-| **Pre-shipped** | `GET /api/v1/skills` (the **host**, not this plugin) | read-only + *Duplicate* |
+| Route | Page | Source | Mutability |
+|---|---|---|---|
+| `/` | Home — what this principal owns | `GET /api/v1/custom-skills` (this plugin) | navigates |
+| `/new` | Create — a name, then the desk | `POST /api/v1/custom-skills` | writes once |
+| `/skills/:name` | Desk — write | `GET`/`PUT`/`DELETE /api/v1/custom-skills/{name}` | full CRUD + restore |
+| `/library` | Catalogue — every shipped skill | `GET /api/v1/skills` (the **host**) | read-only + *Duplicate* |
+| `/library/:name` | Viewer — read a shipped skill | `GET /api/v1/skills/{name}` (the **host**) | read-only |
+
+Three routing decisions worth defending:
+
+- **`/skills/:name` and `/library/:name` are separate routes**, not one route with
+  a `?view=` query. A shipped skill is a global, read-only resource; a custom one
+  is principal-scoped and writable. Different URLs make that structural difference
+  visible instead of hiding it behind a query string.
+- **`/new` is top-level, not `/skills/new`**, which would shadow a skill literally
+  named `new` — a legal slug under the contract.
+- **The principal is not in the URL.** It lives in the Pinia store, and a scope
+  change navigates to home: the desk's URL says `invoice-drafting` and nothing
+  about whose it is, so re-pointing it at another principal's identically-named
+  skill mid-edit is the worst outcome the routing enables.
 
 Pre-shipped skills are served by `spora-core`'s `SkillController`, which has
 exactly two routes (`index`, `show`). The frozen contract lists them under
 "Not endpoints (deliberately)": this plugin must never re-serve them, or the
 two copies drift.
 
-### The three affordances
+### The four affordances
 
 Each of these exists because its absence produces a support ticket, not because
 it is a nice-to-have:
 
-1. **Validation feedback** — a rejected write answers 422 `SKILL_INVALID` with
-   a `ValidationResult` array. `SkillEditor.vue` renders each entry *under the
+1. **The principal is always visible.** A sticky bar on every page, carrying a
+   skill count per entry. A row of equal-weight chips reads as *filters*, and a
+   filter chip does not say "everything below belongs to what I picked". The
+   contract returns one principal's skills per call and has no count endpoint, so
+   each entry is its own `GET /custom-skills?principal_id=N`, read on open.
+2. **Validation feedback** — a rejected write answers 422 `SKILL_INVALID` with
+   a `ValidationResult` array. `SkillDesk.vue` renders each entry *under the
    field its `path` names*; warnings, plus any error no field claims, go to a
    banner. Nothing the validator said is dropped.
-2. **Fork from pre-shipped** — every shipped card has **Duplicate**. Without it
-   the only path to a first skill is a blank editor, and the shipped skills are
-   exactly the worked examples people copy from. Forks always get a
-   non-reserved name (`forkName()`); a shipped slug answers
-   409 `SKILL_NAME_RESERVED`.
-3. **Allowlist affordance** — each custom-skill card lists the agents that
-   currently resolve it (from `GET …/{name}/allowlist`) and offers
-   **Enable on agent…**, which writes the agent's `skill` tool
-   `allowed_skills` override. The empty state reads *"Not enabled for any agent
-   yet — add it to an agent's Skill tool settings before the agent can use it."*
-   — the operator otherwise discovers the problem only when the agent replies
-   *"Skill 'x' is not in the allowed_skills list for this agent."*
+3. **Fork from pre-shipped** — every shipped row has **Duplicate**. Without it the
+   only path to a first skill is a blank editor, and the shipped skills are exactly
+   the worked examples people copy from. Forks always get a non-reserved name
+   (`forkName()`); a shipped slug answers 409 `SKILL_NAME_RESERVED`.
+4. **Allowlist affordance** — a row's menu lists the agents that currently resolve
+   it (from `GET …/{name}/allowlist`, read when the menu opens) and offers
+   **Enable on agent…**, which writes the agent's `skill` tool `allowed_skills`
+   override. The empty state reads *"Not enabled for any agent yet — add it to an
+   agent's Skill tool settings before the agent can use it."* — the operator
+   otherwise discovers the problem only when the agent replies *"Skill 'x' is not
+   in the allowed_skills list for this agent."*
 
 Plus: deleting a skill is a **multi-agent config change**, so the confirmation
 dialog reads the allowlist *before* the write and names the agents that will be
-scrubbed. `scrubbed_agents` on the delete *response* is only used to report
-what actually changed — it arrives too late to warn anyone.
+scrubbed (`store.requestDelete()`). `scrubbed_agents` on the delete *response* is
+only used to report what actually changed — it arrives too late to warn anyone.
+
+### There is no in-panel search
+
+Deliberately. A ⌘K palette already exists one layer up and covers agents, groups
+and chats. A second search box inside a plugin panel is not a shortcut to the same
+thing — it is two search boxes that disagree, and this one would be strictly
+narrower, since the store only ever holds the *selected* principal's skills, so
+"search" would quietly mean "search what happens to be in memory". The panel is
+sorted-and-scrolled instead: every list has a sort control, and "recently used" is
+not one of the options because nothing records a skill's last invocation.
 
 ## Layout
 
 ```
 src/
-  main.ts            mount/unmount contract, plugin-local Pinia + memory-history router
-  App.vue            #spora-plugin-custom-skills CSS scope root
+  main.ts            mount/unmount contract, plugin-local Pinia + the route map
+  App.vue            the layout: scope bar, banners, delete dialog, <RouterView>
   shims.ts           PluginHostContext + injection key + the window global
   types.ts           CustomSkillResource and friends, field-for-field with the contract
   api/
@@ -65,22 +98,25 @@ src/
     agentAllowlist.ts    per-agent `allowed_skills` read-modify-write
     agents.ts / principals.ts
   stores/
-    skills.ts        loading / preShippedLoading / saving / error, validationErrors
-    principals.ts    the scope chip row's selection
-  lib/skillFormat.ts pure derivations (validator path → field, provenance label, fork name)
-  pages/SkillsPage.vue
-  components/        SkillEditor, SkillCard, PreShippedSkillCard, ConfirmDialog,
-                     PaneSearch, PrincipalChipRow, AlertBanner
+    skills.ts        loading / saving / error / notice, the delete confirmation,
+                     per-principal counts
+    principals.ts    the acting principal
+  lib/skillFormat.ts pure derivations: validator path → field, provenance label,
+                     fork name, slug rule, relative timestamps, sort orders
+  pages/             HomePage, CreateSkillPage, SkillDeskPage, CataloguePage,
+                     SkillViewerPage
+  components/        PrincipalScopeBar, SkillRow, SkillSortSelect, SkillDesk,
+                     SkillViewer, ConfirmDialog, AlertBanner
 ```
 
 ## Responsive rule
 
-**Under `lg` the two panes stack, "My skills" first** (every write happens
-there), and the editor drops out of flow into a full-width panel below them.
-At `lg` and up they sit side by side in a fixed 2-column grid. The breakpoint
-is `lg`, not `md`: each card carries a description, a file manifest and an
-allowlist row, and at `md` the pre-shipped pane's cards compress past the point
-where **Duplicate** is reachable without horizontal scrolling.
+**The scope bar wraps** and stays sticky. **The desk's file rail is hidden below
+`md`**, with a file `<select>` in the mode bar taking over — otherwise a narrow
+window would have no way to reach a sidecar at all. **The desk's preview drops out
+below `md`** in split mode, so the source pane keeps a usable measure rather than
+compressing into a column of hyphenated words. **The catalogue's per-row file
+count and licence drop below `sm`**, leaving Read and Duplicate reachable.
 
 ## Host globals contract
 
@@ -105,6 +141,11 @@ is being resolved, so `window.SporaAppCustomSkills` is never assigned and the
 panel is *unreachable*. `spora-plugin-memories-frontend` bundles the same two
 for the same reason; match it.
 
+`output.extend` must stay **off**. The host loads this bundle through a dynamic
+`import()`, where module scope is `undefined`, so `extend: true` emits
+`this.SporaAppCustomSkills = …` and throws before the real global is ever
+assigned. `scripts/smoke.js` fails the build on that wrapper shape.
+
 Two signals mean the contract drifted:
 
 - `scripts/smoke.js` failing to find `window.Vue` / `window.Pinia` /
@@ -112,6 +153,8 @@ Two signals mean the contract drifted:
   inlined or dropped.
 - `frontend/main.js` shrinking by roughly 60 KB — the two deliberately-bundled
   libraries got externalised.
+- `tests/buildAssets.spec.ts` failing on the externals list, or on a hand-written
+  selector in `src/style.css` that is not scoped by hand.
 
 ## Commands
 
@@ -138,17 +181,34 @@ npm run clean          # removes frontend/main.js + frontend/style.css
 - `tests/api/hostSurfaces.spec.ts` — pre-shipped catalogue, `allowed_skills`
   read-modify-write, agents, principals.
 - `tests/stores/skills.spec.ts` — the loading triple, in-place updates,
-  validation capture, allowlist cache.
-- `tests/components/SkillEditor.spec.ts` — inline errors vs. banner warnings,
-  provenance label, restore visibility, save payload shape.
-- `tests/lib/skillFormat.spec.ts` — the pure derivations.
-- `tests/pages/SkillsPage.spec.ts` — empty states, per-pane search, source
-  grouping, and the read-before-write ordering of the delete blast radius.
+  validation capture, allowlist cache, the read-then-write delete confirmation,
+  per-principal counts, the shipped fork.
+- `tests/components/PrincipalScopeBar.spec.ts` — the scope dropdown, its per-entry
+  counts, and that a scope change lands on home.
+- `tests/components/SkillRow.spec.ts` — what a row claims at rest, and the menu's
+  allowlist read.
+- `tests/components/SkillDesk.spec.ts` — `SKILL.md` unremovable, the gutter, the
+  write/split/preview modes, the save payload, inline errors vs. banner warnings.
+- `tests/components/SkillViewer.spec.ts` — the read-only inspector, and that
+  reading cannot mutate.
+- `tests/lib/skillFormat.spec.ts` — the pure derivations, including the local
+  mirror of the server's slug rule.
+- `tests/pages/*.spec.ts` — one per destination, plus the two bootstrap
+  reproductions: the create form requiring a name, and the "New skill did nothing"
+  report.
+- `tests/buildAssets.spec.ts` — the externals list against the host's published
+  globals, and the hand-written CSS staying inside the plugin boundary.
+- `tests/tailwind-host-tokens.spec.ts` — the plugin's colour tokens against the
+  host's `:root`.
 - `tests/main-mount.spec.ts` — the `mount` / `unmount` contract.
 
 `md-editor-v3` is stubbed in `tests/setup.ts` (CodeMirror 6 + highlight.js +
 katex + mermaid do not run under happy-dom). `lucide-vue-next` and `dompurify`
 are the real modules in tests, so the sanitiser assertion stays meaningful.
+
+Page specs mount through `tests/mountPage.ts`, which installs the real Pinia and
+the real route map: the panel is page-per-destination, so a page mounted without a
+router renders its `RouterLink`s as bare elements and reads `START_LOCATION`.
 
 ## Releasing
 

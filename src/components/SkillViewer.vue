@@ -192,11 +192,12 @@ watch(
         </div>
         <div
             v-else
-            class="skill-viewer-body overflow-auto rounded-lg border border-border"
+            class="overflow-auto rounded-lg border border-border p-5"
             data-test="viewer-content"
         >
             <MdPreview
                 :id="`viewer-preview-${title}`"
+                class="md-preview"
                 :model-value="activeContent ?? ''"
                 :theme="theme ?? 'light'"
                 :sanitize="DOMPurify.sanitize"

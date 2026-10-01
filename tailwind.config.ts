@@ -24,7 +24,13 @@ import { fontFamily } from 'tailwindcss/defaultTheme'
 export default {
     content: ['./index.html', './src/**/*.{vue,js,ts,jsx,tsx}'],
     // Plugin CSS shares the host document, so keep resets and utilities contained.
-    corePlugins: { preflight: false },
+    // `container` is the odd one out: it is emitted *unscoped* even under
+    // `important` below, so a bare `.container { width: 100% }` in this bundle
+    // reaches every `.container` in the host SPA. It is also unused here — the
+    // plugin centres its pages with `max-w-*` — and Tailwind matches it by
+    // scanning raw text, so the word "container" in a comment is enough to emit
+    // it. `tests/buildAssets.spec.ts` fails the build if it comes back.
+    corePlugins: { preflight: false, container: false },
     important: '#spora-plugin-custom-skills',
     darkMode: 'class',
     theme: {

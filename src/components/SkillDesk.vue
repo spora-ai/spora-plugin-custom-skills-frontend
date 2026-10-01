@@ -1,0 +1,609 @@
+<script setup lang="ts">
+/**
+ * The desk: one file at a time, with `SKILL.md` always present.
+ *
+ * The rail cannot be empty. The reserved sidecar path is synthesised on read, so
+ * "SKILL.md exists" costs nothing to guarantee and turns the rail from "a list you
+ * populate" into "one row you cannot remove" — which is also why a new skill is
+ * created with a seeded outline rather than opened blank.
+ *
+ * **There is no "not saved yet" state.** The contract has no draft: `provenance` +
+ * `has_previous` are the whole lifecycle, so the row exists the moment its name is
+ * fixed. The pill therefore tracks divergence between the buffer and the stored
+ * resource, which is the question the prototype's pill was actually asking.
+ *
+ * The remaining frontmatter keys sit in a closed disclosure. The desk's default
+ * view is the prototype's — a name, the file, the body — but `license`,
+ * `compatibility`, `allowed_tools` and `metadata` are part of the write contract
+ * and had nowhere else to live.
+ */
+import { computed, ref, useId, watch } from 'vue'
+import { MdPreview } from 'md-editor-v3'
+import DOMPurify from 'dompurify'
+import { ChevronDown, FileText, Lock, Plus, Save, Trash2 } from 'lucide-vue-next'
+import { errorsForField, formatBytes, unattachedErrors, byteSize, lineCount, MAX_FILE_BYTES } from '../lib/skillFormat'
+import type { CustomSkillResource, SkillValidationEntry, UpdateSkillDto } from '../types'
+
+const SKILL_ENTRY_FILE = 'SKILL.md'
+const METADATA_PLACEHOLDER = '{"tier": "pro"}'
+
+const props = withDefaults(
+    defineProps<{
+        skill: CustomSkillResource
+        saving?: boolean
+        validationErrors?: SkillValidationEntry[]
+        /** Sidecar contents keyed by path — the manifest knows the files exist. */
+        fileContents?: Record<string, string>
+        theme?: 'light' | 'dark'
+        /** Named in the footer, because "in <principal>" is the desk's scope. */
+        principalName?: string
+    }>(),
+    { saving: false, validationErrors: () => [], fileContents: () => ({}), theme: undefined, principalName: '' },
+)
+
+const emit = defineEmits<{
+    save: [data: UpdateSkillDto]
+    delete: [name: string]
+    restore: [name: string]
+    cancel: []
+    loadFiles: [name: string]
+}>()
+
+type DeskMode = 'write' | 'split' | 'preview'
+
+const mode = ref<DeskMode>('split')
+const activePath = ref<string>(SKILL_ENTRY_FILE)
+const body = ref('')
+const description = ref('')
+const license = ref('')
+const compatibility = ref('')
+const allowedTools = ref('')
+const metadataJson = ref('')
+const sidecars = ref<Array<{ path: string; content: string }>>([])
+const storedSnapshot = ref('')
+const metadataError = ref<string | null>(null)
+const gutter = ref<HTMLElement | null>(null)
+
+const gutterId = useId()
+const idFor = (field: string): string => `${gutterId}-${field}`
+
+const activeSidecarIndex = computed(() => sidecars.value.findIndex((row) => row.path === activePath.value))
+const activeSidecar = computed(() =>
+    activeSidecarIndex.value >= 0 ? sidecars.value[activeSidecarIndex.value] ?? null : null,
+)
+
+/** The markdown under the cursor, whichever file is open. */
+const activeContent = computed<string>({
+    get() {
+        if (activePath.value === SKILL_ENTRY_FILE) return body.value
+        return activeSidecar.value?.content ?? ''
+    },
+    set(next: string) {
+        if (activePath.value === SKILL_ENTRY_FILE) {
+            body.value = next
+            return
+        }
+        const index = activeSidecarIndex.value
+        if (index < 0) return
+        sidecars.value = sidecars.value.map((row, i) => (i === index ? { ...row, content: next } : row))
+    },
+})
+
+const totalLines = computed(() => lineCount(activeContent.value))
+const totalBytes = computed(() => byteSize(activeContent.value))
+const showRestore = computed(() => props.skill.has_previous)
+
+const draft = computed(() => JSON.stringify({
+    description: description.value,
+    license: license.value,
+    compatibility: compatibility.value,
+    allowed_tools: allowedTools.value,
+    metadata: metadataJson.value,
+    body: body.value,
+    files: sidecars.value,
+}))
+const dirty = computed(() => draft.value !== storedSnapshot.value)
+
+/** Warnings, plus any error no field claims — both would be invisible otherwise. */
+const bannerEntries = computed<SkillValidationEntry[]>(() => [
+    ...props.validationErrors.filter((e) => e.severity !== 'error'),
+    ...unattachedErrors(props.validationErrors),
+    ...props.skill.warnings,
+])
+
+function fieldErrors(field: Parameters<typeof errorsForField>[1]) {
+    return errorsForField(props.validationErrors, field)
+}
+
+function loadFrom(skill: CustomSkillResource): void {
+    activePath.value = SKILL_ENTRY_FILE
+    description.value = skill.description
+    license.value = skill.license ?? ''
+    compatibility.value = skill.compatibility ?? ''
+    allowedTools.value = skill.allowed_tools ?? ''
+    metadataJson.value = Object.keys(skill.metadata).length > 0 ? JSON.stringify(skill.metadata, null, 2) : ''
+    body.value = skill.body
+    sidecars.value = skill.files
+        .filter((f) => f.path !== SKILL_ENTRY_FILE)
+        .map((f) => ({ path: f.path, content: '' }))
+    storedSnapshot.value = draft.value
+}
+
+/**
+ * Declared beside the state it guards, not next to the watcher: `loadFrom` runs
+ * from an `immediate` watcher, so a later declaration is a temporal-dead-zone
+ * crash on the first render — invisible to a type-checker.
+ */
+let loadedAt = ''
+
+watch(
+    () => props.skill,
+    (skill) => {
+        // An edit changes `updated_at`; a re-read of the same row does not. Without
+        // the guard, a background list refresh would replace the buffer under a
+        // half-typed body.
+        if (skill.updated_at === loadedAt) return
+        loadedAt = skill.updated_at
+        loadFrom(skill)
+        if (skill.files.some((f) => f.path !== SKILL_ENTRY_FILE)) {
+            emit('loadFiles', skill.name)
+        }
+    },
+    { immediate: true },
+)
+
+/**
+ * `immediate` because a sidecar can be open on the first render: the page fills
+ * `fileContents` in response to the `loadFiles` above, and without this a
+ * container that already had them would be ignored.
+ */
+watch(
+    () => props.fileContents,
+    (contents) => {
+        if (Object.keys(contents).length === 0) return
+        sidecars.value = sidecars.value.map((row) => ({ ...row, content: contents[row.path] ?? row.content }))
+    },
+    { deep: true, immediate: true },
+)
+
+/** The gutter is a sibling of a scrolling textarea, so it follows by hand. */
+function syncGutter(event: Event): void {
+    if (gutter.value) gutter.value.scrollTop = (event.target as HTMLElement).scrollTop
+}
+
+function fileSize(path: string): number {
+    if (path === SKILL_ENTRY_FILE) return byteSize(body.value)
+    return byteSize(sidecars.value.find((row) => row.path === path)?.content ?? '')
+}
+
+/**
+ * A new row gets a unique default path and immediately becomes the active file:
+ * the operator clicked "Add file" to write in it, and a blank path is rejected
+ * server-side, so it is never a useful starting state.
+ */
+function addSidecar(): void {
+    const taken = new Set(sidecars.value.map((r) => r.path))
+    let n = sidecars.value.length + 1
+    let path = `notes-${n}.md`
+    while (taken.has(path)) {
+        n += 1
+        path = `notes-${n}.md`
+    }
+    sidecars.value = [...sidecars.value, { path, content: '' }]
+    activePath.value = path
+}
+
+function removeActiveSidecar(): void {
+    const index = activeSidecarIndex.value
+    if (index < 0) return
+    sidecars.value = sidecars.value.filter((_, i) => i !== index)
+    activePath.value = SKILL_ENTRY_FILE
+}
+
+/**
+ * The rail row is keyed on the path, so a rename that did not move `activePath`
+ * would blank the file mid-typing — the path is the identity here.
+ */
+function renameActiveSidecar(path: string): void {
+    const index = activeSidecarIndex.value
+    if (index < 0 || sidecars.value[index]?.path === path) return
+    sidecars.value = sidecars.value.map((row, i) => (i === index ? { ...row, path } : row))
+    activePath.value = path
+}
+
+function parseMetadata(): { value: Record<string, unknown> } | { error: string } {
+    const raw = metadataJson.value.trim()
+    if (raw === '') return { value: {} }
+    try {
+        const parsed: unknown = JSON.parse(raw)
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            return { error: 'Metadata must be a JSON object, e.g. {"tier": "pro"}.' }
+        }
+        return { value: parsed as Record<string, unknown> }
+    } catch {
+        return { error: 'Metadata is not valid JSON.' }
+    }
+}
+
+function handleSubmit(): void {
+    metadataError.value = null
+    const metadata = parseMetadata()
+    if ('error' in metadata) {
+        metadataError.value = metadata.error
+        return
+    }
+
+    // `files` fully replaces the sidecar set, so a blank path is dropped rather
+    // than sent as a path the server rejects.
+    const files: Record<string, string> = {}
+    for (const row of sidecars.value) {
+        const path = row.path.trim()
+        if (path === '' || path === SKILL_ENTRY_FILE) continue
+        files[path] = row.content
+    }
+
+    const empty = (value: string): string | null => (value.trim() === '' ? null : value.trim())
+    emit('save', {
+        description: description.value.trim(),
+        body: body.value,
+        license: empty(license.value),
+        compatibility: empty(compatibility.value),
+        allowed_tools: empty(allowedTools.value),
+        metadata: metadata.value,
+        files,
+    })
+}
+</script>
+
+<template>
+    <div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-background md:flex-row" data-test="skill-desk">
+        <aside
+            class="flex w-56 shrink-0 flex-col border-b border-border bg-muted/30 md:border-b-0 md:border-r"
+            data-test="file-rail"
+        >
+            <div class="flex items-center justify-between px-3 py-2.5">
+                <h2 class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Files</h2>
+                <button
+                    type="button"
+                    class="flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                    title="Add a file"
+                    aria-label="Add a file"
+                    data-test="add-file"
+                    @click="addSidecar"
+                >
+                    <Plus class="h-3.5 w-3.5" />
+                </button>
+            </div>
+
+            <nav class="px-1.5 pb-3 text-sm">
+                <!-- The one row that cannot be removed: the contract synthesises it. -->
+                <button
+                    type="button"
+                    class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[13px] transition-colors hover:bg-background"
+                    :class="activePath === SKILL_ENTRY_FILE ? 'bg-background shadow-sm ring-1 ring-border' : ''"
+                    data-test="rail-entry"
+                    @click="activePath = SKILL_ENTRY_FILE"
+                >
+                    <FileText class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span class="truncate">{{ SKILL_ENTRY_FILE }}</span>
+                    <span class="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                        {{ formatBytes(fileSize(SKILL_ENTRY_FILE)) }}
+                    </span>
+                </button>
+
+                <button
+                    v-for="row in sidecars"
+                    :key="row.path"
+                    type="button"
+                    class="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[13px] transition-colors hover:bg-background"
+                    :class="activePath === row.path ? 'bg-background shadow-sm ring-1 ring-border' : ''"
+                    data-test="rail-file"
+                    @click="activePath = row.path"
+                >
+                    <FileText class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <input
+                        v-if="activePath === row.path"
+                        :value="row.path"
+                        type="text"
+                        :aria-label="`Path for ${row.path}`"
+                        class="min-w-0 flex-1 bg-transparent font-mono text-[13px] outline-none"
+                        data-test="sidecar-path"
+                        @click.stop
+                        @input="renameActiveSidecar(($event.target as HTMLInputElement).value)"
+                    />
+                    <span v-else class="min-w-0 flex-1 truncate">{{ row.path }}</span>
+                    <span class="shrink-0 text-[10px] text-muted-foreground">
+                        {{ formatBytes(fileSize(row.path)) }}
+                    </span>
+                </button>
+            </nav>
+
+            <!-- Why the rail cannot be empty, stated once, where someone who just
+                 looked for a delete on SKILL.md is already looking. -->
+            <div class="mt-auto border-t border-border p-3">
+                <p class="text-[11px] leading-snug text-muted-foreground">
+                    Every skill has a <span class="font-mono text-foreground">SKILL.md</span>. Add
+                    sidecars for references and examples.
+                </p>
+            </div>
+        </aside>
+
+        <div class="flex min-h-0 flex-1 flex-col">
+            <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
+                <h3 class="font-mono text-sm font-semibold" data-test="desk-title">{{ skill.name }}</h3>
+                <Lock
+                    class="h-3.5 w-3.5 text-muted-foreground"
+                    title="The name cannot be changed once created"
+                    data-test="desk-name-lock"
+                />
+                <span
+                    class="ml-1 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset"
+                    :class="dirty
+                        ? 'bg-amber-500/15 text-amber-700 ring-amber-500/25'
+                        : 'bg-muted text-muted-foreground ring-border'"
+                    data-test="desk-state"
+                >
+                    {{ dirty ? 'unsaved changes' : 'saved' }}
+                </span>
+
+                <div class="ml-auto flex items-center gap-1.5">
+                    <button
+                        v-if="showRestore"
+                        type="button"
+                        :disabled="saving"
+                        class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
+                        data-test="desk-restore"
+                        @click="emit('restore', skill.name)"
+                    >
+                        Restore previous version
+                    </button>
+                    <button
+                        type="button"
+                        class="inline-flex h-8 items-center rounded-lg px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        data-test="desk-cancel"
+                        @click="emit('cancel')"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        :disabled="saving || !dirty"
+                        class="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                        data-test="desk-save"
+                        @click="handleSubmit"
+                    >
+                        <Save class="h-3.5 w-3.5" />
+                        {{ saving ? 'Saving…' : 'Save skill' }}
+                    </button>
+                    <button
+                        type="button"
+                        :disabled="saving"
+                        class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                        aria-label="Delete skill"
+                        data-test="desk-delete"
+                        @click="emit('delete', skill.name)"
+                    >
+                        <Trash2 class="h-3.5 w-3.5" />
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2">
+                <div class="flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
+                    <button
+                        v-for="option in (['write', 'split', 'preview'] as const)"
+                        :key="option"
+                        type="button"
+                        class="rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors"
+                        :class="mode === option
+                            ? 'bg-background shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'"
+                        :data-test="`mode-${option}`"
+                        @click="mode = option"
+                    >
+                        {{ option === 'write' ? 'Write' : (option === 'split' ? 'Split' : 'Preview') }}
+                    </button>
+                </div>
+
+                <!-- The rail is hidden below `md`; without this a narrow window would
+                     have no way to reach a sidecar at all. -->
+                <select
+                    v-model="activePath"
+                    class="h-7 min-w-0 rounded-lg border border-border bg-background px-2 font-mono text-[11px] md:hidden"
+                    data-test="file-select"
+                >
+                    <option :value="SKILL_ENTRY_FILE">SKILL.md</option>
+                    <option v-for="row in sidecars" :key="row.path" :value="row.path">{{ row.path }}</option>
+                </select>
+
+                <span class="text-[11px] text-muted-foreground" data-test="desk-size">
+                    {{ totalLines }} lines · {{ formatBytes(totalBytes) }}
+                    <span class="text-muted-foreground/60">
+                        / {{ MAX_FILE_BYTES / 1000 }} KB per file
+                    </span>
+                </span>
+
+                <button
+                    v-if="activeSidecar"
+                    type="button"
+                    class="ml-auto inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+                    data-test="remove-sidecar"
+                    @click="removeActiveSidecar"
+                >
+                    <Trash2 class="h-3.5 w-3.5" />
+                    Remove {{ activeSidecar.path }}
+                </button>
+            </div>
+
+            <!-- The frontmatter the desk's default view does not show. Closed, so
+                 what is on screen is the prototype's screen. -->
+            <details class="group shrink-0 border-b border-border">
+                <summary
+                    class="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    data-test="frontmatter-toggle"
+                >
+                    <ChevronDown class="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                    Frontmatter
+                    <span class="font-normal text-muted-foreground">
+                        (the fields an agent matches and restricts itself by)
+                    </span>
+                </summary>
+
+                <div class="space-y-3 border-t border-border px-4 py-3">
+                    <div>
+                        <label :for="idFor('description')" class="mb-1.5 block text-xs font-medium">
+                            Description <span class="text-destructive">*</span>
+                        </label>
+                        <input
+                            :id="idFor('description')"
+                            v-model="description"
+                            type="text"
+                            maxlength="1024"
+                            class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                            :aria-invalid="fieldErrors('description').length > 0"
+                            data-test="field-description"
+                        />
+                        <ul
+                            v-for="entry in fieldErrors('description')"
+                            :key="entry.code + entry.message"
+                            class="mt-1 text-xs text-destructive"
+                            data-test="field-error"
+                        >
+                            {{ entry.message }}
+                        </ul>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                            <label :for="idFor('license')" class="mb-1.5 block text-xs font-medium">License</label>
+                            <input
+                                :id="idFor('license')"
+                                v-model="license"
+                                type="text"
+                                placeholder="MIT"
+                                class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                                :aria-invalid="fieldErrors('license').length > 0"
+                                data-test="field-license"
+                            />
+                        </div>
+                        <div>
+                            <label :for="idFor('compatibility')" class="mb-1.5 block text-xs font-medium">
+                                Compatibility
+                            </label>
+                            <input
+                                :id="idFor('compatibility')"
+                                v-model="compatibility"
+                                type="text"
+                                placeholder="spora>=0.28"
+                                class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                                :aria-invalid="fieldErrors('compatibility').length > 0"
+                                data-test="field-compatibility"
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label :for="idFor('allowed-tools')" class="mb-1.5 block text-xs font-medium">
+                            Allowed tools <span class="text-muted-foreground">(comma separated)</span>
+                        </label>
+                        <input
+                            :id="idFor('allowed-tools')"
+                            v-model="allowedTools"
+                            type="text"
+                            placeholder="read_email, send_email"
+                            class="h-9 w-full rounded-lg border border-input bg-background px-3 font-mono text-sm"
+                            :aria-invalid="fieldErrors('allowed_tools').length > 0"
+                            data-test="field-allowed-tools"
+                        />
+                    </div>
+
+                    <div>
+                        <label :for="idFor('metadata')" class="mb-1.5 block text-xs font-medium">
+                            Metadata <span class="text-muted-foreground">(JSON object)</span>
+                        </label>
+                        <textarea
+                            :id="idFor('metadata')"
+                            v-model="metadataJson"
+                            rows="2"
+                            :placeholder="METADATA_PLACEHOLDER"
+                            class="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs"
+                            :aria-invalid="metadataError !== null"
+                            data-test="field-metadata"
+                        />
+                    </div>
+                </div>
+            </details>
+
+            <div
+                v-if="bannerEntries.length > 0"
+                class="shrink-0 rounded-b-lg bg-amber-500/10 px-4 py-2 text-[11px] text-amber-800 dark:text-amber-200"
+                role="status"
+                data-test="validation-banner"
+            >
+                <span
+                    v-for="entry in bannerEntries"
+                    :key="`${entry.code}-${entry.path ?? ''}-${entry.message}`"
+                    class="mr-3 inline-block"
+                    data-test="banner-entry"
+                >
+                    <code class="font-mono font-medium">{{ entry.code }}</code>
+                    <span v-if="entry.path"> ({{ entry.path }})</span>
+                    — {{ entry.message }}
+                </span>
+            </div>
+
+            <div
+                class="grid min-h-0 flex-1"
+                :class="mode === 'split' ? 'grid-cols-1 md:grid-cols-2 md:divide-x md:divide-border' : 'grid-cols-1'"
+            >
+                <div v-if="mode !== 'preview'" class="grid min-h-0 grid-cols-[auto_1fr] overflow-hidden">
+                    <pre
+                        ref="gutter"
+                        class="scroll-quiet overflow-hidden border-r border-border bg-muted/30 px-2 py-4 font-mono text-[12px] leading-[1.65] text-muted-foreground"
+                        aria-hidden="true"
+                        data-test="gutter"
+                    ><span
+                        v-for="line in totalLines"
+                        :key="line"
+                        class="block text-right"
+                    >{{ line }}</span></pre>
+                    <textarea
+                        :value="activeContent"
+                        spellcheck="false"
+                        class="min-h-0 w-full resize-none overflow-auto bg-transparent p-4 font-mono text-[13px] leading-[1.65] outline-none"
+                        :aria-label="`${activePath} source`"
+                        data-test="desk-source"
+                        @input="activeContent = ($event.target as HTMLTextAreaElement).value"
+                        @scroll="syncGutter"
+                    />
+                </div>
+
+                <div
+                    v-if="mode !== 'write'"
+                    class="scroll-quiet min-h-0 overflow-auto p-5"
+                    data-test="desk-preview"
+                >
+                    <MdPreview
+                        :id="`desk-preview-${skill.name}`"
+                        class="md-preview"
+                        :model-value="activeContent"
+                        :theme="theme ?? 'light'"
+                        :sanitize="DOMPurify.sanitize"
+                    />
+                </div>
+            </div>
+
+            <footer
+                class="flex shrink-0 flex-wrap items-center gap-3 border-t border-border bg-muted/30 px-4 py-1.5 text-[11px] text-muted-foreground"
+                data-test="desk-footer"
+            >
+                <span class="font-mono" data-test="desk-footer-file">{{ activePath }}</span>
+                <span>UTF-8</span>
+                <span v-if="activePath.endsWith('.md')">Markdown</span>
+                <span class="ml-auto">
+                    in <span class="font-medium text-foreground">{{ principalName || 'this principal' }}</span>
+                </span>
+            </footer>
+        </div>
+    </div>
+</template>

@@ -10,6 +10,12 @@ import type {
     SkillAllowlistEntry,
     SkillValidationEntry,
 } from '../src/types'
+import type { Principal } from '../src/api/principals'
+
+/** `GET /api/v1/principals/me` — the caller's own principal first, then their groups. */
+export function makePrincipal(overrides: Partial<Principal> = {}): Principal {
+    return { id: 7, type: 'user', name: 'Maya Fischer', user_id: 3, group_id: null, ...overrides }
+}
 
 export function makeSkill(overrides: Partial<CustomSkillResource> = {}): CustomSkillResource {
     return {

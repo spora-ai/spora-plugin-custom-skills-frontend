@@ -6,3 +6,94 @@
  */
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Hand-written, and therefore scoped by hand: `important` rewrites *generated
+ * utilities*, so a bare `.scroll-quiet` here would publish a class name into the
+ * host document. `scripts/smoke.js` fails the build on any unscoped utility.
+ */
+#spora-plugin-custom-skills .scroll-quiet {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+}
+
+/*
+ * Typography for the rendered preview. The desk's source pane is a plain
+ * `<textarea>` with a line gutter, so there is no editor to inherit type from and
+ * the preview would otherwise be unstyled prose. Deliberately not
+ * `md-editor-v3/lib/style.css`: that is CodeMirror's stylesheet (~64 kB) for a
+ * widget this panel no longer mounts, and it would land unscoped in the host.
+ */
+#spora-plugin-custom-skills .md-preview {
+    font-size: 0.875rem;
+    max-width: 65ch;
+}
+#spora-plugin-custom-skills .md-preview h1 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin: 0 0 0.7rem;
+}
+#spora-plugin-custom-skills .md-preview h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 1.1rem 0 0.45rem;
+}
+#spora-plugin-custom-skills .md-preview h3 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin: 0.9rem 0 0.4rem;
+}
+#spora-plugin-custom-skills .md-preview p {
+    margin: 0 0 0.7rem;
+    line-height: 1.6;
+}
+#spora-plugin-custom-skills .md-preview ul,
+#spora-plugin-custom-skills .md-preview ol {
+    margin: 0 0 0.7rem 1.1rem;
+    list-style: disc;
+}
+#spora-plugin-custom-skills .md-preview ol {
+    list-style: decimal;
+}
+#spora-plugin-custom-skills .md-preview li {
+    margin: 0.2rem 0;
+    line-height: 1.55;
+}
+#spora-plugin-custom-skills .md-preview a {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+#spora-plugin-custom-skills .md-preview code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8em;
+    background: hsl(var(--muted));
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+}
+#spora-plugin-custom-skills .md-preview pre {
+    background: hsl(var(--muted));
+    padding: 0.75rem;
+    border-radius: 0.375rem;
+    overflow-x: auto;
+    margin: 0 0 0.7rem;
+}
+#spora-plugin-custom-skills .md-preview pre code {
+    background: none;
+    padding: 0;
+}
+#spora-plugin-custom-skills .md-preview blockquote {
+    border-left: 3px solid hsl(var(--border));
+    padding-left: 0.75rem;
+    margin: 0 0 0.7rem;
+    color: hsl(var(--muted-foreground));
+}
+#spora-plugin-custom-skills .md-preview table {
+    border-collapse: collapse;
+    margin: 0 0 0.7rem;
+}
+#spora-plugin-custom-skills .md-preview th,
+#spora-plugin-custom-skills .md-preview td {
+    border: 1px solid hsl(var(--border));
+    padding: 0.35rem 0.6rem;
+    text-align: left;
+}

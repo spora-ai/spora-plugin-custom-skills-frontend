@@ -94,6 +94,13 @@ describe('SkillViewer', () => {
         expect(wrapper.get('[data-test="viewer-content"]').text()).toContain('Look up the customer')
     })
 
+    it('carries the hand-written preview typography class', () => {
+        // `src/style.css` scopes `.md-preview` by hand, so the class has to reach
+        // the rendered node or the preview is unstyled prose.
+        const wrapper = mountViewer({ skill: makeSkill() })
+        expect(wrapper.get('[data-testid="md-preview-stub"]').classes()).toContain('md-preview')
+    })
+
     it('switches to a sidecar tab and shows its fetched content', async () => {
         const wrapper = mountViewer({ skill: makeSkill(), fileContents: { 'examples/invoice.md': '# Example body' } })
         await wrapper.get('[data-test="viewer-tab-file"]').trigger('click')

@@ -216,6 +216,179 @@ describe('skills store → allowlist affordance', () => {
     })
 })
 
+describe('skills store → the delete confirmation is read-then-write', () => {
+    it('reads the allowlist before anything can confirm, and names the agents', async () => {
+        mockedApi.listSkills.mockResolvedValueOnce([makeSkill()])
+        await store.loadSkills()
+
+        const order: string[] = []
+        mockedApi.getSkillAllowlist.mockImplementation(async () => {
+            order.push('allowlist-read')
+            return [makeAllowlistEntry({ id: 5, name: 'Invoicer' })]
+        })
+        mockedApi.deleteSkill.mockImplementation(async () => {
+            order.push('delete')
+            return { deleted: true, name: 'invoice-drafting', scrubbed_agents: [] }
+        })
+
+        await store.requestDelete('invoice-drafting')
+        // Raising the confirmation must not have written: the dialog still has to be
+        // read before the operator decides.
+        expect(order).toEqual(['allowlist-read'])
+        expect(store.pendingDelete).toBe('invoice-drafting')
+        expect(store.deleteBlastRadius).toEqual(['Invoicer'])
+
+        await store.confirmDelete()
+        expect(order).toEqual(['allowlist-read', 'delete'])
+    })
+
+    it('still allows the delete when the allowlist read fails, saying nothing about it', async () => {
+        // A dialog that refuses to open because a preview read failed would leave the
+        // operator unable to delete at all.
+        mockedApi.getSkillAllowlist.mockRejectedValueOnce(new ApiError('nope', 'E', 500))
+        await store.requestDelete('invoice-drafting')
+        expect(store.pendingDelete).toBe('invoice-drafting')
+        expect(store.deleteBlastRadius).toEqual([])
+    })
+
+    it('reports the scrubbed agents and returns the deleted name for the caller to navigate from', async () => {
+        mockedApi.listSkills.mockResolvedValueOnce([makeSkill()])
+        await store.loadSkills()
+        mockedApi.getSkillAllowlist.mockResolvedValueOnce([makeAllowlistEntry({ id: 5, name: 'Invoicer' })])
+        mockedApi.deleteSkill.mockResolvedValueOnce({
+            deleted: true,
+            name: 'invoice-drafting',
+            scrubbed_agents: [{ id: 5, name: 'Invoicer' }],
+        })
+
+        await store.requestDelete('invoice-drafting')
+        expect(await store.confirmDelete()).toBe('invoice-drafting')
+        expect(store.notice).toBe('Deleted invoice-drafting and removed it from 1 agent: Invoicer.')
+        expect(store.skills).toHaveLength(0)
+    })
+
+    it('cancelling issues no write and clears the dialog', async () => {
+        mockedApi.getSkillAllowlist.mockResolvedValueOnce([makeAllowlistEntry()])
+        await store.requestDelete('invoice-drafting')
+        store.cancelDelete()
+        expect(store.pendingDelete).toBeNull()
+        expect(store.deleteBlastRadius).toEqual([])
+        expect(mockedApi.deleteSkill).not.toHaveBeenCalled()
+    })
+
+    it('confirming with nothing pending is a no-op', async () => {
+        expect(await store.confirmDelete()).toBeNull()
+        expect(mockedApi.deleteSkill).not.toHaveBeenCalled()
+    })
+
+    it('a failed delete keeps the row and clears the dialog', async () => {
+        mockedApi.listSkills.mockResolvedValueOnce([makeSkill()])
+        await store.loadSkills()
+        mockedApi.getSkillAllowlist.mockResolvedValueOnce([])
+        mockedApi.deleteSkill.mockRejectedValueOnce(new ApiError('403', 'FORBIDDEN', 403))
+
+        await store.requestDelete('invoice-drafting')
+        expect(await store.confirmDelete()).toBeNull()
+        expect(store.skills).toHaveLength(1)
+        expect(store.pendingDelete).toBeNull()
+        expect(store.error).toBe('403')
+    })
+})
+
+describe('skills store → per-principal counts for the scope control', () => {
+    it('caches the selected principal’s own count as a side effect of the list read', async () => {
+        mockedApi.listSkills.mockResolvedValueOnce([makeSkill(), makeSkill({ name: 'b' })])
+        await store.loadSkills()
+        expect(store.principalSkillCounts[7]).toBe(2)
+    })
+
+    it('reads a count for another principal without disturbing the loaded list', async () => {
+        mockedApi.listSkills.mockResolvedValueOnce([makeSkill()])
+        await store.loadSkills()
+        mockedApi.listSkills.mockResolvedValueOnce([makeSkill(), makeSkill({ name: 'b' }), makeSkill({ name: 'c' })])
+
+        await store.loadPrincipalSkillCount(8)
+        expect(store.principalSkillCounts[8]).toBe(3)
+        // The loaded list is the selected principal's; a count for another one must
+        // not overwrite it.
+        expect(store.skills).toHaveLength(1)
+    })
+
+    it('leaves a principal with no count when it cannot be read', async () => {
+        mockedApi.listSkills.mockRejectedValueOnce(new ApiError('404', 'SKILL_NOT_FOUND', 404))
+        await store.loadPrincipalSkillCount(8)
+        expect(store.principalSkillCounts[8]).toBeUndefined()
+    })
+
+    it('forgets a deleted skill’s count contribution by re-reading the list', async () => {
+        mockedApi.listSkills.mockResolvedValueOnce([makeSkill(), makeSkill({ name: 'b' })])
+        await store.loadSkills()
+        mockedApi.deleteSkill.mockResolvedValueOnce({
+            deleted: true,
+            name: 'invoice-drafting',
+            scrubbed_agents: [],
+        })
+        await store.deleteSkill('invoice-drafting')
+        mockedApi.listSkills.mockResolvedValueOnce([makeSkill({ name: 'b' })])
+        await store.loadSkills()
+        expect(store.principalSkillCounts[7]).toBe(1)
+    })
+})
+
+describe('skills store → the notice', () => {
+    it('is separate from error, and clearable', () => {
+        store.error = 'Failed to save.'
+        store.setNotice('Deleted x.')
+        expect(store.notice).toBe('Deleted x.')
+        expect(store.error).toBe('Failed to save.')
+        store.setNotice(null)
+        expect(store.notice).toBeNull()
+    })
+})
+
+describe('skills store → duplicate a shipped skill', () => {
+    it('forks the shipped body and announces the sidecars it could not copy', async () => {
+        const source = makePreShipped({ name: 'code-review' })
+        mockedPreshipped.getPreShippedSkill.mockResolvedValueOnce(makePreShippedDetail({
+            name: 'code-review',
+            files: [
+                { path: 'SKILL.md', bytes: 10 },
+                { path: 'references/REFERENCE.md', bytes: 20 },
+            ],
+        }))
+        mockedApi.createSkill.mockResolvedValueOnce(makeSkill({ name: 'code-review-copy' }))
+
+        const created = await store.duplicateShippedSkill(source)
+        expect(created.name).toBe('code-review-copy')
+        expect(mockedApi.createSkill).toHaveBeenCalledWith(7, expect.objectContaining({
+            name: 'code-review-copy',
+            body: '# Review\n',
+            // No sidecar contents: the host has no per-file read for a shipped skill,
+            // and sending blanks would overwrite the file set on the next save.
+            files: {},
+        }))
+        expect(store.notice).toContain('re-add 1 sidecar file (references/REFERENCE.md)')
+    })
+
+    it('says only that the copy is not on an allowlist when there are no sidecars', async () => {
+        mockedPreshipped.getPreShippedSkill.mockResolvedValueOnce(makePreShippedDetail({ name: 'code-review' }))
+        mockedApi.createSkill.mockResolvedValueOnce(makeSkill({ name: 'code-review-copy' }))
+        await store.duplicateShippedSkill(makePreShipped({ name: 'code-review' }))
+        expect(store.notice).toBe(
+            'Created “code-review-copy” from code-review. It is not on any agent\'s allowlist yet.',
+        )
+    })
+
+    it('does not name a copy after a shipped skill — that answers 409', async () => {
+        mockedPreshipped.getPreShippedSkill.mockResolvedValueOnce(makePreShippedDetail({ name: 'code-review' }))
+        mockedApi.createSkill.mockResolvedValueOnce(makeSkill({ name: 'code-review-copy' }))
+        await store.duplicateShippedSkill(makePreShipped({ name: 'code-review' }))
+        expect(mockedApi.createSkill).toHaveBeenCalledWith(7, expect.objectContaining({
+            name: 'code-review-copy',
+        }))
+    })
+})
+
 describe('skills store → duplicate from pre-shipped', () => {
     it('POSTs the shipped frontmatter and body onto the principal', async () => {
         const source = makePreShipped({ name: 'code-review' })
