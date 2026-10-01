@@ -65,7 +65,7 @@ describe('SkillDesk → the header', () => {
         expect(wrapper.get('[data-test="desk-state"]').text()).toBe('saved')
         expect(wrapper.get('[data-test="desk-save"]').attributes('disabled')).toBeDefined()
 
-        await wrapper.get('[data-test="desk-source"]').setValue('# Rewritten')
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Rewritten')
         expect(wrapper.get('[data-test="desk-state"]').text()).toBe('unsaved changes')
         expect(wrapper.get('[data-test="desk-save"]').attributes('disabled')).toBeUndefined()
     })
@@ -88,9 +88,30 @@ describe('SkillDesk → the header', () => {
 })
 
 describe('SkillDesk → the file being written', () => {
-    it('renders a line gutter that matches the body', () => {
+    it('writes in md-editor-v3, so a skill body gets the formatting toolbar', () => {
+        const wrapper = mountDesk({ skill: makeSkill({ body: '# Title' }) })
+        const editor = wrapper.get('[data-testid="md-editor-stub"]')
+        expect(editor.attributes('data-md-editor')).toBe('true')
+
+        const toolbars: string[] = JSON.parse(editor.attributes('data-md-toolbars') ?? '[]')
+        expect(toolbars).toContain('bold')
+        expect(toolbars).toContain('task')
+        expect(toolbars).toContain('table')
+        // `mermaid`/`formula` are left out, as in the memories editor: a skill
+        // body is prose, not a document set.
+        expect(toolbars).not.toContain('mermaid')
+        expect(toolbars).not.toContain('formula')
+    })
+
+    it('offers no toolbar at all when read-only, so nothing looks editable', () => {
+        const wrapper = mountDesk({ skill: makeSkill(), readOnly: true })
+        const editor = wrapper.get('[data-testid="md-editor-stub"]')
+        expect(editor.attributes('data-md-readonly')).toBe('true')
+        expect(JSON.parse(editor.attributes('data-md-toolbars') ?? '[]')).toEqual([])
+    })
+
+    it('counts the body in lines for the size readout', () => {
         const wrapper = mountDesk({ skill: makeSkill({ body: 'one\ntwo\nthree' }) })
-        expect(wrapper.get('[data-test="gutter"]').text()).toContain('3')
         expect(wrapper.get('[data-test="desk-size"]').text()).toContain('3 lines')
     })
 
@@ -106,14 +127,14 @@ describe('SkillDesk → the file being written', () => {
         expect(wrapper.get('[data-test="desk-source"]').attributes('aria-label')).toBe('SKILL.md source')
         await wrapper.findAll('[data-test="rail-file"]')[0]?.trigger('click')
         expect(wrapper.get('[data-test="desk-source"]').attributes('aria-label')).toBe('examples/invoice.md source')
-        expect((wrapper.get('[data-test="desk-source"]').element as HTMLTextAreaElement).value).toBe('# Example body')
+        expect((wrapper.get('[data-testid="md-editor-stub"]').element as HTMLTextAreaElement).value).toBe('# Example body')
     })
 
     it('writes a sidecar to its own file, not into the body', async () => {
         const wrapper = mountDesk({ fileContents: { 'examples/invoice.md': '' } })
-        await wrapper.get('[data-test="desk-source"]').setValue('# SKILL body')
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# SKILL body')
         await wrapper.findAll('[data-test="rail-file"]')[0]?.trigger('click')
-        await wrapper.get('[data-test="desk-source"]').setValue('# Sidecar body')
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Sidecar body')
         wrapper.get('[data-test="desk-save"]').trigger('click')
 
         const payload = wrapper.emitted('save')?.[0]?.[0] as { body: string; files: Record<string, string> }
@@ -138,7 +159,7 @@ describe('SkillDesk → the file being written', () => {
     it('renaming a sidecar keeps its content and moves the save target', async () => {
         const wrapper = mountDesk({ fileContents: { 'examples/invoice.md': '# Example' } })
         await wrapper.findAll('[data-test="rail-file"]')[0]?.trigger('click')
-        await wrapper.get('[data-test="desk-source"]').setValue('# Example')
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Example')
         await wrapper.get('[data-test="sidecar-path"]').setValue('examples/renamed.md')
         wrapper.get('[data-test="desk-save"]').trigger('click')
 
@@ -179,7 +200,7 @@ describe('SkillDesk → write / split / preview', () => {
 
         await wrapper.get('[data-test="mode-write"]').trigger('click')
         expect(wrapper.find('[data-test="desk-preview"]').exists()).toBe(false)
-        expect((wrapper.get('[data-test="desk-source"]').element as HTMLTextAreaElement).value)
+        expect((wrapper.get('[data-testid="md-editor-stub"]').element as HTMLTextAreaElement).value)
             .toContain('Read the PO')
     })
 })
@@ -222,7 +243,7 @@ describe('SkillDesk → the frontmatter disclosure', () => {
 
     it('never sends a name — the contract rejects a rename with 422', async () => {
         const wrapper = mountDesk()
-        await wrapper.get('[data-test="desk-source"]').setValue('# Changed')
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Changed')
         wrapper.get('[data-test="desk-save"]').trigger('click')
         expect(wrapper.emitted('save')?.[0]?.[0]).not.toHaveProperty('name')
     })

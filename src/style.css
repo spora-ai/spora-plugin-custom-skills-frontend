@@ -18,11 +18,10 @@
 }
 
 /*
- * Typography for the rendered preview. The desk's source pane is a plain
- * `<textarea>` with a line gutter, so there is no editor to inherit type from and
- * the preview would otherwise be unstyled prose. Deliberately not
- * `md-editor-v3/lib/style.css`: that is CodeMirror's stylesheet (~64 kB) for a
- * widget this panel no longer mounts, and it would land unscoped in the host.
+ * Typography for the rendered preview. `md-editor-v3`'s own stylesheet styles the
+ * editor and its preview pane, but the desk and the viewer render `<MdPreview>`
+ * standalone, and the host's tokens do not reach inside it — so the prose scale
+ * is set here, scoped to this plugin's root.
  */
 #spora-plugin-custom-skills .md-preview {
     font-size: 0.875rem;

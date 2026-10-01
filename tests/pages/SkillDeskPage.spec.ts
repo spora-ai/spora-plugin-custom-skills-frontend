@@ -116,7 +116,7 @@ describe('SkillDeskPage → opening', () => {
         expect(wrapper.find('[data-test="desk-delete"]').exists()).toBe(false)
         expect(wrapper.find('[data-test="desk-restore"]').exists()).toBe(false)
         expect(wrapper.find('[data-test="desk-duplicate"]').exists()).toBe(true)
-        expect(wrapper.get('[data-test="desk-source"]').attributes('readonly')).toBeDefined()
+        expect(wrapper.get('[data-testid="md-editor-stub"]').attributes('readonly')).toBeDefined()
         expect(wrapper.get('[data-test="desk-readonly-note"]').text()).toContain('core')
     })
 
@@ -155,7 +155,7 @@ describe('SkillDeskPage → opening', () => {
             7,
         )
         await wrapper.findAll('[data-test="rail-file"]')[0]?.trigger('click')
-        expect((wrapper.get('[data-test="desk-source"]').element as HTMLTextAreaElement).value).toBe('# Example')
+        expect((wrapper.get('[data-testid="md-editor-stub"]').element as HTMLTextAreaElement).value).toBe('# Example')
     })
 
     it('leaves an unreadable sidecar blank rather than pretending it loaded', async () => {
@@ -165,7 +165,7 @@ describe('SkillDeskPage → opening', () => {
         const wrapper = await mountOn('invoice-drafting')
         await flushPromises()
         await wrapper.findAll('[data-test="rail-file"]')[0]?.trigger('click')
-        expect((wrapper.get('[data-test="desk-source"]').element as HTMLTextAreaElement).value).toBe('')
+        expect((wrapper.get('[data-testid="md-editor-stub"]').element as HTMLTextAreaElement).value).toBe('')
     })
 
     it('names the principal in the footer, because the URL does not', async () => {
@@ -179,7 +179,7 @@ describe('SkillDeskPage → saving', () => {
     it('PUTs the change without a name', async () => {
         const wrapper = await mountOn('invoice-drafting')
         await flushPromises()
-        await wrapper.get('[data-test="desk-source"]').setValue('# Changed')
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Changed')
         await wrapper.get('[data-test="desk-save"]').trigger('click')
         await flushPromises()
 
@@ -200,12 +200,12 @@ describe('SkillDeskPage → saving', () => {
         )
         const wrapper = await mountOn('invoice-drafting')
         await flushPromises()
-        await wrapper.get('[data-test="desk-source"]').setValue('# Changed')
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Changed')
         await wrapper.get('[data-test="desk-save"]').trigger('click')
         await flushPromises()
 
         expect(useSkillsStore().error).toBe('Skill is invalid.')
-        expect((wrapper.get('[data-test="desk-source"]').element as HTMLTextAreaElement).value).toBe('# Changed')
+        expect((wrapper.get('[data-testid="md-editor-stub"]').element as HTMLTextAreaElement).value).toBe('# Changed')
     })
 
     it('announces a saved-with-warnings result', async () => {
@@ -214,7 +214,7 @@ describe('SkillDeskPage → saving', () => {
         )
         const wrapper = await mountOn('invoice-drafting')
         await flushPromises()
-        await wrapper.get('[data-test="desk-source"]').setValue('# Changed')
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Changed')
         await wrapper.get('[data-test="desk-save"]').trigger('click')
         await flushPromises()
         expect(useSkillsStore().notice).toContain('Saved with 1 warning')

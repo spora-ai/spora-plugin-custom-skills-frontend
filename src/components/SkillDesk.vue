@@ -18,7 +18,8 @@
  * and had nowhere else to live.
  */
 import { computed, ref, useId, watch } from 'vue'
-import { MdPreview } from 'md-editor-v3'
+import { MdEditor, MdPreview } from 'md-editor-v3'
+import 'md-editor-v3/lib/style.css'
 import DOMPurify from 'dompurify'
 import { ChevronDown, Copy, FileText, Lock, Plus, Save, Trash2 } from 'lucide-vue-next'
 import { errorsForField, formatBytes, unattachedErrors, byteSize, lineCount, MAX_FILE_BYTES } from '../lib/skillFormat'
@@ -26,6 +27,34 @@ import type { CustomSkillResource, SkillValidationEntry, UpdateSkillDto } from '
 
 const SKILL_ENTRY_FILE = 'SKILL.md'
 const METADATA_PLACEHOLDER = '{"tier": "pro"}'
+const EDITOR_LOCALE = 'en-US'
+
+/**
+ * The toolbar, mirroring `spora-plugin-memories-frontend`'s editor.
+ *
+ * A skill body is markdown the model reads, so the formatting affordances are
+ * the point: task lists and tables are how an operator sketches a protocol, and
+ * writing those by hand in a raw textarea is the reason the memories editor
+ * uses this component rather than a plain field. `github`, `mermaid` and
+ * `formula` are left out for the reason they are left out there — a skill body
+ * is prose, not a document set.
+ */
+type EditorToolbarItem =
+    | 'bold' | 'underline' | 'italic' | 'strikeThrough'
+    | 'title' | 'sub' | 'sup' | 'quote'
+    | 'unorderedList' | 'orderedList' | 'task'
+    | 'code' | 'codeRow' | 'link' | 'image' | 'table'
+    | '-'
+
+const EDITOR_TOOLBARS: EditorToolbarItem[] = [
+    'bold', 'underline', 'italic', 'strikeThrough',
+    '-',
+    'title', 'sub', 'sup', 'quote',
+    '-',
+    'unorderedList', 'orderedList', 'task',
+    '-',
+    'code', 'codeRow', 'link', 'image', 'table',
+]
 
 const props = withDefaults(
     defineProps<{
@@ -81,10 +110,9 @@ const metadataJson = ref('')
 const sidecars = ref<Array<{ path: string; content: string }>>([])
 const storedSnapshot = ref('')
 const metadataError = ref<string | null>(null)
-const gutter = ref<HTMLElement | null>(null)
 
-const gutterId = useId()
-const idFor = (field: string): string => `${gutterId}-${field}`
+const instanceId = useId()
+const idFor = (field: string): string => `${instanceId}-${field}`
 
 const activeSidecarIndex = computed(() => sidecars.value.findIndex((row) => row.path === activePath.value))
 const activeSidecar = computed(() =>
@@ -195,11 +223,6 @@ watch(
     },
     { deep: true, immediate: true },
 )
-
-/** The gutter is a sibling of a scrolling textarea, so it follows by hand. */
-function syncGutter(event: Event): void {
-    if (gutter.value) gutter.value.scrollTop = (event.target as HTMLElement).scrollTop
-}
 
 function fileSize(path: string): number {
     if (path === SKILL_ENTRY_FILE) return byteSize(body.value)
@@ -620,27 +643,22 @@ function handleSubmit(): void {
                 class="grid min-h-0 flex-1"
                 :class="mode === 'split' ? 'grid-cols-1 md:grid-cols-2 md:divide-x md:divide-border' : 'grid-cols-1'"
             >
-                <div v-if="mode !== 'preview'" class="grid min-h-0 grid-cols-[auto_1fr] overflow-hidden">
-                    <pre
-                        ref="gutter"
-                        class="scroll-quiet overflow-hidden border-r border-border bg-muted/30 px-2 py-4 font-mono text-[12px] leading-[1.65] text-muted-foreground"
-                        aria-hidden="true"
-                        data-test="gutter"
-                    ><span
-                        v-for="line in totalLines"
-                        :key="line"
-                        class="block text-right"
-                    >{{ line }}</span></pre>
-                    <textarea
-                        :value="activeContent"
-                        :readonly="readOnly"
-                        spellcheck="false"
-                        class="min-h-0 w-full resize-none overflow-auto bg-transparent p-4 font-mono text-[13px] leading-[1.65] outline-none"
-                        :aria-label="`${activePath} source`"
-                        data-test="desk-source"
-                        @input="activeContent = ($event.target as HTMLTextAreaElement).value"
-                        @scroll="syncGutter"
-                    />
+                <div v-if="mode !== 'preview'" class="min-h-0 overflow-hidden">
+                    <div :aria-label="`${activePath} source`" data-test="desk-source">
+                        <MdEditor
+                            :id="idFor('editor')"
+                            :model-value="activeContent"
+                            :theme="theme ?? 'light'"
+                            :language="EDITOR_LOCALE"
+                            :toolbars="readOnly ? [] : EDITOR_TOOLBARS"
+                            :preview="false"
+                            :read-only="readOnly"
+                            :sanitize="DOMPurify.sanitize"
+                            :max-length="MAX_FILE_BYTES"
+                            class="h-full min-h-[18rem]"
+                            @update:model-value="activeContent = $event"
+                        />
+                    </div>
                 </div>
 
                 <div

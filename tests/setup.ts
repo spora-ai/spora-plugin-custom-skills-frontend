@@ -5,7 +5,10 @@
  * - `md-editor-v3` mounts CodeMirror 6 + highlight.js / katex / mermaid, none of
  *   which work under happy-dom (it would fetch CSS from unpkg.com). `<MdEditor>`
  *   and `<MdPreview>` become lightweight stubs that support `v-model` and emit
- *   `update:modelValue`, so consumers still exercise their handlers.
+ *   `update:modelValue`, so consumers still exercise their handlers. The
+ *   `<MdEditor>` stub mirrors the props the desk binds, and surfaces `readOnly`
+ *   and `toolbars` as data attributes so a test can assert the read-only
+ *   contract without mounting CodeMirror.
  *
  * - `lucide-vue-next` and `dompurify` are real here (the bundle also
  *   bundles them — the host publishes neither). Keeping the real
@@ -38,6 +41,7 @@ vi.mock('md-editor-v3', async () => {
             'rows',
             'maxLength',
             'disabled',
+            'readOnly',
             'language',
             'toolbars',
             'showToolbarName',
@@ -55,13 +59,17 @@ vi.mock('md-editor-v3', async () => {
                     'data-testid': 'md-editor-stub',
                     'data-md-editor': 'true',
                     'data-md-preview-on': String(Boolean(props.preview)),
+                    'data-md-readonly': String(Boolean(props.readOnly)),
+                    'data-md-toolbars': JSON.stringify(props.toolbars ?? []),
                     'data-md-sanitized': rendered,
                     id: (props.id as string | undefined) ?? undefined,
                     value,
                     disabled: Boolean(props.disabled),
+                    readOnly: Boolean(props.readOnly),
                     placeholder: (props.placeholder as string | undefined) ?? '',
                     rows: Number(props.rows ?? 6),
                     onInput: (e: Event) => {
+                        if (props.readOnly) return
                         emit('update:modelValue', (e.target as HTMLTextAreaElement).value)
                     },
                 })
