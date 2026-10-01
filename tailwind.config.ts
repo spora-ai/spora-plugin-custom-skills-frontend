@@ -38,8 +38,20 @@ export default {
                 ring: 'hsl(var(--ring))',
                 background: 'hsl(var(--background))',
                 foreground: 'hsl(var(--foreground))',
-                card: 'hsl(var(--card))',
-                'card-foreground': 'hsl(var(--card-foreground))',
+                // The host defines NO `--card` variable — its `:root` stops at
+                // `--accent-foreground`. Its own theme maps the card utility as
+                // `--color-card: hsl(var(--background))` (spora-frontend
+                // src/style.css:117), i.e. the card IS the background.
+                //
+                // These two used to read `hsl(var(--card))`, which compiles to
+                // an invalid colour because the variable is undefined: every
+                // `bg-card` surface — the editor pane, the viewer, the cards
+                // and the delete-confirmation dialog — silently rendered
+                // transparent. It went unnoticed because the panels sit on
+                // `bg-background`, so card and transparent look identical
+                // everywhere except the dialog.
+                card: 'hsl(var(--background))',
+                'card-foreground': 'hsl(var(--foreground))',
                 primary: {
                     DEFAULT: 'hsl(var(--primary))',
                     foreground: 'hsl(var(--primary-foreground))',

@@ -1,17 +1,11 @@
 /**
- * Pinia store for the principal selector.
+ * Principal selector store: fetches `/api/v1/principals/me` once and caches it,
+ * and holds the acting principal id so `useSkillsStore` resolves it at call time.
  *
- * Fetches `/api/v1/principals/me` once on mount and caches the
- * result so the chip row doesn't re-fetch every tab switch.
- * Selected principal id is kept here so it survives pane interaction
- * without prop-drilling, and so `useSkillsStore` can resolve the
- * acting principal at call time.
- *
- * **No persistence** — `selectedPrincipalId` is deliberately
- * session-scoped. Persisting across browser sessions could surface a
- * different principal's name and lead an operator to believe they are
- * authoring skills under the wrong scope. Re-selecting on every mount
- * is cheap and self-correcting.
+ * `selectedPrincipalId` is deliberately session-scoped: persisting it across
+ * browser sessions could surface a different principal's name and lead an
+ * operator to author under the wrong scope. Re-selecting on each mount is cheap
+ * and self-correcting.
  */
 import { defineStore, acceptHMRUpdate } from 'pinia'
 import { ref, computed } from 'vue'

@@ -1,10 +1,8 @@
 /**
- * `useSkillsStore` — the loading/saving/error triple, in-place updates
- * after every mutation, and the two affordances that need store
- * support: the allowlist readout and the delete blast radius.
- *
- * The API module is mocked wholesale here; `tests/api/*.spec.ts`
- * covers the real client against a stubbed host.
+ * `useSkillsStore` — the loading/saving/error triple, in-place updates after every
+ * mutation, and the affordances that need store support: the allowlist readout and
+ * the delete blast radius. The API module is mocked wholesale here;
+ * `tests/api/*.spec.ts` covers the real client.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
@@ -65,8 +63,8 @@ describe('skills store → loading triple', () => {
     })
 
     it('a pre-shipped failure must not blank the shared error banner', async () => {
-        // The catalogue is a different backend surface; a failure there
-        // must not read as "your own skills failed to load".
+        // A different backend surface: a failure there must not read as "your own
+        // skills failed to load".
         mockedPreshipped.listPreShippedSkills.mockRejectedValueOnce(new ApiError('host down', 'E', 502))
         await store.loadPreShippedSkills()
         expect(store.preShipped).toEqual([])

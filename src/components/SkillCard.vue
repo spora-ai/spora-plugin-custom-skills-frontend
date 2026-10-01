@@ -3,6 +3,7 @@ import { computed, ref, useId } from 'vue'
 import {
     AlertTriangle,
     Bot,
+    Eye,
     FileText,
     History,
     Pencil,
@@ -14,27 +15,19 @@ import { formatBytes, lastEditedLabel, sidecarFiles } from '../lib/skillFormat'
 import type { AgentSummary, CustomSkillResource, SkillAllowlistEntry } from '../types'
 
 /**
- * Card for one of the caller's own custom skills.
+ * Card for one of the caller's own custom skills. Read-mostly: it emits intents
+ * (`edit`, `delete`, `restore`, `enable`, `disable`) and the page/store owns the
+ * writes.
  *
- * Carries the three affordances that separate "the skill works" from
- * "the user files a ticket":
- *
- *  1. **Allowlist readout + "Enable on agent…"** — an author who cannot
- *     see whether an agent may actually use their skill has no way to
- *     find out except by asking the agent and reading a rejection. The
- *     empty state names the failure mode verbatim, because that is the
- *     string the agent will produce.
- *  2. **Blast radius for delete** — the card asks the store for the
- *     skill's allowlist on expand and the page passes the names into
- *     `ConfirmDialog`. `scrubbed_agents` on the delete *response* is
- *     too late to warn anybody.
- *  3. **Restore previous version** — offered only when
- *     `has_previous` is true, i.e. when the server is actually holding
- *     a snapshot. Rendering a disabled button would imply a rollback
- *     that does not exist.
- *
- * The card is read-mostly: it emits intents (`edit`, `delete`,
- * `restore`, `enable`, `disable`) and the page/store owns the writes.
+ * Three affordances separate "the skill works" from "the user files a ticket":
+ *  1. **Allowlist readout + "Enable on agent…"** — the empty state names the
+ *     agent's rejection string verbatim, because that is what the author would
+ *     otherwise have to provoke to learn it.
+ *  2. **Blast radius for delete** — `scrubbed_agents` on the delete *response*
+ *     is too late to warn anybody.
+ *  3. **Restore** — offered only when `has_previous`, i.e. when the server really
+ *     holds a snapshot; a disabled button would imply a rollback that doesn't
+ *     exist.
  */
 const props = withDefaults(
     defineProps<{
@@ -48,6 +41,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
+    view: [name: string]
     edit: [name: string]
     delete: [name: string]
     restore: [name: string]
@@ -64,7 +58,6 @@ const lastEdited = computed(() => lastEditedLabel(props.skill))
 const sidecars = computed(() => sidecarFiles(props.skill))
 const isAgentProvenance = computed(() => props.skill.provenance === 'agent')
 
-/** Agents that do not already resolve this skill — the only useful offers. */
 const enableCandidates = computed(() => {
     const already = new Set(props.allowlist.map((a) => a.id))
     return props.agents.filter((a) => !already.has(a.id))
@@ -128,6 +121,15 @@ function scopeLabel(scope: SkillAllowlistEntry['scope']): string {
                 >
                     <History class="h-3.5 w-3.5" />
                     Restore previous version
+                </button>
+                <button
+                    type="button"
+                    class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+                    data-test="view-skill"
+                    @click="emit('view', skill.name)"
+                >
+                    <Eye class="h-3.5 w-3.5" />
+                    View
                 </button>
                 <button
                     type="button"

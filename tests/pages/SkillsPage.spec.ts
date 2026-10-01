@@ -1,11 +1,10 @@
 /**
- * `SkillsPage` — the two panes, the empty states, the per-pane search,
- * and the delete blast radius.
+ * `SkillsPage` — the two panes, their empty states, the per-pane search and the
+ * delete blast radius.
  *
- * The blast-radius test is the one that matters most: it asserts the
- * allowlist is READ before `DELETE` is issued, in that order, so the
- * confirmation dialog names the affected agents. Deleting a skill is a
- * silent multi-agent config change otherwise.
+ * The blast-radius test matters most: it asserts the allowlist is READ before
+ * `DELETE` is issued, in that order, so the dialog names the affected agents.
+ * Deleting a skill is a silent multi-agent config change otherwise.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -26,8 +25,8 @@ const mockedApi = vi.mocked(api)
 const mockedPreshipped = vi.mocked(preshippedApi)
 
 // The page's store must resolve the *same* Pinia the test seeded, or
-// `selectedPrincipalId` reads back as `null` and every call goes out
-// without `?principal_id=`.
+// `selectedPrincipalId` reads back as `null` and every call goes out without
+// `?principal_id=`.
 let pinia: Pinia
 
 function mountPage() {
@@ -104,8 +103,8 @@ describe('SkillsPage → empty states', () => {
 
         const mine = wrapper.get('[data-test="mine-search-empty"]')
         expect(mine.text()).toContain('No skill matches “zzz”')
-        // The real count is quoted so the operator can tell a bad filter
-        // from an empty principal.
+        // The real count is quoted so a bad filter is distinguishable from an
+        // empty principal.
         expect(mine.text()).toContain('all 1 on this principal')
         expect(wrapper.get('[data-test="preshipped-search-empty"]').text()).toContain('No pre-shipped skill matches “zzz”')
     })
@@ -147,7 +146,6 @@ describe('SkillsPage → per-pane search', () => {
         await wrapper.get('[data-test="pane-search-my-skills"]').setValue('invoice')
         await wrapper.get('[data-test="pane-search-pre-shipped"]').setValue('brand')
         await flushPromises()
-        // Typing in one pane must not narrow the other.
         expect(wrapper.findAll('[data-test="skill-name"]')).toHaveLength(1)
         expect(wrapper.findAll('[data-test="preshipped-name"]').map((n) => n.text())).toEqual(['brand-voice'])
     })
@@ -207,13 +205,12 @@ describe('SkillsPage → allowlist affordance', () => {
         ])
         const wrapper = mountPage()
         await flushPromises()
-        // Opening the picker is what triggers the allowlist read.
         await wrapper.get('[data-test="toggle-agent-picker"]').trigger('click')
         await flushPromises()
         const list = wrapper.findAll('[data-test="allowlist-list"] li')
         expect(list[0]?.text()).toContain('Invoicer')
-        // A principal-scope entry means the agent inherits the default,
-        // not that it carries its own entry — the label has to say which.
+        // A principal-scope entry means the agent inherits the default rather than
+        // carrying its own entry — the label has to say which.
         expect(list[0]?.text()).toContain('agent override')
         expect(list[1]?.text()).toContain('Researcher')
         expect(list[1]?.text()).toContain('inherited default')
@@ -260,7 +257,6 @@ describe('SkillsPage → delete names the blast radius before the write', () => 
         await wrapper.get('[data-test="delete-skill"]').trigger('click')
         await flushPromises()
 
-        // Nothing was written to open the dialog.
         expect(mockedApi.deleteSkill).not.toHaveBeenCalled()
 
         const dialog = wrapper.get('[data-test="confirm-dialog"]')

@@ -1,20 +1,12 @@
 /**
- * `SkillEditor` — the validation feedback contract.
+ * `SkillEditor` — the validation feedback contract. A bad write is a 422
+ * `SKILL_INVALID` carrying a `ValidationResult` array, and two things must happen
+ * with it: an error anchored to a `path` renders **under that field**, and warnings
+ * (plus any error no field claims) render in a banner, so nothing is dropped.
  *
- * The backend answers a bad write with 422 `SKILL_INVALID` carrying a
- * `ValidationResult` array. Two things must happen with it, and both
- * are asserted here because they are the difference between a form the
- * operator can act on and a toast they dismiss:
- *
- *   1. an error anchored to a `path` renders **under that field**;
- *   2. warnings — plus any error no field claims — render in a banner,
- *      so nothing the validator said is ever dropped.
- *
- * The rest of the spec pins the lifecycle rules the field rendering
- * depends on: `name` is read-only on edit (the contract rejects a
- * rename), "Restore previous version" appears only when
- * `has_previous` is true, and the provenance line comes from
- * `provenance` + `updated_by_user_id`.
+ * The rest pins the lifecycle rules that rendering depends on: `name` is read-only
+ * on edit, restore appears only when `has_previous`, and the provenance line comes
+ * from `provenance` + `updated_by_user_id`.
  */
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -96,7 +88,6 @@ describe('SkillEditor → warnings render as a banner', () => {
         expect(banner.text()).toContain('BODY_SOFT_BYTE_LIMIT')
         expect(banner.text()).toContain('(body)')
         expect(banner.text()).toContain('Body is above the soft byte limit.')
-        // A warning is not an inline field error.
         expect(wrapper.findAll('[data-test="field-error"]')).toHaveLength(0)
     })
 
@@ -113,9 +104,8 @@ describe('SkillEditor → warnings render as a banner', () => {
     })
 
     it('an error with no recognisable path still reaches the operator', () => {
-        // `metadata` is a JSON blob with no dedicated message slot —
-        // dropping the finding would leave the operator with a rejected
-        // save and nothing to act on.
+        // `metadata` is a JSON blob with no message slot — dropping the finding
+        // would leave a rejected save with nothing to act on.
         const wrapper = mountEditor({
             skill: null,
             validationErrors: [makeValidationEntry({ code: 'METADATA_INVALID', message: 'tier must be a string', path: 'metadata' })],
@@ -232,31 +222,82 @@ describe('SkillEditor → save payload', () => {
         expect(wrapper.emitted('loadFiles')).toBeUndefined()
     })
 
-    it('seeds one editable row per sidecar and sends the path→content map', async () => {
+    it('opens on SKILL.md and tabs to a sidecar, sending the path→content map', async () => {
+        // Sidecars are tabs into ONE editor, so "edit this sidecar" means selecting
+        // its tab first.
         const wrapper = mountEditor({ skill: makeSkill() })
-        const paths = wrapper.findAll('[data-test="sidecar-path"]')
-        expect(paths).toHaveLength(1)
-        expect((paths[0]?.element as HTMLInputElement).value).toBe('examples/invoice.md')
 
-        await wrapper.get('[data-test="sidecar-content"]').setValue('# Example')
+        // The path input exists only for the *active* sidecar, so landing on
+        // SKILL.md means there is nothing to rename yet.
+        expect(wrapper.find('[data-test="sidecar-path"]').exists()).toBe(false)
+        expect(wrapper.findAll('[data-test="editor-tab-file"]')).toHaveLength(1)
+
+        await wrapper.get('[data-test="editor-tab-file"]').trigger('click')
+        expect((wrapper.get('[data-test="sidecar-path"]').element as HTMLInputElement).value)
+            .toBe('examples/invoice.md')
+
+        await wrapper.get('[data-test="field-body"]').setValue('# Example')
         await wrapper.get('form').trigger('submit')
         const payload = wrapper.emitted('save')?.[0]?.[0] as { files: Record<string, string> }
         expect(payload.files).toEqual({ 'examples/invoice.md': '# Example' })
     })
 
-    it('drops blank sidecar rows rather than sending an empty path', async () => {
+    it('writes each sidecar to its own tab, not into the body', async () => {
+        // `activeContent` is one computed over two stores, so a sidecar write
+        // landing in `body` would be silent: the body looks edited, the file is
+        // empty, the save is wrong.
         const wrapper = mountEditor({ skill: makeSkill() })
-        await wrapper.get('[data-test="add-sidecar"]').trigger('click')
+
+        await wrapper.get('[data-test="field-body"]').setValue('# SKILL body')
+        await wrapper.get('[data-test="editor-tab-file"]').trigger('click')
+        await wrapper.get('[data-test="field-body"]').setValue('# Sidecar body')
+
         await wrapper.get('form').trigger('submit')
-        const payload = wrapper.emitted('save')?.[0]?.[0] as { files: Record<string, string> }
-        expect(Object.keys(payload.files)).toEqual(['examples/invoice.md'])
+        const payload = wrapper.emitted('save')?.[0]?.[0] as {
+            body: string
+            files: Record<string, string>
+        }
+        expect(payload.body).toBe('# SKILL body')
+        expect(payload.files).toEqual({ 'examples/invoice.md': '# Sidecar body' })
     })
 
-    it('removes a sidecar row', async () => {
+    it('gives a new sidecar a usable path and puts the cursor in it', async () => {
+        // A blank path is rejected server-side, and the click has to land
+        // somewhere visible.
         const wrapper = mountEditor({ skill: makeSkill() })
+        await wrapper.get('[data-test="add-sidecar"]').trigger('click')
+
+        expect(wrapper.findAll('[data-test="editor-tab-file"]')).toHaveLength(2)
+        const added = wrapper.findAll('[data-test="editor-tab-file"]')[1]
+        expect(added?.text()).toContain('notes-2.md')
+        expect(wrapper.find('[data-test="sidecar-path"]').exists()).toBe(true)
+    })
+
+    it('renaming the active sidecar moves its tab and keeps the content', async () => {
+        const wrapper = mountEditor({ skill: makeSkill() })
+        await wrapper.get('[data-test="editor-tab-file"]').trigger('click')
+        await wrapper.get('[data-test="field-body"]').setValue('# Example')
+
+        await wrapper.get('[data-test="sidecar-path"]').setValue('examples/renamed.md')
+        await wrapper.get('form').trigger('submit')
+
+        const payload = wrapper.emitted('save')?.[0]?.[0] as { files: Record<string, string> }
+        // The tab is keyed on the path, so a rename that dropped the content with
+        // it would blank the file on save.
+        expect(payload.files).toEqual({ 'examples/renamed.md': '# Example' })
+    })
+
+    it('removes the active sidecar and returns to SKILL.md', async () => {
+        const wrapper = mountEditor({ skill: makeSkill() })
+        await wrapper.get('[data-test="editor-tab-file"]').trigger('click')
         await wrapper.get('[data-test="remove-sidecar"]').trigger('click')
-        expect(wrapper.findAll('[data-test="sidecar-path"]')).toHaveLength(0)
+
+        expect(wrapper.find('[data-test="sidecar-path"]').exists()).toBe(false)
         expect(wrapper.find('[data-test="sidecars-empty"]').exists()).toBe(true)
+
+        await wrapper.get('form').trigger('submit')
+        const payload = wrapper.emitted('save')?.[0]?.[0] as { files: Record<string, string> }
+        expect(payload.files).toEqual({})
     })
 
     it('explains the empty sidecar state instead of rendering a blank box', () => {

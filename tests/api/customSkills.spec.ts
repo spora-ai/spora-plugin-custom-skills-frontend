@@ -1,17 +1,12 @@
 /**
- * custom-skills API client — covers every exported function in
- * `src/api/customSkills.ts` against a stubbed host API.
+ * Every exported function in `src/api/customSkills.ts` against a stubbed host API.
+ * The store spec mocks the API module wholesale, so its real implementation never
+ * runs there.
  *
- * The store-level spec (`tests/stores/skills.spec.ts`) mocks the API
- * module wholesale, so its real implementation never runs there. This
- * spec fills that gap by stubbing `hostContext.api` and asserting the
- * path, body and envelope unwrap match the published REST contract
- * (see https://docs.spora-ai.com/reference/api#custom-skills-spora-plugin-custom-skills).
- *
- * The path assertions are the load-bearing part: `?principal_id=` is
- * threaded by hand (the host client takes a `query` object for GET but
- * not for the write verbs), and the sidecar `{path}` parameter has to
- * be percent-encoded with its slashes intact for Symfony to route it.
+ * The path assertions are the load-bearing part: `?principal_id=` is threaded by
+ * hand (the host client takes a `query` object for GET but not the write verbs),
+ * and the sidecar `{path}` has to be percent-encoded with its slashes intact for
+ * Symfony to route it.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setApi, ApiError } from '../../src/api/client'
@@ -79,8 +74,8 @@ describe('api/customSkills → reads', () => {
     it('getSkillFile percent-encodes the whole sidecar path, slashes included', async () => {
         api.get.mockResolvedValueOnce({ path: 'examples/invoice.md', content: 'x', bytes: 1 })
         const result = await skills.getSkillFile('a', 'examples/invoice.md', null)
-        // The contract says `{path}` matches the REST of the path and is
-        // percent-encoded by the client — `examples%2Finvoice.md`.
+        // The contract: `{path}` matches the REST of the path, percent-encoded by
+        // the client — `examples%2Finvoice.md`.
         expect(api.get).toHaveBeenCalledWith('/custom-skills/a/files/examples%2Finvoice.md')
         expect(result.content).toBe('x')
     })
@@ -126,10 +121,8 @@ describe('api/customSkills → writes', () => {
 
     it('updateSkill PUTs to /custom-skills/{name} without a name in the body', async () => {
         api.put.mockResolvedValueOnce({ skill: makeSkill() })
-        // `name` is excluded from the payload: the contract rejects a
-        // rename with 422 VALIDATION_ERROR, so sending one is a bug.
-        // Both assertions below are load-bearing — the first pins the
-        // URL, the second that no `name` key rode along.
+        // `name` is excluded because the contract rejects a rename with 422. Both
+        // assertions are load-bearing: the URL, and that no `name` rode along.
         const { name, ...update } = dto
         expect(name).toBe('invoice-drafting')
         await skills.updateSkill('invoice-drafting', 99, update)

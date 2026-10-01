@@ -1,10 +1,7 @@
 /**
- * Shared fixtures for the custom-skills specs.
- *
- * Every field of `CustomSkillResource` is present (the frozen REST
- * contract has no optional members) so a test that renders a fixture
- * is exercising the same shape the PHP serialiser emits — a partial
- * fixture would let a typo'd field name pass unnoticed.
+ * Every field of `CustomSkillResource` is present (the frozen REST contract has no
+ * optional members) so a test rendering a fixture exercises the same shape the PHP
+ * serialiser emits — a partial fixture would let a typo'd field name pass.
  */
 import type {
     CustomSkillResource,

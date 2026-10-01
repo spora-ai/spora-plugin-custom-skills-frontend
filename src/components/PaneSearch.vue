@@ -3,17 +3,13 @@ import { computed, useId } from 'vue'
 import { Search, X } from 'lucide-vue-next'
 
 /**
- * Per-pane search box.
+ * Each pane owns its own term: filtering the pre-shipped catalogue with the term
+ * typed into "My skills" is the cross-pane coupling that makes a list feel
+ * haunted. Two-way `v-model` so the page can hold the term for its empty-state
+ * copy.
  *
- * Each pane owns its own term — filtering the pre-shipped catalogue
- * with the term typed into "My skills" is the kind of cross-pane
- * coupling that makes a list feel haunted. The `v-model` contract is
- * two-way so the page can hold the term for its empty-state copy
- * ("No skill matches "foo".") without reaching into the child.
- *
- * Purely client-side: the filter runs over the array the pane already
- * holds. Neither REST contract has a `?q=`, and round-tripping per
- * keystroke would be both slower and a worse experience.
+ * Client-side only: neither REST contract has a `?q=`, and round-tripping per
+ * keystroke would be slower and worse.
  */
 const props = withDefaults(
     defineProps<{

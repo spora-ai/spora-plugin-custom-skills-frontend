@@ -1,22 +1,12 @@
 /**
- * Custom Skills API client.
- *
- * Every route here is frozen in
+ * Custom Skills API client. Every route is frozen in
  * https://docs.spora-ai.com/reference/api#custom-skills-spora-plugin-custom-skills
- * — do not invent endpoints, rename fields, or relax the status codes
- * without updating the contract first.
+ * — do not invent endpoints or status codes without updating the contract first.
  *
- * We route through the plugin-local `getApi()` container so the host's
- * `hostContext.api` is used verbatim — that preserves CSRF tokens, the
- * `/api/v1` base, and the `{ data: T }` envelope unwrap. Tests stub
- * `hostContext.api` and exercise these functions against it.
- *
- * Every function takes an optional `principalId` — the principal the
- * operator selected in `PrincipalChipRow`. When set it's threaded onto
- * the URL as `?principal_id=N`; the controller honours it when the
- * caller can write to that principal (own user-principal, or a
- * group-principal they own/admin) and 403s otherwise. Absent → the
- * caller's own user-principal.
+ * Routed through the plugin-local `getApi()` container so the host's client is
+ * used verbatim. `principalId` is threaded onto the URL as `?principal_id=N`; the
+ * controller honours it when the caller can write to that principal and 403s
+ * otherwise, and absent → the caller's own user-principal.
  */
 import { getApi } from './client'
 import type {
@@ -31,18 +21,13 @@ import type {
 
 const BASE = '/custom-skills'
 
-/**
- * Build a path with the optional `?principal_id=` entry. Encoded once
- * so every API call looks identical.
- */
 function withQuery(path: string, principalId: number | null): string {
     return principalId === null ? path : `${path}?principal_id=${principalId}`
 }
 
 /**
- * `{path}` in a sidecar GET is the *rest* of the path, percent-encoded
- * by the client (`examples%2Finvoice.md`). Encoding the whole segment
- * with `encodeURIComponent` also escapes the slashes, which is what the
+ * `{path}` in a sidecar GET is the *rest* of the path, percent-encoded by the
+ * client — `encodeURIComponent` escapes the slashes too, which is what the
  * Symfony router needs to treat it as one parameter.
  */
 function encodeFilePath(filePath: string): string {
@@ -89,10 +74,9 @@ export async function updateSkill(
 }
 
 /**
- * Delete returns the agents whose `allowed_skills` the write scrubbed
- * (D11). The store hands them to the confirmation dialog so the blast
- * radius is stated *before* the operator commits, and returned to the
- * caller afterwards so the UI can report what actually changed.
+ * Returns the agents whose `allowed_skills` the write scrubbed (D11) — for
+ * reporting *after* the write; the pre-confirmation blast radius is a separate
+ * allowlist read.
  */
 export async function deleteSkill(
     name: string,
@@ -105,9 +89,8 @@ export async function deleteSkill(
 }
 
 /**
- * Restores `previous_snapshot` in one step. The server re-snapshots
- * the current state first, so restore is itself undoable — there is no
- * "one level only, and it's gone" footgun.
+ * The server re-snapshots the current state first, so restore is itself undoable —
+ * there is no "one level only, and it's gone" footgun.
  */
 export async function restoreSkill(
     name: string,
@@ -149,11 +132,9 @@ export async function getSkillFile(
 }
 
 /**
- * Which agents currently resolve this skill through the `skill` tool's
- * `allowed_skills`. `scope: 'principal'` means the agent inherits the
- * principal-level default rather than carrying its own entry — the
- * delete dialog treats both as blast radius, but labels them
- * differently so the operator knows which knob to turn to bring it back.
+ * `scope: 'principal'` means the agent inherits the principal-level default rather
+ * than carrying its own entry. The delete dialog counts both as blast radius but
+ * labels them differently, so the operator knows which knob turns it back off.
  */
 export async function getSkillAllowlist(
     name: string,
@@ -167,14 +148,10 @@ export async function getSkillAllowlist(
 }
 
 /**
- * Fork a pre-shipped skill onto the acting principal.
- *
- * There is no dedicated fork endpoint — the contract's "Not endpoints"
- * section rules one out. A fork is a plain `POST /custom-skills` whose
- * body is the shipped skill's frontmatter + body + sidecars under a
- * new, non-reserved name. The name rewrite is what makes this safe:
- * `POST` answers 409 `SKILL_NAME_RESERVED` for a name that collides
- * with a shipped skill, so the caller must not reuse the source slug.
+ * There is no dedicated fork endpoint — the contract's "Not endpoints" section
+ * rules one out. A fork is a plain `POST /custom-skills` carrying the shipped
+ * skill's frontmatter + body + sidecars under a new, non-reserved name: `POST`
+ * answers 409 `SKILL_NAME_RESERVED` for a name that collides with a shipped skill.
  */
 export async function forkSkill(
     principalId: number | null,

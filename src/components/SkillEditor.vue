@@ -8,29 +8,21 @@ import { errorsForField, unattachedErrors, lastEditedLabel } from '../lib/skillF
 import type { CreateSkillDto, CustomSkillResource, SkillValidationEntry, UpdateSkillDto } from '../types'
 
 /**
- * Editor for one custom skill: frontmatter fields, the SKILL.md body,
- * and the sidecar file set.
+ * Editor for one custom skill: frontmatter fields, the SKILL.md body and the
+ * sidecar file set.
  *
- * **Validation feedback is the point of this component.** The backend
- * runs `SkillValidator` and answers writes with 422 `SKILL_INVALID`
- * carrying a `ValidationResult` array. Each entry names a `path`
- * (the frontmatter key it applies to) and the operator needs to see it
- * *on that field* — a single "something is wrong" banner sends them
- * hunting. So errors render inline under their input, and everything
- * that isn't anchored to a field (validator findings on `metadata`,
- * plus every `warning`) renders in a single banner above the form.
- * Findings with no field and no severity distinction are never
- * dropped: an unanchored error is shown in the banner too.
+ * **Validation feedback is the point.** Writes answer 422 `SKILL_INVALID` with a
+ * `ValidationResult` array whose entries name the frontmatter `path` they apply
+ * to, and the operator has to see each one *on that field* — a single banner
+ * sends them hunting. Anything not anchored to a field (a `metadata` finding, every
+ * `warning`) renders in one banner above the form; nothing is dropped.
  *
- * The body is edited with `md-editor-v3` (host-provided external) and
- * sanitised through DOMPurify for preview, matching the memories
- * editor. Theme comes from the mount-time `hostContext.theme`
- * snapshot — plugins don't get the live theme store; the host
- * unmounts and remounts the slot on theme change.
+ * The body uses `md-editor-v3` (a host-provided external) and DOMPurify, matching
+ * the memories editor. `theme` is the mount-time `hostContext.theme` snapshot:
+ * plugins don't get the live theme store, the host remounts the slot instead.
  *
- * `name` is a v-model-bound field on create and a read-only slug on
- * edit: the contract rejects a rename with 422 `VALIDATION_ERROR`, so
- * rendering it as an editable input would be a lie.
+ * `name` is editable on create and a read-only slug on edit — the contract rejects
+ * a rename with 422, so an editable input would be a lie.
  */
 type SkillEditorToolbarItem =
     | 'bold' | 'underline' | 'italic' | 'strikeThrough'
@@ -54,9 +46,9 @@ const SKILL_EDITOR_TOOLBARS: SkillEditorToolbarItem[] = [
 ]
 
 const SKILL_LOCALE = 'en-US'
+// Hoisted so the JSON braces/quotes don't force a quote-style escape in the
+// template attribute (eslint `vue/html-quotes`).
 const SKILL_ENTRY_FILE = 'SKILL.md'
-// Hoisted so the JSON braces/quotes don't force a quote-style escape
-// in the template attribute (eslint `vue/html-quotes`).
 const METADATA_PLACEHOLDER = '{"tier": "pro"}'
 
 const props = withDefaults(
@@ -65,7 +57,7 @@ const props = withDefaults(
         saving?: boolean
         /** 422 `SKILL_INVALID` findings from the last write attempt. */
         validationErrors?: SkillValidationEntry[]
-        /** Sidecar contents keyed by path, fetched by the page. */
+        /** Sidecar contents keyed by path — the manifest knows the files exist. */
         fileContents?: Record<string, string>
         theme?: 'light' | 'dark'
     }>(),
@@ -89,26 +81,32 @@ const metadataJson = ref('')
 const body = ref('')
 const sidecars = ref<Array<{ path: string; content: string }>>([])
 
+/**
+ * Declared with the other editor state, not next to the tab helpers: `loadFrom()`
+ * resets it from an `immediate` watcher, so a later declaration is a
+ * temporal-dead-zone crash on the first render — invisible to a type-checker.
+ */
+const activeFile = ref<string>(SKILL_ENTRY_FILE)
+
 const isEditing = computed(() => props.skill !== null)
 const canSubmit = computed(() => !props.saving && name.value.trim().length > 0)
 
-/**
- * Non-field findings: every `warning` the validator emitted, plus
- * errors whose `path` matches no rendered input. Both are actionable
- * and both would otherwise be invisible.
- */
+/** Every `warning`, plus errors whose `path` matches no input — both would be invisible. */
 const bannerEntries = computed<SkillValidationEntry[]>(() => [
     ...props.validationErrors.filter((e) => e.severity !== 'error'),
     ...unattachedErrors(props.validationErrors),
 ])
 
-/** Warnings the *stored* skill already carries, shown on every open. */
+/** Warnings the stored skill already carries — shown on every open, not just after a write. */
 const storedWarnings = computed<SkillValidationEntry[]>(() => props.skill?.warnings ?? [])
 
 const lastEdited = computed(() => (props.skill ? lastEditedLabel(props.skill) : ''))
 const showRestore = computed(() => props.skill?.has_previous === true)
 
 function loadFrom(skill: CustomSkillResource | null): void {
+    // The previously open tab may be a sidecar this skill doesn't have, which
+    // would show an empty editor.
+    activeFile.value = SKILL_ENTRY_FILE
     name.value = skill?.name ?? ''
     description.value = skill?.description ?? ''
     license.value = skill?.license ?? ''
@@ -128,9 +126,8 @@ watch(
     () => props.skill,
     (skill) => {
         loadFrom(skill)
-        // Sidecar bytes are known from the manifest but their contents
-        // are not; ask the page to fetch them so an edit-and-save
-        // doesn't blank the file set (the contract fully replaces it).
+        // The manifest knows the sidecars but not their bytes, and save fully
+        // replaces the file set — so fetch them or an edit blanks the files.
         if (skill && skill.files.some((f) => f.path !== SKILL_ENTRY_FILE)) {
             emit('loadFiles', skill.name)
         }
@@ -150,7 +147,7 @@ watch(
     { deep: true },
 )
 
-/** Per-instance id scope so two editors on screen never share ids. */
+/** Per-instance id scope, so two editors on screen never share ids. */
 const idScope = useId()
 const nameId = `${idScope}-skill-name`
 const descriptionId = `${idScope}-skill-description`
@@ -164,22 +161,92 @@ function fieldErrors(field: Parameters<typeof errorsForField>[1]) {
     return errorsForField(props.validationErrors, field)
 }
 
-function addSidecar(): void {
-    sidecars.value = [...sidecars.value, { path: '', content: '' }]
-}
+/*
+ * File tabs — the markdown editor is a per-file surface, not per-skill. Sidecars
+ * are where references, templates and examples live, and a stacked `<textarea>`
+ * made that the worst place in the panel to write prose. One tabbed editor gives
+ * every file the same full-height surface and mounts only one, so a 20-file skill
+ * does not ship 20 editors' worth of CodeMirror.
+ */
 
-function removeSidecar(index: number): void {
-    sidecars.value = sidecars.value.filter((_, i) => i !== index)
-}
+const activeSidecarIndex = computed(() =>
+    sidecars.value.findIndex((row) => row.path === activeFile.value),
+)
+const activeSidecar = computed(() =>
+    activeSidecarIndex.value >= 0 ? sidecars.value[activeSidecarIndex.value] : null,
+)
 
-function removeSidecarPath(index: number): void {
-    removeSidecar(index)
+/**
+ * The markdown under the cursor, whichever file is active. One computed setter
+ * keeps the two backing stores (`body`, `sidecars[].content`) out of the
+ * template's special cases.
+ */
+const activeContent = computed<string>({
+    get() {
+        if (activeFile.value === SKILL_ENTRY_FILE) return body.value
+        return activeSidecar.value?.content ?? ''
+    },
+    set(next: string) {
+        if (activeFile.value === SKILL_ENTRY_FILE) {
+            body.value = next
+            return
+        }
+        const index = activeSidecarIndex.value
+        if (index < 0) return
+        sidecars.value = sidecars.value.map((row, i) => (i === index ? { ...row, content: next } : row))
+    },
+})
+
+/** Basename, so nested paths don't overflow the tab bar. */
+function tabLabel(path: string): string {
+    if (path === SKILL_ENTRY_FILE) return path
+    const tail = path.split('/').pop()
+    return tail && tail !== path ? tail : path
 }
 
 /**
- * Frontmatter writes are free-form JSON, so a syntax error here would
- * otherwise 422 as an opaque "metadata must be an object". Parsing
- * client-side turns it into a message attached to the field.
+ * The new row is given a unique default path and immediately becomes the active
+ * tab: the operator clicked "Add file" to write in it, and leaving the cursor on
+ * SKILL.md makes the click look like a no-op. A blank path is rejected by the
+ * server, so it is never a useful starting state.
+ */
+function addSidecar(): void {
+    const taken = new Set(sidecars.value.map((r) => r.path))
+    let n = sidecars.value.length + 1
+    let path = `notes-${n}.md`
+    while (taken.has(path)) {
+        n += 1
+        path = `notes-${n}.md`
+    }
+    sidecars.value = [...sidecars.value, { path, content: '' }]
+    activeFile.value = path
+}
+
+function removeSidecar(index: number): void {
+    const removed = sidecars.value[index]?.path
+    sidecars.value = sidecars.value.filter((_, i) => i !== index)
+    if (removed !== undefined && activeFile.value === removed) {
+        activeFile.value = SKILL_ENTRY_FILE
+    }
+}
+
+/**
+ * The tab is keyed on the path, so a rename that did not move `activeFile` would
+ * blank the editor mid-typing — the path is the identity here.
+ */
+function renameActiveSidecar(path: string): void {
+    const index = activeSidecarIndex.value
+    if (index < 0) return
+    const previous = sidecars.value[index].path
+    if (previous === path) return
+    sidecars.value = sidecars.value.map((row, i) => (i === index ? { ...row, path } : row))
+    if (activeFile.value === previous) activeFile.value = path
+}
+
+/**
+ * Frontmatter metadata is free-form JSON, so a syntax error would otherwise 422
+ * as an opaque "metadata must be an object". Parsing client-side turns it into a
+ * message attached to the field.
  */
 function parseMetadata(): { value: Record<string, unknown> } | { error: string } {
     const raw = metadataJson.value.trim()
@@ -205,8 +272,8 @@ function handleSubmit(): void {
         return
     }
 
-    // `files` fully replaces the sidecar set, so blank rows are dropped
-    // rather than sent as an empty path the server would reject.
+    // `files` fully replaces the sidecar set, so blank rows are dropped rather
+    // than sent as an empty path the server rejects.
     const files: Record<string, string> = {}
     for (const row of sidecars.value) {
         const path = row.path.trim()
@@ -229,7 +296,9 @@ function handleSubmit(): void {
 </script>
 
 <template>
-    <div class="max-w-3xl" data-test="skill-editor">
+    <!-- Full width, not `max-w-3xl`: a 48rem column squeezes the live preview
+         to a column of hyphenated words. -->
+    <div class="w-full" data-test="skill-editor">
         <div class="mb-4 flex items-start justify-between gap-3">
             <div>
                 <h2 class="text-lg font-semibold">
@@ -432,37 +501,15 @@ function handleSubmit(): void {
                 </p>
             </div>
 
+            <!-- The toolbar keeps `preview` so the operator can read the rendered
+                 result without leaving the tab; it was previously disabled, which
+                 made the editor write-only. -->
             <div>
-                <label :for="bodyId" class="mb-1.5 block text-sm font-medium">
-                    SKILL.md <span class="text-xs text-muted-foreground">(Markdown)</span>
-                </label>
-                <MdEditor
-                    :id="bodyId"
-                    :model-value="body"
-                    :rows="16"
-                    placeholder="Instructions the agent follows when this skill is selected…"
-                    :theme="theme ?? 'light'"
-                    :language="SKILL_LOCALE"
-                    :toolbars="SKILL_EDITOR_TOOLBARS"
-                    :preview="false"
-                    :sanitize="DOMPurify.sanitize"
-                    mode="full"
-                    data-test="field-body"
-                    @update:model-value="body = $event"
-                />
-                <ul
-                    v-for="entry in fieldErrors('body')"
-                    :key="entry.code + entry.message"
-                    class="mt-1 text-xs text-destructive"
-                    data-test="field-error"
-                >
-                    {{ entry.message }}
-                </ul>
-            </div>
-
-            <div>
-                <div class="mb-1.5 flex items-center justify-between">
-                    <span class="text-sm font-medium">Sidecar files</span>
+                <div class="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                    <span class="text-sm font-medium">
+                        {{ activeFile === SKILL_ENTRY_FILE ? 'SKILL.md' : 'Sidecar file' }}
+                        <span class="text-xs text-muted-foreground">(Markdown)</span>
+                    </span>
                     <button
                         type="button"
                         class="inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
@@ -473,47 +520,95 @@ function handleSubmit(): void {
                         Add file
                     </button>
                 </div>
+
+                <div
+                    v-if="sidecars.length > 0"
+                    class="mb-2 flex flex-wrap items-center gap-1 border-b border-border"
+                    data-test="editor-file-tabs"
+                >
+                    <button
+                        type="button"
+                        class="-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-1.5 font-mono text-xs font-medium transition-colors"
+                        :class="activeFile === SKILL_ENTRY_FILE
+                            ? 'border-primary text-foreground'
+                            : 'border-transparent text-muted-foreground hover:text-foreground'"
+                        data-test="editor-tab-entry"
+                        @click="activeFile = SKILL_ENTRY_FILE"
+                    >
+                        SKILL.md
+                    </button>
+                    <button
+                        v-for="row in sidecars"
+                        :key="row.path"
+                        type="button"
+                        class="-mb-px inline-flex max-w-[16rem] items-center gap-1.5 truncate border-b-2 px-3 py-1.5 font-mono text-xs font-medium transition-colors"
+                        :class="activeFile === row.path
+                            ? 'border-primary text-foreground'
+                            : 'border-transparent text-muted-foreground hover:text-foreground'"
+                        data-test="editor-tab-file"
+                        @click="activeFile = row.path"
+                    >
+                        {{ tabLabel(row.path) }}
+                    </button>
+                </div>
+
+                <div
+                    v-if="activeSidecar"
+                    class="mb-2 flex items-center gap-2"
+                    data-test="sidecar-controls"
+                >
+                    <input
+                        :value="activeSidecar.path"
+                        type="text"
+                        placeholder="examples/invoice.md"
+                        class="h-9 flex-1 rounded-lg border border-input bg-background px-3 font-mono text-xs"
+                        :aria-label="`Path for ${activeSidecar.path}`"
+                        data-test="sidecar-path"
+                        @input="renameActiveSidecar(($event.target as HTMLInputElement).value)"
+                    />
+                    <button
+                        type="button"
+                        class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                        :aria-label="`Remove ${activeSidecar.path}`"
+                        data-test="remove-sidecar"
+                        @click="removeSidecar(activeSidecarIndex)"
+                    >
+                        <Trash2 class="h-3.5 w-3.5" />
+                    </button>
+                </div>
+
+                <MdEditor
+                    :id="bodyId"
+                    v-model="activeContent"
+                    :rows="20"
+                    :placeholder="activeFile === SKILL_ENTRY_FILE
+                        ? 'Instructions the agent follows when this skill is selected…'
+                        : `Contents of ${activeFile}…`"
+                    :theme="theme ?? 'light'"
+                    :language="SKILL_LOCALE"
+                    :toolbars="SKILL_EDITOR_TOOLBARS"
+                    :sanitize="DOMPurify.sanitize"
+                    mode="full"
+                    data-test="field-body"
+                />
+                <ul
+                    v-for="entry in fieldErrors('body')"
+                    :key="entry.code + entry.message"
+                    class="mt-1 text-xs text-destructive"
+                    data-test="field-error"
+                >
+                    {{ entry.message }}
+                </ul>
+
                 <p
                     v-if="sidecars.length === 0"
-                    class="text-xs text-muted-foreground"
+                    class="mt-1.5 text-xs text-muted-foreground"
                     data-test="sidecars-empty"
                 >
-                    No sidecar files. References, templates and examples live in files
-                    next to SKILL.md; the file set is replaced wholesale on save.
+                    No sidecar files. References, templates and examples live in
+                    files next to SKILL.md; the file set is replaced wholesale on
+                    save. “Add file” creates one and puts the cursor in it.
                 </p>
-                <div
-                    v-for="(row, index) in sidecars"
-                    :key="index"
-                    class="mb-2 rounded-lg border border-border p-2.5"
-                >
-                    <div class="flex items-center gap-2">
-                        <input
-                            v-model="row.path"
-                            type="text"
-                            placeholder="examples/invoice.md"
-                            class="h-9 flex-1 rounded-lg border border-input bg-background px-3 font-mono text-xs"
-                            :aria-label="`Sidecar path ${index + 1}`"
-                            data-test="sidecar-path"
-                        />
-                        <button
-                            type="button"
-                            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                            :aria-label="`Remove sidecar ${index + 1}`"
-                            data-test="remove-sidecar"
-                            @click="removeSidecarPath(index)"
-                        >
-                            <Trash2 class="h-3.5 w-3.5" />
-                        </button>
-                    </div>
-                    <textarea
-                        v-model="row.content"
-                        rows="4"
-                        placeholder="File contents…"
-                        class="mt-2 w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs"
-                        :aria-label="`Sidecar contents ${index + 1}`"
-                        data-test="sidecar-content"
-                    />
-                </div>
             </div>
 
             <div class="flex flex-wrap items-center gap-3 border-t border-border pt-4">

@@ -1,30 +1,18 @@
 /**
- * Mount/unmount contract — exercises `src/main.ts → SporaApp`.
+ * Mount/unmount contract for `src/main.ts → SporaApp`, end-to-end against a fake
+ * DOM target. `main.ts` builds the Vue app, installs Pinia + the local router, and
+ * exposes `mount()` / `unmount()` for the host's `apps/registry.ts`.
  *
- * `main.ts` is the plugin bootstrap: it builds the Vue app, installs
- * Pinia + the local router, and exposes `mount()` / `unmount()` for
- * the host's `apps/registry.ts` to call. We test the contract
- * end-to-end against a fake DOM target — verifying:
- *
- *   1. `mount()` creates a Vue app and renders the plugin's CSS scope
- *      root into the target.
- *   2. The plugin's API bridge receives the host's typed REST client
- *      so descendants (`getApi()`) resolve at runtime, not just at
- *      compile time.
- *   3. `unmount()` is idempotent — calling it before mount, twice in a
- *      row, or after mount all leave the target in a clean state.
- *   4. `window.SporaAppCustomSkills` is installed (the IIFE lib wrapper
- *      also does this at build time; doing it again here makes the dev
- *      entry work standalone).
+ * The two load-bearing cases: the plugin's API bridge must receive the host's
+ * client so descendants' `getApi()` resolves at runtime, not just at compile time;
+ * and `unmount()` must be idempotent before, after and twice over a mount.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { PluginHostContext } from '../src/shims'
 
 function makeHostContext(): PluginHostContext {
-    // `SkillsPage` runs on mount and calls `api.get('/principals/me')`,
-    // `/custom-skills`, `/skills` and `/agents`. Return empty envelopes
-    // for each so the fetches resolve instead of blowing up with
-    // "Cannot read properties of undefined".
+    // `SkillsPage` fetches these four envelopes on mount; empty ones resolve
+    // instead of blowing up with "Cannot read properties of undefined".
     const get = vi.fn().mockImplementation((path: string) => {
         if (path === '/principals/me') return Promise.resolve({ principals: [] })
         if (path === '/custom-skills') return Promise.resolve({ skills: [] })
@@ -56,8 +44,8 @@ function makeTarget(): HTMLElement {
 
 beforeEach(() => {
     document.body.innerHTML = ''
-    // Reset module cache so each test re-evaluates `main.ts` and the
-    // `window.SporaAppCustomSkills` assignment lands fresh.
+    // Reset the module cache so the `window.SporaAppCustomSkills` assignment
+    // lands fresh in each test.
     vi.resetModules()
     delete (window as unknown as { SporaAppCustomSkills?: unknown }).SporaAppCustomSkills
 })
@@ -82,9 +70,8 @@ describe('SporaApp (main.ts mount contract)', () => {
         const hostContext = makeHostContext()
         await main.default.mount(target, hostContext)
         await new Promise((r) => setTimeout(r, 0))
-        // App.vue's `#spora-plugin-custom-skills` wrapper is the anchor
-        // every Tailwind utility in the bundle is nested beneath. Losing
-        // it unscopes the plugin CSS into the host.
+        // `#spora-plugin-custom-skills` is the anchor every Tailwind utility nests
+        // beneath; losing it unscopes the plugin CSS into the host.
         expect(target.querySelector('#spora-plugin-custom-skills')).not.toBeNull()
         expect(target.querySelector('main')).not.toBeNull()
     })
@@ -95,9 +82,8 @@ describe('SporaApp (main.ts mount contract)', () => {
         const target = makeTarget()
         const hostContext = makeHostContext()
         await main.default.mount(target, hostContext)
-        // The bridge's `getApi()` must now resolve to the same instance
-        // we passed in via `hostContext.api` (not throw "Plugin API
-        // not initialized").
+        // Must resolve to the instance passed via `hostContext.api`, not throw
+        // "Plugin API not initialized".
         expect(client.getApi()).toBe(hostContext.api)
     })
 
@@ -123,9 +109,8 @@ describe('SporaApp (main.ts mount contract)', () => {
         const target = makeTarget()
         await main.default.mount(target, makeHostContext())
         await new Promise((r) => setTimeout(r, 0))
-        // `SkillsPage` calls `useRoute()` / `useRouter()` unconditionally;
-        // an unbound router leaves the selected skill unaddressable and
-        // emits an injection warning.
+        // `SkillsPage` calls `useRoute()` / `useRouter()` unconditionally; an
+        // unbound router leaves the selected skill unaddressable and warns.
         expect(target.querySelector('[data-test="pane-mine"]')).not.toBeNull()
         expect(target.querySelector('[data-test="pane-preshipped"]')).not.toBeNull()
     })

@@ -1,32 +1,24 @@
 /**
- * Wire shapes for the custom-skills admin panel.
- *
- * `CustomSkillResource` mirrors the published REST contract in
+ * Wire shapes mirroring the published REST contract in
  * https://docs.spora-ai.com/reference/api#custom-skills-spora-plugin-custom-skills
- * field for field. Do not rename or re-type anything here without
- * updating the contract — the PHP `CustomSkillResource` serialiser is the other
- * half of this pair and the two are not derivable from each other.
+ * field for field. The PHP `CustomSkillResource` serialiser is the other half of
+ * this pair and the two are not derivable from each other, so do not rename or
+ * re-type anything without updating the contract.
  */
 
-/** One entry in a skill's file manifest. `SKILL.md` is always index 0. */
+/** `SKILL.md` is always index 0 — the cards read the body size from `files[0]`. */
 export interface CustomSkillFile {
     path: string
     bytes: number
 }
 
-/**
- * Who last wrote the skill. `agent` means an agent ran the
- * `manage_skill` tool; `human` means an operator used this panel.
- * The editor surfaces this as "Last edited by agent · 14:02" so an
- * operator can tell an automated rewrite from their own edit.
- */
+/** `agent` = an agent ran `manage_skill`; `human` = an operator used this panel. */
 export type SkillProvenance = 'human' | 'agent'
 
 /**
- * One `SkillValidator` finding. `path` is the frontmatter key the
- * finding applies to (`name`, `description`, `body`, …) and is what
- * the editor matches on to place the message under the right field.
- * Entries without a `path` are surfaced in the warnings banner only.
+ * `path` is the frontmatter key the finding applies to, and is what the editor
+ * matches on to place the message under the right field. Without one, the finding
+ * can only go to the warnings banner.
  */
 export interface SkillValidationEntry {
     code: string
@@ -35,7 +27,6 @@ export interface SkillValidationEntry {
     path?: string
 }
 
-/** GET /api/v1/custom-skills responses. */
 export interface CustomSkillResource {
     id: number
     principal_id: number
@@ -64,7 +55,6 @@ export interface CustomSkillResource {
     warning_count: number
 }
 
-/** POST /api/v1/custom-skills body. */
 export interface CreateSkillDto {
     name: string
     description: string
@@ -78,26 +68,23 @@ export interface CreateSkillDto {
 }
 
 /**
- * PUT /api/v1/custom-skills/{name} body. `name` is deliberately
- * absent — the contract rejects a rename with 422 `VALIDATION_ERROR`.
+ * `name` is deliberately absent — the contract rejects a rename with 422
+ * `VALIDATION_ERROR`.
  */
 export type UpdateSkillDto = Omit<CreateSkillDto, 'name'>
 
-/** DELETE /api/v1/custom-skills/{name} body. */
 export interface DeleteSkillResult {
     deleted: boolean
     name: string
     /**
-     * Agents whose `allowed_skills` the delete scrubbed. Agent-level
-     * only — the principal-level default is scrubbed silently. The
-     * delete confirmation dialog names these BEFORE the write, because
-     * deleting a skill is a multi-agent config change the operator
-     * would otherwise only discover from a failing agent run.
+     * Agent-level only — the principal-level default is scrubbed silently. The
+     * delete confirmation names these BEFORE the write, because a delete is a
+     * multi-agent config change the operator would otherwise only discover from
+     * a failing agent run.
      */
     scrubbed_agents: Array<{ id: number; name: string }>
 }
 
-/** One entry of GET /api/v1/custom-skills/{name}/allowlist. */
 export interface SkillAllowlistEntry {
     id: number
     name: string
@@ -105,7 +92,6 @@ export interface SkillAllowlistEntry {
     scope: 'agent' | 'principal'
 }
 
-/** GET /api/v1/custom-skills/{name}/files/{path} body. */
 export interface SkillFileContent {
     path: string
     content: string
@@ -113,10 +99,9 @@ export interface SkillFileContent {
 }
 
 /**
- * Pre-shipped skills come from the HOST (`GET /api/v1/skills`), never
- * from this plugin — the frozen contract lists them under "Not
- * endpoints". These two shapes mirror `spora-frontend/src/types/skill.ts`
- * so the panes agree on field names with the host's own Skill tool UI.
+ * From the HOST (`GET /api/v1/skills`), never this plugin — the frozen contract
+ * lists them under "Not endpoints". Mirrors `spora-frontend/src/types/skill.ts` so
+ * both UIs agree on field names.
  */
 export interface PreShippedSkillSummary {
     name: string
