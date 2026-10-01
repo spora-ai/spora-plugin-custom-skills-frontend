@@ -21,8 +21,20 @@ import { computed, ref, useId, watch } from 'vue'
 import { MdEditor, MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import DOMPurify from 'dompurify'
-import { ChevronDown, Copy, FileText, Lock, MoreHorizontal, Plus, Save, Trash2 } from 'lucide-vue-next'
-import { errorsForField, formatBytes, unattachedErrors, byteSize, lineCount, MAX_FILE_BYTES } from '../lib/skillFormat'
+import { ChevronDown, ChevronRight, Copy, FileText, Folder, Lock, MoreHorizontal, Plus, Save, Trash2 } from 'lucide-vue-next'
+import {
+    errorsForField,
+    fileKind,
+    fileTree,
+    flattenTree,
+    folderPaths,
+    formatBytes,
+    isMarkdownPath,
+    unattachedErrors,
+    byteSize,
+    lineCount,
+    MAX_FILE_BYTES,
+} from '../lib/skillFormat'
 import { MARKDOWN_LOCALE } from '../lib/markdownLocale'
 import type { CustomSkillResource, SkillValidationEntry, UpdateSkillDto } from '../types'
 
@@ -131,6 +143,36 @@ function closeMenu(): void {
     menuOpen.value = false
 }
 
+/**
+ * The rail's tree, and which folders are open.
+ *
+ * Everything collapses when the file set changes, because a folder that was open
+ * may no longer exist and a rail that silently keeps a stale expansion looks
+ * like data loss.
+ */
+const tree = computed(() => fileTree(sidecars.value.map((row) => row.path)))
+const folders = computed(() => folderPaths(tree.value))
+const collapsed = ref<string[]>([])
+const rows = computed(() => flattenTree(tree.value, collapsed.value))
+
+const isCollapsed = (path: string): boolean => collapsed.value.includes(path)
+
+function toggleFolder(path: string): void {
+    collapsed.value = isCollapsed(path)
+        ? collapsed.value.filter((p) => p !== path)
+        : [...collapsed.value, path]
+}
+
+/** The folder a new file should land in: the deepest one holding the open file. */
+const targetFolder = computed(() => {
+    const parent = activePath.value.includes('/')
+        ? activePath.value.slice(0, activePath.value.lastIndexOf('/'))
+        : ''
+    // Only if it is on screen — adding into a collapsed folder the operator
+    // cannot see is worse than adding at the root.
+    return folders.value.includes(parent) && !isCollapsed(parent) ? parent : ''
+})
+
 const activeSidecarIndex = computed(() => sidecars.value.findIndex((row) => row.path === activePath.value))
 const activeSidecar = computed(() =>
     activeSidecarIndex.value >= 0 ? sidecars.value[activeSidecarIndex.value] ?? null : null,
@@ -155,6 +197,7 @@ const activeContent = computed<string>({
 
 const totalLines = computed(() => lineCount(activeContent.value))
 const totalBytes = computed(() => byteSize(activeContent.value))
+const activeIsMarkdown = computed(() => isMarkdownPath(activePath.value))
 const showRestore = computed(() => props.skill.has_previous)
 
 /**
@@ -241,8 +284,14 @@ watch(
     { deep: true, immediate: true },
 )
 
-function fileSize(path: string): number {
-    if (path === SKILL_ENTRY_FILE) return byteSize(body.value)
+watch(
+    () => props.skill,
+    () => {
+        collapsed.value = []
+    },
+)
+
+function fileSize(path: string): number {    if (path === SKILL_ENTRY_FILE) return byteSize(body.value)
     return byteSize(sidecars.value.find((row) => row.path === path)?.content ?? '')
 }
 
@@ -254,10 +303,11 @@ function fileSize(path: string): number {
 function addSidecar(): void {
     const taken = new Set(sidecars.value.map((r) => r.path))
     let n = sidecars.value.length + 1
-    let path = `notes-${n}.md`
+    const folder = targetFolder.value === '' ? '' : `${targetFolder.value}/`
+    let path = `${folder}notes-${n}.md`
     while (taken.has(path)) {
         n += 1
-        path = `notes-${n}.md`
+        path = `${folder}notes-${n}.md`
     }
     sidecars.value = [...sidecars.value, { path, content: '' }]
     activePath.value = path
@@ -361,31 +411,50 @@ function handleSubmit(): void {
                     </span>
                 </button>
 
-                <button
-                    v-for="row in sidecars"
-                    :key="row.path"
-                    type="button"
-                    class="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[13px] transition-colors hover:bg-background"
-                    :class="activePath === row.path ? 'bg-background shadow-sm ring-1 ring-border' : ''"
-                    data-test="rail-file"
-                    @click="activePath = row.path"
-                >
-                    <FileText class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <input
-                        v-if="activePath === row.path"
-                        :value="row.path"
-                        type="text"
-                        :aria-label="`Path for ${row.path}`"
-                        class="min-w-0 flex-1 bg-transparent font-mono text-[13px] outline-none"
-                        data-test="sidecar-path"
-                        @click.stop
-                        @input="renameActiveSidecar(($event.target as HTMLInputElement).value)"
-                    />
-                    <span v-else class="min-w-0 flex-1 truncate">{{ row.path }}</span>
-                    <span class="shrink-0 text-[10px] text-muted-foreground">
-                        {{ formatBytes(fileSize(row.path)) }}
-                    </span>
-                </button>
+                <template v-for="row in rows" :key="row.path">
+                    <button
+                        v-if="row.kind === 'folder'"
+                        type="button"
+                        class="flex w-full items-center gap-1.5 rounded-md py-1.5 pr-2 text-left font-mono text-[13px] text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                        :style="{ paddingLeft: `${0.5 + row.depth * 0.75}rem` }"
+                        :aria-expanded="!isCollapsed(row.path)"
+                        :data-test="`rail-folder-${row.path}`"
+                        @click="toggleFolder(row.path)"
+                    >
+                        <ChevronRight
+                            class="h-3 w-3 shrink-0 transition-transform"
+                            :class="isCollapsed(row.path) ? '' : 'rotate-90'"
+                        />
+                        <Folder class="h-3.5 w-3.5 shrink-0" />
+                        <span class="truncate">{{ row.name }}</span>
+                    </button>
+
+                    <button
+                        v-else
+                        type="button"
+                        class="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[13px] transition-colors hover:bg-background"
+                        :class="activePath === row.path ? 'bg-background shadow-sm ring-1 ring-border' : ''"
+                        :style="row.depth > 0 ? { paddingLeft: `${1.25 + (row.depth - 1) * 0.75}rem` } : undefined"
+                        :data-test="`rail-file-${row.path}`"
+                        @click="activePath = row.path"
+                    >
+                        <FileText class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <input
+                            v-if="activePath === row.path"
+                            :value="row.path"
+                            type="text"
+                            :aria-label="`Path for ${row.path}`"
+                            class="min-w-0 flex-1 bg-transparent font-mono text-[13px] outline-none"
+                            data-test="sidecar-path"
+                            @click.stop
+                            @input="renameActiveSidecar(($event.target as HTMLTextAreaElement).value)"
+                        />
+                        <span v-else class="min-w-0 flex-1 truncate">{{ row.name }}</span>
+                        <span class="shrink-0 text-[10px] text-muted-foreground">
+                            {{ formatBytes(fileSize(row.path)) }}
+                        </span>
+                    </button>
+                </template>
             </nav>
 
             <!-- Why the rail cannot be empty, stated once, where someone who just
@@ -687,6 +756,7 @@ function handleSubmit(): void {
                 <div v-if="mode !== 'preview'" class="min-h-0 overflow-hidden">
                     <div :aria-label="`${activePath} source`" data-test="desk-source">
                         <MdEditor
+                            v-if="activeIsMarkdown"
                             :id="idFor('editor')"
                             :model-value="activeContent"
                             :theme="theme ?? 'light'"
@@ -699,6 +769,22 @@ function handleSubmit(): void {
                             class="h-full min-h-[18rem]"
                             @update:model-value="activeContent = $event"
                         />
+                        <!--
+                            A markdown editor for a `.json` or `.py` sidecar would
+                            offer bold and task lists, and the preview pane would
+                            render the file as prose. The contract allows any file
+                            type, so anything that is not markdown gets a plain
+                            monospace field.
+                        -->
+                        <textarea
+                            v-else
+                            :value="activeContent"
+                            :readonly="readOnly"
+                            spellcheck="false"
+                            class="h-full min-h-[18rem] w-full resize-none overflow-auto bg-transparent p-4 font-mono text-[13px] leading-[1.65] outline-none"
+                            data-test="plain-source"
+                            @input="activeContent = ($event.target as HTMLTextAreaElement).value"
+                        />
                     </div>
                 </div>
 
@@ -708,6 +794,7 @@ function handleSubmit(): void {
                     data-test="desk-preview"
                 >
                     <MdPreview
+                        v-if="activeIsMarkdown"
                         :id="`desk-preview-${skill.name}`"
                         class="md-preview"
                         :model-value="activeContent"
@@ -715,6 +802,11 @@ function handleSubmit(): void {
                         :language="EDITOR_LOCALE"
                         :sanitize="DOMPurify.sanitize"
                     />
+                    <pre
+                        v-else
+                        class="whitespace-pre-wrap break-words font-mono text-[13px] leading-[1.65]"
+                        data-test="plain-preview"
+                    >{{ activeContent }}</pre>
                 </div>
             </div>
 
@@ -724,7 +816,8 @@ function handleSubmit(): void {
             >
                 <span class="font-mono" data-test="desk-footer-file">{{ activePath }}</span>
                 <span>UTF-8</span>
-                <span v-if="activePath.endsWith('.md')">Markdown</span>
+                <span v-if="activeIsMarkdown">Markdown</span>
+                <span v-else>{{ fileKind(activePath) }}</span>
                 <span class="ml-auto">
                     <template v-if="readOnly">
                         shipped<span v-if="shippedSource"> · {{ shippedSource }}</span>

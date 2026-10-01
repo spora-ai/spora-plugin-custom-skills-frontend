@@ -257,6 +257,126 @@ export function sidecarFiles(skill: CustomSkillResource) {
     return skill.files.filter((f) => f.path !== 'SKILL.md')
 }
 
+/**
+ * Whether a path is markdown, and therefore gets `md-editor-v3`.
+ *
+ * The contract puts no restriction on what a sidecar may be — the validator has
+ * no per-file rule and the writer only caps bytes — so `examples/data.json` and
+ * `scripts/build.py` are legitimate. A markdown editor is wrong for them: the
+ * toolbar would offer bold and task lists for a JSON document, and the preview
+ * pane would render the file as prose.
+ */
+export function isMarkdownPath(path: string): boolean {
+    return path.toLowerCase().endsWith('.md')
+}
+
+/**
+ * A readable name for a non-markdown file, for the footer.
+ *
+ * The extension is the only thing the panel knows about it — there is no
+ * language negotiation, and guessing one from a three-letter extension would be
+ * a lie more often than not.
+ */
+export function fileKind(path: string): string {
+    if (isMarkdownPath(path)) return 'Markdown'
+    const extension = path.slice(path.lastIndexOf('.') + 1)
+    return extension === path || extension === '' ? 'Text' : extension.toUpperCase()
+}
+
+/** A node in the file rail: a folder has children, a file does not. */
+export interface FileTreeNode {
+    /** The segment shown in the rail — a folder name or a file's basename. */
+    name: string
+    /** The full path, which is the file's identity. Folders carry their prefix. */
+    path: string
+    children: FileTreeNode[]
+}
+
+/**
+ * The rail's tree, derived from the stored paths.
+ *
+ * Folders are not stored: the contract's `files` is a flat `path => content` map,
+ * so a directory exists exactly as long as a file inside it does and there is
+ * nothing to persist for an empty one. Creating `references/api.md` is what makes
+ * `references/` exist, which is why this is derived rather than modelled.
+ *
+ * Folders sort before files at every level, and both sort alphabetically, so the
+ * order does not shift as files are added.
+ */
+export function fileTree(paths: string[]): FileTreeNode[] {
+    const root: FileTreeNode = { name: '', path: '', children: [] }
+
+    for (const path of [...paths].sort()) {
+        const segments = path.split('/').filter((segment) => segment !== '')
+        if (segments.length === 0) continue
+
+        let node = root
+        let walked = ''
+        segments.forEach((segment, index) => {
+            walked = walked === '' ? segment : `${walked}/${segment}`
+            const isLeaf = index === segments.length - 1
+            let child = node.children.find((candidate) => candidate.name === segment)
+            if (!child) {
+                child = { name: segment, path: walked, children: [] }
+                node.children.push(child)
+            }
+            if (isLeaf) child.children = []
+            node = child
+        })
+    }
+
+    const order = (nodes: FileTreeNode[]): FileTreeNode[] =>
+        [...nodes]
+            .sort((a, b) => {
+                const folderA = a.children.length > 0 ? 0 : 1
+                const folderB = b.children.length > 0 ? 0 : 1
+                return folderA !== folderB ? folderA - folderB : a.name.localeCompare(b.name)
+            })
+            .map((node) => (node.children.length > 0 ? { ...node, children: order(node.children) } : node))
+
+    return order(root.children)
+}
+
+/** Every folder path in a tree, e.g. `['examples', 'examples/invoice']`. */
+export function folderPaths(nodes: FileTreeNode[]): string[] {
+    return nodes.flatMap((node) =>
+        node.children.length > 0 ? [node.path, ...folderPaths(node.children)] : [],
+    )
+}
+
+/** One row of the rail: a folder, or a file at `depth` levels down. */
+export interface FlatRow {
+    kind: 'folder' | 'file'
+    name: string
+    path: string
+    depth: number
+}
+
+/**
+ * The tree as a flat list, skipping the contents of collapsed folders.
+ *
+ * A flat list rather than a recursive component: the rail is one `v-for`, the
+ * indent is a number, and the expand/collapse rule is a filter that can be
+ * tested without mounting anything.
+ */
+export function flattenTree(nodes: FileTreeNode[], collapsed: string[] = []): FlatRow[] {
+    const rows: FlatRow[] = []
+    const walk = (list: FileTreeNode[], depth: number): void => {
+        for (const node of list) {
+            if (node.children.length === 0) {
+                rows.push({ kind: 'file', name: node.name, path: node.path, depth })
+                continue
+            }
+            const isOpen = !collapsed.includes(node.path)
+            rows.push({ kind: 'folder', name: node.name, path: node.path, depth })
+            if (isOpen) walk(node.children, depth + 1)
+        }
+    }
+    walk(nodes, 0)
+
+    return rows
+}
+
 export function formatBytes(bytes: number): string {
     if (!Number.isFinite(bytes) || bytes < 0) return '—'
     if (bytes < 1024) return `${bytes} B`

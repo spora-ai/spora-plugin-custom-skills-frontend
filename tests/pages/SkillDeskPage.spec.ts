@@ -154,7 +154,7 @@ describe('SkillDeskPage → opening', () => {
             'examples/invoice.md',
             7,
         )
-        await wrapper.findAll('[data-test="rail-file"]')[0]?.trigger('click')
+        await wrapper.findAll('[data-test^="rail-file-"]')[0]?.trigger('click')
         expect((wrapper.get('[data-testid="md-editor-stub"]').element as HTMLTextAreaElement).value).toBe('# Example')
     })
 
@@ -164,7 +164,7 @@ describe('SkillDeskPage → opening', () => {
         mockedApi.getSkillFile.mockRejectedValue(new Error('413 FILE_TOO_LARGE'))
         const wrapper = await mountOn('invoice-drafting')
         await flushPromises()
-        await wrapper.findAll('[data-test="rail-file"]')[0]?.trigger('click')
+        await wrapper.findAll('[data-test^="rail-file-"]')[0]?.trigger('click')
         expect((wrapper.get('[data-testid="md-editor-stub"]').element as HTMLTextAreaElement).value).toBe('')
     })
 

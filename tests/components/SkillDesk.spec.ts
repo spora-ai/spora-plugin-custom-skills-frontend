@@ -26,13 +26,13 @@ describe('SkillDesk → the rail cannot be empty', () => {
         const rail = wrapper.get('[data-test="file-rail"]')
         expect(rail.findAll('[data-test="rail-entry"]')).toHaveLength(1)
         expect(rail.findAll('[data-test="rail-entry"]')[0]?.text()).toContain('SKILL.md')
-        expect(rail.findAll('[data-test="rail-file"]')).toHaveLength(1)
+        expect(rail.findAll('[data-test^="rail-file-"]')).toHaveLength(1)
     })
 
     it('offers SKILL.md even for a skill with no sidecars at all', () => {
         const wrapper = mountDesk({ skill: makeSkill({ files: [{ path: 'SKILL.md', bytes: 10 }] }) })
         expect(wrapper.findAll('[data-test="rail-entry"]')).toHaveLength(1)
-        expect(wrapper.findAll('[data-test="rail-file"]')).toHaveLength(0)
+        expect(wrapper.findAll('[data-test^="rail-file-"]')).toHaveLength(0)
     })
 
     it('gives SKILL.md no remove control, and only the sidecar one', async () => {
@@ -40,13 +40,124 @@ describe('SkillDesk → the rail cannot be empty', () => {
         // SKILL.md is the active file, so no sidecar is removable either.
         expect(wrapper.find('[data-test="remove-sidecar"]').exists()).toBe(false)
 
-        await wrapper.findAll('[data-test="rail-file"]')[0]?.trigger('click')
+        await wrapper.findAll('[data-test^="rail-file-"]')[0]?.trigger('click')
         const remove = wrapper.get('[data-test="remove-sidecar"]')
         expect(remove.text()).toContain('examples/invoice.md')
     })
 
     it('says why the rail cannot be emptied', () => {
         expect(mountDesk().get('[data-test="file-rail"]').text()).toContain('Every skill has a')
+    })
+})
+
+describe('SkillDesk → folders', () => {
+    const nested = () => mountDesk({
+        skill: makeSkill({
+            files: [
+                { path: 'SKILL.md', bytes: 10 },
+                { path: 'examples/invoice.md', bytes: 4 },
+                { path: 'examples/cover.md', bytes: 4 },
+                { path: 'data.json', bytes: 12 },
+            ],
+        }),
+        fileContents: { 'examples/invoice.md': '# Invoice', 'examples/cover.md': '# Cover', 'data.json': '{}' },
+    })
+
+    it('groups sidecars under a folder row rather than a flat list', () => {
+        const wrapper = nested()
+        expect(wrapper.find('[data-test="rail-folder-examples"]').exists()).toBe(true)
+        // The leaf shows its basename; the folder is what carries the prefix.
+        expect(wrapper.get('[data-test="rail-file-examples/invoice.md"]').text()).toContain('invoice.md')
+        expect(wrapper.find('[data-test="rail-file-data.json"]').exists()).toBe(true)
+    })
+
+    it('collapses and expands a folder', async () => {
+        const wrapper = nested()
+        const folder = wrapper.get('[data-test="rail-folder-examples"]')
+        expect(folder.attributes('aria-expanded')).toBe('true')
+
+        await folder.trigger('click')
+        expect(wrapper.find('[data-test="rail-file-examples/invoice.md"]').exists()).toBe(false)
+        // The folder itself stays, or there would be no way back.
+        expect(wrapper.find('[data-test="rail-folder-examples"]').exists()).toBe(true)
+
+        await wrapper.get('[data-test="rail-folder-examples"]').trigger('click')
+        expect(wrapper.find('[data-test="rail-file-examples/invoice.md"]').exists()).toBe(true)
+    })
+
+    it('puts a new file inside the folder the open file is in', async () => {
+        const wrapper = nested()
+        await wrapper.get('[data-test="rail-file-examples/invoice.md"]').trigger('click')
+        await wrapper.get('[data-test="add-file"]').trigger('click')
+        // It belongs where the operator is working, not at the root.
+        const added = wrapper.findAll('[data-test^="rail-file-examples/notes-"]')
+        expect(added.length).toBeGreaterThan(0)
+        // And it is the open file, ready to be typed into.
+        expect((wrapper.get('[data-test="sidecar-path"]').element as HTMLInputElement).value).toContain('examples/notes-')
+    })
+
+    it('adds at the root when the open file is at the root', async () => {
+        const wrapper = nested()
+        await wrapper.get('[data-test="add-file"]').trigger('click')
+        expect(wrapper.findAll('[data-test^="rail-file-notes-"]').length).toBeGreaterThan(0)
+        expect((wrapper.get('[data-test="sidecar-path"]').element as HTMLInputElement).value).not.toContain('/')
+    })
+
+    it('renames a file into a new folder by typing the path', async () => {
+        const wrapper = nested()
+        await wrapper.get('[data-test="rail-file-data.json"]').trigger('click')
+        await wrapper.get('[data-test="sidecar-path"]').setValue('config/settings.json')
+        // The folder appears because a file inside it now exists.
+        expect(wrapper.find('[data-test="rail-folder-config"]').exists()).toBe(true)
+        expect(wrapper.find('[data-test="rail-file-config/settings.json"]').exists()).toBe(true)
+    })
+})
+
+describe('SkillDesk → files that are not markdown', () => {
+    const withJson = () => mountDesk({
+        skill: makeSkill({
+            files: [{ path: 'SKILL.md', bytes: 10 }, { path: 'data.json', bytes: 12 }],
+        }),
+        fileContents: { 'data.json': '{"a":1}' },
+    })
+
+    it('does not offer a markdown toolbar for a JSON sidecar', async () => {
+        const wrapper = withJson()
+        await wrapper.get('[data-test="rail-file-data.json"]').trigger('click')
+        expect(wrapper.find('[data-testid="md-editor-stub"]').exists()).toBe(false)
+        expect(wrapper.find('[data-test="plain-source"]').exists()).toBe(true)
+    })
+
+    it('does not render a JSON sidecar as prose in the preview', async () => {
+        const wrapper = withJson()
+        await wrapper.get('[data-test="rail-file-data.json"]').trigger('click')
+        expect(wrapper.find('[data-testid="md-preview-stub"]').exists()).toBe(false)
+        expect(wrapper.get('[data-test="plain-preview"]').text()).toBe('{"a":1}')
+    })
+
+    it('names the format in the footer rather than claiming Markdown', async () => {
+        const wrapper = withJson()
+        await wrapper.get('[data-test="rail-file-data.json"]').trigger('click')
+        expect(wrapper.get('[data-test="desk-footer"]').text()).toContain('JSON')
+        expect(wrapper.get('[data-test="desk-footer"]').text()).not.toContain('Markdown')
+    })
+
+    it('keeps the markdown surface for a markdown sidecar', async () => {
+        const wrapper = mountDesk({
+            skill: makeSkill({ files: [{ path: 'SKILL.md', bytes: 10 }, { path: 'ref.md', bytes: 4 }] }),
+            fileContents: { 'ref.md': '# Ref' },
+        })
+        await wrapper.get('[data-test="rail-file-ref.md"]').trigger('click')
+        expect(wrapper.find('[data-testid="md-editor-stub"]').exists()).toBe(true)
+        expect(wrapper.find('[data-test="plain-source"]').exists()).toBe(false)
+    })
+
+    it('writes a non-markdown sidecar back to its own file', async () => {
+        const wrapper = withJson()
+        await wrapper.get('[data-test="rail-file-data.json"]').trigger('click')
+        await wrapper.get('[data-test="plain-source"]').setValue('{"a":2}')
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+        expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({ files: { 'data.json': '{"a":2}' } })
     })
 })
 
@@ -95,7 +206,7 @@ describe('SkillDesk → the header', () => {
         const wrapper = mountDesk({
             skill: makeSkill({ files: [{ path: 'SKILL.md', bytes: 10 }, { path: 'examples/a.md', bytes: 4 }] }),
         })
-        await wrapper.findAll('[data-test="rail-file"]')[0]?.trigger('click')
+        await wrapper.findAll('[data-test^="rail-file-"]')[0]?.trigger('click')
 
         expect(wrapper.find('[data-test="desk-menu"]').exists(), 'the delete lives in the menu').toBe(false)
         expect(wrapper.findAll('svg.lucide-trash-2')).toHaveLength(1)
@@ -121,8 +232,7 @@ describe('SkillDesk → the header', () => {
 })
 
 describe('SkillDesk → the file being written', () => {
-    it('writes in md-editor-v3, so a skill body gets the formatting toolbar', () => {
-        const wrapper = mountDesk({ skill: makeSkill({ body: '# Title' }) })
+    it('writes in md-editor-v3, so a skill body gets the formatting toolbar', () => {        const wrapper = mountDesk({ skill: makeSkill({ body: '# Title' }) })
         const editor = wrapper.get('[data-testid="md-editor-stub"]')
         expect(editor.attributes('data-md-editor')).toBe('true')
 
@@ -158,7 +268,7 @@ describe('SkillDesk → the file being written', () => {
     it('opens on SKILL.md and can be pointed at a sidecar', async () => {
         const wrapper = mountDesk({ fileContents: { 'examples/invoice.md': '# Example body' } })
         expect(wrapper.get('[data-test="desk-source"]').attributes('aria-label')).toBe('SKILL.md source')
-        await wrapper.findAll('[data-test="rail-file"]')[0]?.trigger('click')
+        await wrapper.findAll('[data-test^="rail-file-"]')[0]?.trigger('click')
         expect(wrapper.get('[data-test="desk-source"]').attributes('aria-label')).toBe('examples/invoice.md source')
         expect((wrapper.get('[data-testid="md-editor-stub"]').element as HTMLTextAreaElement).value).toBe('# Example body')
     })
@@ -166,7 +276,7 @@ describe('SkillDesk → the file being written', () => {
     it('writes a sidecar to its own file, not into the body', async () => {
         const wrapper = mountDesk({ fileContents: { 'examples/invoice.md': '' } })
         await wrapper.get('[data-testid="md-editor-stub"]').setValue('# SKILL body')
-        await wrapper.findAll('[data-test="rail-file"]')[0]?.trigger('click')
+        await wrapper.findAll('[data-test^="rail-file-"]')[0]?.trigger('click')
         await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Sidecar body')
         wrapper.get('[data-test="desk-save"]').trigger('click')
 
@@ -184,14 +294,14 @@ describe('SkillDesk → the file being written', () => {
     it('gives a new sidecar a usable path and opens it', async () => {
         const wrapper = mountDesk()
         await wrapper.get('[data-test="add-file"]').trigger('click')
-        const rows = wrapper.findAll('[data-test="rail-file"]')
+        const rows = wrapper.findAll('[data-test^="rail-file-"]')
         expect(rows).toHaveLength(2)
         expect(wrapper.get('[data-test="desk-source"]').attributes('aria-label')).toBe('notes-2.md source')
     })
 
     it('renaming a sidecar keeps its content and moves the save target', async () => {
         const wrapper = mountDesk({ fileContents: { 'examples/invoice.md': '# Example' } })
-        await wrapper.findAll('[data-test="rail-file"]')[0]?.trigger('click')
+        await wrapper.findAll('[data-test^="rail-file-"]')[0]?.trigger('click')
         await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Example')
         await wrapper.get('[data-test="sidecar-path"]').setValue('examples/renamed.md')
         wrapper.get('[data-test="desk-save"]').trigger('click')
@@ -202,7 +312,7 @@ describe('SkillDesk → the file being written', () => {
 
     it('removes the open sidecar and returns to SKILL.md', async () => {
         const wrapper = mountDesk()
-        await wrapper.findAll('[data-test="rail-file"]')[0]?.trigger('click')
+        await wrapper.findAll('[data-test^="rail-file-"]')[0]?.trigger('click')
         await wrapper.get('[data-test="remove-sidecar"]').trigger('click')
         expect(wrapper.get('[data-test="desk-source"]').attributes('aria-label')).toBe('SKILL.md source')
         wrapper.get('[data-test="desk-save"]').trigger('click')
@@ -216,7 +326,7 @@ describe('SkillDesk → the file being written', () => {
         expect(wrapper.get('[data-test="desk-footer"]').text()).toContain('Markdown')
         expect(wrapper.get('[data-test="desk-footer"]').text()).toContain('Maya Fischer')
 
-        await wrapper.findAll('[data-test="rail-file"]')[0]?.trigger('click')
+        await wrapper.findAll('[data-test^="rail-file-"]')[0]?.trigger('click')
         expect(wrapper.get('[data-test="desk-footer-file"]').text()).toBe('examples/invoice.md')
     })
 })
