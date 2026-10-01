@@ -20,7 +20,7 @@
 import { computed, ref, useId, watch } from 'vue'
 import { MdPreview } from 'md-editor-v3'
 import DOMPurify from 'dompurify'
-import { ChevronDown, FileText, Lock, Plus, Save, Trash2 } from 'lucide-vue-next'
+import { ChevronDown, Copy, FileText, Lock, Plus, Save, Trash2 } from 'lucide-vue-next'
 import { errorsForField, formatBytes, unattachedErrors, byteSize, lineCount, MAX_FILE_BYTES } from '../lib/skillFormat'
 import type { CustomSkillResource, SkillValidationEntry, UpdateSkillDto } from '../types'
 
@@ -37,8 +37,26 @@ const props = withDefaults(
         theme?: 'light' | 'dark'
         /** Named in the footer, because "in <principal>" is the desk's scope. */
         principalName?: string
+        /**
+         * A shipped skill opened on this route. The desk is the writing surface,
+         * so a shipped skill has nothing to write to — the host's catalogue
+         * endpoint returns file metadata with no per-file read and no write path
+         * at all. Rendering it read-only here beats bouncing to the plainer
+         * viewer, which is the other place this content is reachable.
+         */
+        readOnly?: boolean
+        /** `core`, a plugin slug, or `project` — shown where the principal goes. */
+        shippedSource?: string | null
     }>(),
-    { saving: false, validationErrors: () => [], fileContents: () => ({}), theme: undefined, principalName: '' },
+    {
+        saving: false,
+        validationErrors: () => [],
+        fileContents: () => ({}),
+        theme: undefined,
+        principalName: '',
+        readOnly: false,
+        shippedSource: null,
+    },
 )
 
 const emit = defineEmits<{
@@ -47,6 +65,7 @@ const emit = defineEmits<{
     restore: [name: string]
     cancel: []
     loadFiles: [name: string]
+    duplicate: [name: string]
 }>()
 
 type DeskMode = 'write' | 'split' | 'preview'
@@ -92,6 +111,17 @@ const activeContent = computed<string>({
 const totalLines = computed(() => lineCount(activeContent.value))
 const totalBytes = computed(() => byteSize(activeContent.value))
 const showRestore = computed(() => props.skill.has_previous)
+
+/**
+ * Why a shipped sidecar is blank.
+ *
+ * `SkillController::detail()` returns `files` as `{path, bytes}` metadata and
+ * there is no per-file read for a shipped skill — the plugin's own sidecar
+ * endpoint is principal-scoped and knows nothing about them. So the rail can
+ * list a file it cannot open, and saying so beats an empty editor that looks
+ * like a failed load.
+ */
+const shippedSidecarNote = 'Shipped sidecar contents are not served — only their size is.'
 
 const draft = computed(() => JSON.stringify({
     description: description.value,
@@ -338,53 +368,67 @@ function handleSubmit(): void {
                 />
                 <span
                     class="ml-1 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset"
-                    :class="dirty
-                        ? 'bg-amber-500/15 text-amber-700 ring-amber-500/25'
-                        : 'bg-muted text-muted-foreground ring-border'"
+                    :class="readOnly
+                        ? 'bg-muted text-muted-foreground ring-border'
+                        : (dirty
+                            ? 'bg-amber-500/15 text-amber-700 ring-amber-500/25'
+                            : 'bg-muted text-muted-foreground ring-border')"
                     data-test="desk-state"
                 >
-                    {{ dirty ? 'unsaved changes' : 'saved' }}
+                    {{ readOnly ? 'read-only' : (dirty ? 'unsaved changes' : 'saved') }}
                 </span>
 
                 <div class="ml-auto flex items-center gap-1.5">
                     <button
-                        v-if="showRestore"
+                        v-if="readOnly"
                         type="button"
-                        :disabled="saving"
-                        class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
-                        data-test="desk-restore"
-                        @click="emit('restore', skill.name)"
+                        class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+                        data-test="desk-duplicate"
+                        @click="emit('duplicate', skill.name)"
                     >
-                        Restore previous version
+                        <Copy class="h-3.5 w-3.5" />
+                        Duplicate
                     </button>
-                    <button
-                        type="button"
-                        class="inline-flex h-8 items-center rounded-lg px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                        data-test="desk-cancel"
-                        @click="emit('cancel')"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="button"
-                        :disabled="saving || !dirty"
-                        class="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                        data-test="desk-save"
-                        @click="handleSubmit"
-                    >
-                        <Save class="h-3.5 w-3.5" />
-                        {{ saving ? 'Saving…' : 'Save skill' }}
-                    </button>
-                    <button
-                        type="button"
-                        :disabled="saving"
-                        class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-                        aria-label="Delete skill"
-                        data-test="desk-delete"
-                        @click="emit('delete', skill.name)"
-                    >
-                        <Trash2 class="h-3.5 w-3.5" />
-                    </button>
+                    <template v-else>
+                        <button
+                            v-if="showRestore"
+                            type="button"
+                            :disabled="saving"
+                            class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
+                            data-test="desk-restore"
+                            @click="emit('restore', skill.name)"
+                        >
+                            Restore previous version
+                        </button>
+                        <button
+                            type="button"
+                            class="inline-flex h-8 items-center rounded-lg px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            data-test="desk-cancel"
+                            @click="emit('cancel')"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            :disabled="saving || !dirty"
+                            class="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                            data-test="desk-save"
+                            @click="handleSubmit"
+                        >
+                            <Save class="h-3.5 w-3.5" />
+                            {{ saving ? 'Saving…' : 'Save skill' }}
+                        </button>
+                        <button
+                            type="button"
+                            :disabled="saving"
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                            aria-label="Delete skill"
+                            data-test="desk-delete"
+                            @click="emit('delete', skill.name)"
+                        >
+                            <Trash2 class="h-3.5 w-3.5" />
+                        </button>
+                    </template>
                 </div>
             </div>
 
@@ -424,7 +468,7 @@ function handleSubmit(): void {
                 </span>
 
                 <button
-                    v-if="activeSidecar"
+                    v-if="activeSidecar && !readOnly"
                     type="button"
                     class="ml-auto inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
                     data-test="remove-sidecar"
@@ -433,7 +477,22 @@ function handleSubmit(): void {
                     <Trash2 class="h-3.5 w-3.5" />
                     Remove {{ activeSidecar.path }}
                 </button>
+                <span v-else-if="activeSidecar" class="ml-auto text-[11px] text-muted-foreground" data-test="sidecar-unavailable">
+                    {{ shippedSidecarNote }}
+                </span>
             </div>
+
+            <!-- A shipped skill has no write path, so the frontmatter is shown as
+                 the specification it is rather than as a form. -->
+            <p
+                v-if="readOnly"
+                class="shrink-0 border-b border-border bg-muted/30 px-4 py-2 text-[11px] text-muted-foreground"
+                data-test="desk-readonly-note"
+            >
+                Shipped with Spora{{ shippedSource ? ` (${shippedSource})` : '' }}. It lives in the
+                installation, not on a principal, so it cannot be edited here — duplicate it to make
+                your own.
+            </p>
 
             <!-- The frontmatter the desk's default view does not show. Closed, so
                  what is on screen is the prototype's screen. -->
@@ -459,6 +518,7 @@ function handleSubmit(): void {
                             v-model="description"
                             type="text"
                             maxlength="1024"
+                            :readonly="readOnly"
                             class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
                             :aria-invalid="fieldErrors('description').length > 0"
                             data-test="field-description"
@@ -481,6 +541,7 @@ function handleSubmit(): void {
                                 v-model="license"
                                 type="text"
                                 placeholder="MIT"
+                                :readonly="readOnly"
                                 class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
                                 :aria-invalid="fieldErrors('license').length > 0"
                                 data-test="field-license"
@@ -495,6 +556,7 @@ function handleSubmit(): void {
                                 v-model="compatibility"
                                 type="text"
                                 placeholder="spora>=0.28"
+                                :readonly="readOnly"
                                 class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
                                 :aria-invalid="fieldErrors('compatibility').length > 0"
                                 data-test="field-compatibility"
@@ -511,6 +573,7 @@ function handleSubmit(): void {
                             v-model="allowedTools"
                             type="text"
                             placeholder="read_email, send_email"
+                            :readonly="readOnly"
                             class="h-9 w-full rounded-lg border border-input bg-background px-3 font-mono text-sm"
                             :aria-invalid="fieldErrors('allowed_tools').length > 0"
                             data-test="field-allowed-tools"
@@ -525,6 +588,7 @@ function handleSubmit(): void {
                             :id="idFor('metadata')"
                             v-model="metadataJson"
                             rows="2"
+                            :readonly="readOnly"
                             :placeholder="METADATA_PLACEHOLDER"
                             class="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs"
                             :aria-invalid="metadataError !== null"
@@ -569,6 +633,7 @@ function handleSubmit(): void {
                     >{{ line }}</span></pre>
                     <textarea
                         :value="activeContent"
+                        :readonly="readOnly"
                         spellcheck="false"
                         class="min-h-0 w-full resize-none overflow-auto bg-transparent p-4 font-mono text-[13px] leading-[1.65] outline-none"
                         :aria-label="`${activePath} source`"
@@ -601,7 +666,12 @@ function handleSubmit(): void {
                 <span>UTF-8</span>
                 <span v-if="activePath.endsWith('.md')">Markdown</span>
                 <span class="ml-auto">
-                    in <span class="font-medium text-foreground">{{ principalName || 'this principal' }}</span>
+                    <template v-if="readOnly">
+                        shipped<span v-if="shippedSource"> · {{ shippedSource }}</span>
+                    </template>
+                    <template v-else>
+                        in <span class="font-medium text-foreground">{{ principalName || 'this principal' }}</span>
+                    </template>
                 </span>
             </footer>
         </div>

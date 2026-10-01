@@ -4,8 +4,9 @@
  * The page's own job, on top of mounting the desk, is lifecycle: a save PUTs
  * without a name (the contract rejects a rename with 422), sidecar contents are
  * fetched on open so a save cannot blank the file set, a delete leaves the route
- * because the row is gone, and a name that is not on this principal says so
- * instead of rendering an empty desk.
+ * because the row is gone, a name that is not on this principal says so
+ * instead of rendering an empty desk, and a name that belongs to the host
+ * catalogue renders the same desk read-only.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
@@ -13,15 +14,24 @@ import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import type { Router } from 'vue-router'
 import SkillDeskPage from '../../src/pages/SkillDeskPage.vue'
 import * as api from '../../src/api/customSkills'
+import * as preshippedApi from '../../src/api/preshippedSkills'
 import { ApiError } from '../../src/api/client'
 import { useSkillsStore } from '../../src/stores/skills'
 import { usePrincipalsStore } from '../../src/stores/principals'
-import { makePrincipal, makeSkill, makeValidationEntry } from '../fixtures'
+import {
+    makePrincipal,
+    makePreShipped,
+    makePreShippedDetail,
+    makeSkill,
+    makeValidationEntry,
+} from '../fixtures'
 import { mountPage, stubRoutes } from '../mountPage'
 
 vi.mock('../../src/api/customSkills')
+vi.mock('../../src/api/preshippedSkills')
 
 const mockedApi = vi.mocked(api)
+const mockedPreShipped = vi.mocked(preshippedApi)
 
 let pinia: Pinia
 let router: Router
@@ -41,6 +51,8 @@ beforeEach(() => {
     mockedApi.getSkillFile.mockResolvedValue({ path: 'examples/invoice.md', content: '# Example', bytes: 9 })
     mockedApi.updateSkill.mockResolvedValue(makeSkill({ body: '# Changed', updated_at: '2026-09-30 15:00:00' }))
     mockedApi.restoreSkill.mockResolvedValue(makeSkill({ has_previous: false, body: '# Old' }))
+    mockedPreShipped.listPreShippedSkills.mockResolvedValue([])
+    mockedPreShipped.getPreShippedSkill.mockResolvedValue(makePreShippedDetail())
 
     const principals = usePrincipalsStore()
     principals.principals = [makePrincipal()]
@@ -70,8 +82,68 @@ describe('SkillDeskPage → opening', () => {
         mockedApi.getSkill.mockRejectedValue(new Error('404 SKILL_NOT_FOUND'))
         const wrapper = await mountOn('nope')
         await flushPromises()
+        expect(mockedPreShipped.listPreShippedSkills).toHaveBeenCalled()
         expect(wrapper.get('[data-test="desk-missing"]').text()).toContain('No skill named “nope”')
         expect(wrapper.find('[data-test="skill-desk"]').exists()).toBe(false)
+    })
+
+    it('renders a shipped skill read-only instead of claiming it does not exist', async () => {
+        // A shipped skill has no row on any principal, so the custom read 404s
+        // for a name that very much exists. Answering "no skill named X" there is
+        // the confusing case worth avoiding.
+        useSkillsStore().skills = []
+        mockedApi.getSkill.mockRejectedValue(new Error('404 SKILL_NOT_FOUND'))
+        mockedPreShipped.listPreShippedSkills.mockResolvedValue([makePreShipped()])
+
+        const wrapper = await mountOn('code-review')
+        await flushPromises()
+
+        expect(mockedPreShipped.getPreShippedSkill).toHaveBeenCalledWith('code-review')
+        expect(wrapper.find('[data-test="desk-missing"]').exists()).toBe(false)
+        expect(wrapper.get('[data-test="desk-title"]').text()).toBe('code-review')
+        expect(wrapper.get('[data-test="desk-state"]').text()).toBe('read-only')
+    })
+
+    it('offers no way to write a shipped skill, and offers Duplicate instead', async () => {
+        useSkillsStore().skills = []
+        mockedApi.getSkill.mockRejectedValue(new Error('404 SKILL_NOT_FOUND'))
+        mockedPreShipped.listPreShippedSkills.mockResolvedValue([makePreShipped()])
+
+        const wrapper = await mountOn('code-review')
+        await flushPromises()
+
+        expect(wrapper.find('[data-test="desk-save"]').exists()).toBe(false)
+        expect(wrapper.find('[data-test="desk-delete"]').exists()).toBe(false)
+        expect(wrapper.find('[data-test="desk-restore"]').exists()).toBe(false)
+        expect(wrapper.find('[data-test="desk-duplicate"]').exists()).toBe(true)
+        expect(wrapper.get('[data-test="desk-source"]').attributes('readonly')).toBeDefined()
+        expect(wrapper.get('[data-test="desk-readonly-note"]').text()).toContain('core')
+    })
+
+    it('duplicates a shipped skill onto the principal and opens the copy', async () => {
+        useSkillsStore().skills = []
+        mockedApi.getSkill.mockRejectedValue(new Error('404 SKILL_NOT_FOUND'))
+        mockedPreShipped.listPreShippedSkills.mockResolvedValue([makePreShipped()])
+        mockedApi.createSkill.mockResolvedValue(makeSkill({ name: 'code-review-2' }))
+
+        const wrapper = await mountOn('code-review')
+        await flushPromises()
+
+        await wrapper.get('[data-test="desk-duplicate"]').trigger('click')
+        await flushPromises()
+
+        expect(mockedApi.createSkill).toHaveBeenCalled()
+        expect(router.currentRoute.value.path).toBe('/skills/code-review-2')
+    })
+
+    it('keeps a custom skill editable, since the catalogue fallback must not leak', async () => {
+        mockedPreShipped.listPreShippedSkills.mockResolvedValue([makePreShipped()])
+        const wrapper = await mountOn('invoice-drafting')
+        await flushPromises()
+
+        expect(wrapper.get('[data-test="desk-state"]').text()).not.toBe('read-only')
+        expect(wrapper.find('[data-test="desk-save"]').exists()).toBe(true)
+        expect(wrapper.find('[data-test="desk-duplicate"]').exists()).toBe(false)
     })
 
     it('fetches the sidecar contents, because save replaces the file set wholesale', async () => {
