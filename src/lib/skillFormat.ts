@@ -306,7 +306,11 @@ export interface FileTreeNode {
 export function fileTree(paths: string[]): FileTreeNode[] {
     const root: FileTreeNode = { name: '', path: '', children: [] }
 
-    for (const path of [...paths].sort()) {
+    // Not sorted here. Input order only decides which node object is created
+    // first; `order()` below is the single place that decides what order they
+    // come out in, so a second sort here was both redundant and a bare
+    // code-unit sort that could disagree with it.
+    for (const path of paths) {
         const segments = path.split('/').filter((segment) => segment !== '')
         if (segments.length === 0) continue
 
