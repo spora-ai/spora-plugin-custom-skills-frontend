@@ -23,11 +23,12 @@ import 'md-editor-v3/lib/style.css'
 import DOMPurify from 'dompurify'
 import { ChevronDown, Copy, FileText, Lock, Plus, Save, Trash2 } from 'lucide-vue-next'
 import { errorsForField, formatBytes, unattachedErrors, byteSize, lineCount, MAX_FILE_BYTES } from '../lib/skillFormat'
+import { MARKDOWN_LOCALE } from '../lib/markdownLocale'
 import type { CustomSkillResource, SkillValidationEntry, UpdateSkillDto } from '../types'
 
 const SKILL_ENTRY_FILE = 'SKILL.md'
 const METADATA_PLACEHOLDER = '{"tier": "pro"}'
-const EDITOR_LOCALE = 'en-US'
+const EDITOR_LOCALE = MARKDOWN_LOCALE
 
 /**
  * The toolbar, mirroring `spora-plugin-memories-frontend`'s editor.
@@ -671,6 +672,7 @@ function handleSubmit(): void {
                         class="md-preview"
                         :model-value="activeContent"
                         :theme="theme ?? 'light'"
+                        :language="EDITOR_LOCALE"
                         :sanitize="DOMPurify.sanitize"
                     />
                 </div>

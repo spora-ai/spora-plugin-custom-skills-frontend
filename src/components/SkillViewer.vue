@@ -18,6 +18,7 @@ import { MdPreview } from 'md-editor-v3'
 import DOMPurify from 'dompurify'
 import { FileText, X, Pencil, Copy, TriangleAlert } from 'lucide-vue-next'
 import { formatBytes, sidecarFiles } from '../lib/skillFormat'
+import { MARKDOWN_LOCALE } from '../lib/markdownLocale'
 import type { CustomSkillResource, PreShippedSkillDetail, SkillValidationEntry } from '../types'
 
 // Local const, not a shared export: `sidecarFiles()` already filters on this
@@ -200,6 +201,7 @@ watch(
                 class="md-preview"
                 :model-value="activeContent ?? ''"
                 :theme="theme ?? 'light'"
+                :language="MARKDOWN_LOCALE"
                 :sanitize="DOMPurify.sanitize"
             />
         </div>
