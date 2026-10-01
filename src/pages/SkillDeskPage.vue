@@ -21,6 +21,7 @@ import type {
     PreShippedSkillSummary,
     UpdateSkillDto,
 } from '../types'
+import { plural } from '../lib/skillFormat'
 
 const route = useRoute()
 const router = useRouter()
@@ -135,20 +136,27 @@ watch(
 )
 
 async function loadSidecarFiles(skillName: string): Promise<void> {
-    const contents: Record<string, string> = {}
-    for (const file of store.skillsByName[skillName]?.files ?? []) {
-        if (file.path === 'SKILL.md') continue
-        try {
-            const content = await api.getSkillFile(skillName, file.path, principals.selectedPrincipalId)
-            contents[file.path] = content.content
-        } catch {
-            // A sidecar that cannot be read (413 over the 50 000-byte cap, or
-            // removed underneath us) is left blank: the manifest still lists it, and
-            // the save-time error is the real signal.
-            contents[file.path] = ''
-        }
-    }
-    fileContents.value = contents
+    const sidecars = (store.skillsByName[skillName]?.files ?? []).filter((f) => f.path !== 'SKILL.md')
+
+    // Read together rather than one at a time. A skill holds at most a couple of
+    // dozen sidecars, and the sequential version made opening a skill with
+    // references cost one round trip per file before the editor was usable.
+    // Each read keeps its own catch, so one unreadable file does not lose the rest.
+    const contents = await Promise.all(
+        sidecars.map(async (file) => {
+            try {
+                const content = await api.getSkillFile(skillName, file.path, principals.selectedPrincipalId)
+                return [file.path, content.content] as const
+            } catch {
+                // A sidecar that cannot be read (413 over the 50 000-byte cap, or
+                // removed underneath us) is left blank: the manifest still lists it, and
+                // the save-time error is the real signal.
+                return [file.path, ''] as const
+            }
+        }),
+    )
+
+    fileContents.value = Object.fromEntries(contents)
 }
 
 async function save(data: UpdateSkillDto): Promise<void> {
@@ -156,7 +164,7 @@ async function save(data: UpdateSkillDto): Promise<void> {
         const saved = await store.updateSkill(name.value, data)
         store.setNotice(
             saved.warning_count > 0
-                ? `Saved with ${saved.warning_count} warning${saved.warning_count === 1 ? '' : 's'} — they are listed above the file.`
+                ? `Saved with ${plural(saved.warning_count, 'warning')} — they are listed above the file.`
                 : null,
         )
     } catch {

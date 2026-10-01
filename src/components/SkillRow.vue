@@ -126,9 +126,11 @@ function submitDelete(): void {
         </div>
 
         <div class="relative shrink-0">
-            <div
+            <button
                 v-if="menuOpen"
-                class="fixed inset-0 z-10"
+                type="button"
+                class="fixed inset-0 z-10 cursor-default"
+                aria-label="Close the menu"
                 data-test="row-menu-backdrop"
                 @click="closeMenu"
             />

@@ -330,7 +330,13 @@ export function fileTree(paths: string[]): FileTreeNode[] {
             .sort((a, b) => {
                 const folderA = a.children.length > 0 ? 0 : 1
                 const folderB = b.children.length > 0 ? 0 : 1
-                return folderA !== folderB ? folderA - folderB : a.name.localeCompare(b.name)
+                if (folderA !== folderB) return folderA - folderB
+                // An explicit locale, not the ambient one: `localeCompare` with
+                // no locale sorts by the *runtime's* collation, so the same file
+                // names order differently on two machines and the rail reshuffles
+                // between them. `en` is also plain codepoint-ish ordering, which
+                // is what a path list wants.
+                return a.name.localeCompare(b.name, 'en')
             })
             .map((node) => (node.children.length > 0 ? { ...node, children: order(node.children) } : node))
 
@@ -382,4 +388,15 @@ export function formatBytes(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/**
+ * `1 warning` / `2 warnings`, without the ternary.
+ *
+ * Every caller needed this inside a message that was itself chosen by a ternary,
+ * which is two conditionals nested in one expression — and the notices that need
+ * it all say the same thing about a count.
+ */
+export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
+    return `${count} ${count === 1 ? singular : pluralForm}`
 }

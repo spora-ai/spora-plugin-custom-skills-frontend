@@ -14,6 +14,7 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import SkillDesk from '../../src/components/SkillDesk.vue'
+import SourceEditor from '../../src/components/SourceEditor.vue'
 import { makeSkill, makeValidationEntry } from '../fixtures'
 
 function mountDesk(props: Record<string, unknown> = {}) {
@@ -125,14 +126,25 @@ describe('SkillDesk → files that are not markdown', () => {
         const wrapper = withJson()
         await wrapper.get('[data-test="rail-file-data.json"]').trigger('click')
         expect(wrapper.find('[data-testid="md-editor-stub"]').exists()).toBe(false)
-        expect(wrapper.find('[data-test="plain-source"]').exists()).toBe(true)
+        expect(wrapper.find('[data-test="source-editor"]').exists()).toBe(true)
+    })
+
+    it('gives a non-markdown sidecar a real code editor, with its language', async () => {
+        const wrapper = withJson()
+        await wrapper.get('[data-test="rail-file-data.json"]').trigger('click')
+        const editor = wrapper.get('[data-test="source-editor"]')
+        // CodeMirror, not a textarea: line numbers, search and a mode.
+        expect(editor.attributes('data-language')).toBe('json')
+        expect(editor.find('.cm-editor').exists()).toBe(true)
+        expect(editor.find('.cm-gutters').exists(), 'line numbers come with basicSetup').toBe(true)
     })
 
     it('does not render a JSON sidecar as prose in the preview', async () => {
         const wrapper = withJson()
         await wrapper.get('[data-test="rail-file-data.json"]').trigger('click')
         expect(wrapper.find('[data-testid="md-preview-stub"]').exists()).toBe(false)
-        expect(wrapper.get('[data-test="plain-preview"]').text()).toBe('{"a":1}')
+        // The source, verbatim — not a markdown rendering of it.
+        expect(wrapper.get('[data-test="source-editor"]').text()).toContain('{"a":1}')
     })
 
     it('names the format in the footer rather than claiming Markdown', async () => {
@@ -149,13 +161,16 @@ describe('SkillDesk → files that are not markdown', () => {
         })
         await wrapper.get('[data-test="rail-file-ref.md"]').trigger('click')
         expect(wrapper.find('[data-testid="md-editor-stub"]').exists()).toBe(true)
-        expect(wrapper.find('[data-test="plain-source"]').exists()).toBe(false)
+        expect(wrapper.find('[data-test="source-editor"]').exists()).toBe(false)
     })
 
     it('writes a non-markdown sidecar back to its own file', async () => {
         const wrapper = withJson()
         await wrapper.get('[data-test="rail-file-data.json"]').trigger('click')
-        await wrapper.get('[data-test="plain-source"]').setValue('{"a":2}')
+        // CodeMirror drives the buffer through `update:modelValue`; emitting it
+        // is the same edge its own listener produces.
+        wrapper.findComponent(SourceEditor).vm.$emit('update:modelValue', '{"a":2}')
+        await wrapper.vm.$nextTick()
         await wrapper.get('[data-test="desk-save"]').trigger('click')
         expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({ files: { 'data.json': '{"a":2}' } })
     })

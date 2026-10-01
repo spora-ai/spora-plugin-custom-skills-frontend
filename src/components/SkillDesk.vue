@@ -22,6 +22,7 @@ import { MdEditor, MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import DOMPurify from 'dompurify'
 import { ChevronDown, ChevronRight, Copy, FileText, Folder, Lock, MoreHorizontal, Plus, Save, Trash2 } from 'lucide-vue-next'
+import SourceEditor from './SourceEditor.vue'
 import {
     errorsForField,
     fileKind,
@@ -528,9 +529,11 @@ function handleSubmit(): void {
                             {{ saving ? 'Saving…' : 'Save skill' }}
                         </button>
                         <div class="relative shrink-0">
-                            <div
+                            <button
                                 v-if="menuOpen"
-                                class="fixed inset-0 z-10"
+                                type="button"
+                                class="fixed inset-0 z-10 cursor-default"
+                                aria-label="Close the menu"
                                 data-test="desk-menu-backdrop"
                                 @click="closeMenu"
                             />
@@ -586,6 +589,7 @@ function handleSubmit(): void {
                      have no way to reach a sidecar at all. -->
                 <select
                     v-model="activePath"
+                    aria-label="File"
                     class="h-7 min-w-0 rounded-lg border border-border bg-background px-2 font-mono text-[11px] md:hidden"
                     data-test="file-select"
                 >
@@ -731,10 +735,9 @@ function handleSubmit(): void {
                 </div>
             </details>
 
-            <div
+            <output
                 v-if="bannerEntries.length > 0"
-                class="shrink-0 rounded-b-lg bg-amber-500/10 px-4 py-2 text-[11px] text-amber-800 dark:text-amber-200"
-                role="status"
+                class="block shrink-0 rounded-b-lg bg-amber-500/10 px-4 py-2 text-[11px] text-amber-800 dark:text-amber-200"
                 data-test="validation-banner"
             >
                 <span
@@ -747,7 +750,7 @@ function handleSubmit(): void {
                     <span v-if="entry.path"> ({{ entry.path }})</span>
                     — {{ entry.message }}
                 </span>
-            </div>
+            </output>
 
             <div
                 class="grid min-h-0 flex-1"
@@ -773,17 +776,15 @@ function handleSubmit(): void {
                             A markdown editor for a `.json` or `.py` sidecar would
                             offer bold and task lists, and the preview pane would
                             render the file as prose. The contract allows any file
-                            type, so anything that is not markdown gets a plain
-                            monospace field.
+                            type, so anything that is not markdown gets CodeMirror
+                            with the mode its extension implies.
                         -->
-                        <textarea
+                        <SourceEditor
                             v-else
-                            :value="activeContent"
-                            :readonly="readOnly"
-                            spellcheck="false"
-                            class="h-full min-h-[18rem] w-full resize-none overflow-auto bg-transparent p-4 font-mono text-[13px] leading-[1.65] outline-none"
-                            data-test="plain-source"
-                            @input="activeContent = ($event.target as HTMLTextAreaElement).value"
+                            :model-value="activeContent"
+                            :path="activePath"
+                            :read-only="readOnly"
+                            @update:model-value="activeContent = $event"
                         />
                     </div>
                 </div>

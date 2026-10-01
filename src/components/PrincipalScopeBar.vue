@@ -108,7 +108,7 @@ watch(
             <button
                 type="button"
                 class="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background pl-1.5 pr-2.5 text-sm transition-colors hover:bg-muted/50"
-                aria-haspopup="listbox"
+                aria-haspopup="menu"
                 :aria-expanded="open"
                 data-test="scope-toggle"
                 @click="open ? (open = false) : openMenu()"
@@ -138,7 +138,7 @@ watch(
             <div
                 v-if="open"
                 class="absolute left-0 top-11 z-40 w-80 overflow-hidden rounded-xl border border-border bg-card shadow-xl"
-                role="listbox"
+                role="menu"
                 aria-label="Choose a principal"
                 data-test="scope-menu"
             >
@@ -149,9 +149,8 @@ watch(
                 <button
                     v-for="principal in principals.principals"
                     :key="principal.id"
-                    role="option"
                     type="button"
-                    :aria-selected="principals.selectedPrincipalId === principal.id"
+                    :aria-current="principals.selectedPrincipalId === principal.id ? 'true' : undefined"
                     class="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-muted"
                     :class="principals.selectedPrincipalId === principal.id ? 'bg-muted ring-1 ring-inset ring-border' : ''"
                     :data-test="`scope-option-${principal.id}`"

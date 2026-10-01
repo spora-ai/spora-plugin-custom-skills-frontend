@@ -5,7 +5,7 @@ import * as api from '../api/customSkills'
 import * as preshippedApi from '../api/preshippedSkills'
 import * as allowlistApi from '../api/agentAllowlist'
 import * as agentsApi from '../api/agents'
-import { forkName } from '../lib/skillFormat'
+import { forkName, plural } from '../lib/skillFormat'
 import { usePrincipalsStore } from './principals'
 import type {
     AgentSummary,
@@ -272,7 +272,7 @@ export const useSkillsStore = defineStore('custom-skills', () => {
             const result = await deleteSkill(name)
             const scrubbed = result.scrubbed_agents.map((a) => a.name)
             notice.value = scrubbed.length > 0
-                ? `Deleted ${result.name} and removed it from ${scrubbed.length} agent${scrubbed.length === 1 ? '' : 's'}: ${scrubbed.join(', ')}.`
+                ? `Deleted ${result.name} and removed it from ${plural(scrubbed.length, 'agent')}: ${scrubbed.join(', ')}.`
                 : `Deleted ${result.name}.`
             return result.name
         } catch {
@@ -324,7 +324,7 @@ export const useSkillsStore = defineStore('custom-skills', () => {
         )
         const missing = detail.files.filter((f) => f.path !== 'SKILL.md')
         notice.value = missing.length > 0
-            ? `Created “${created.name}” from ${source.name}. The host has no per-file read for shipped skills, so re-add ${missing.length} sidecar ${missing.length === 1 ? 'file' : 'files'} (${missing.map((f) => f.path).join(', ')}). It is not on any agent's allowlist yet.`
+            ? `Created “${created.name}” from ${source.name}. The host has no per-file read for shipped skills, so re-add ${plural(missing.length, 'sidecar file')} (${missing.map((f) => f.path).join(', ')}). It is not on any agent's allowlist yet.`
             : `Created “${created.name}” from ${source.name}. It is not on any agent's allowlist yet.`
         return created
     }

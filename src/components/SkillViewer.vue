@@ -17,6 +17,7 @@ import { computed, ref, watch } from 'vue'
 import { MdPreview } from 'md-editor-v3'
 import DOMPurify from 'dompurify'
 import { FileText, X, Pencil, Copy, TriangleAlert } from 'lucide-vue-next'
+import SourceEditor from './SourceEditor.vue'
 import { formatBytes, isMarkdownPath, sidecarFiles } from '../lib/skillFormat'
 import { MARKDOWN_LOCALE } from '../lib/markdownLocale'
 import type { CustomSkillResource, PreShippedSkillDetail, SkillValidationEntry } from '../types'
@@ -207,12 +208,13 @@ watch(
             />
             <!-- A JSON or code sidecar rendered as markdown comes out as prose.
                  Same rule as the desk: markdown gets the renderer, anything else
-                 is shown as it is. -->
-            <pre
+                 gets a real editor, read-only. -->
+            <SourceEditor
                 v-else
-                class="whitespace-pre-wrap break-words font-mono text-[13px] leading-[1.65]"
-                data-test="viewer-plain"
-            >{{ activeContent ?? '' }}</pre>
+                :model-value="activeContent ?? ''"
+                :path="activePath"
+                read-only
+            />
         </div>
 
         <footer class="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">

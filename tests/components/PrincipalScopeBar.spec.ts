@@ -66,7 +66,13 @@ describe('PrincipalScopeBar → the scope control', () => {
         const wrapper = mountBar()
         expect(wrapper.find('[data-test="scope-menu"]').exists()).toBe(false)
         await wrapper.get('[data-test="scope-toggle"]').trigger('click')
-        expect(wrapper.findAll('[role="option"]')).toHaveLength(2)
+        // A `menu` of buttons, not a listbox of fake options: the entries were
+        // always buttons with click handlers, and claiming `option` made a screen
+        // reader announce something the keyboard behaviour did not match.
+        const menu = wrapper.get('[data-test="scope-menu"]')
+        expect(menu.attributes('role')).toBe('menu')
+        expect(menu.findAll('button[data-test^="scope-option-"]')).toHaveLength(2)
+        expect(wrapper.find('[role="option"]').exists()).toBe(false)
     })
 
     it('reads a count per entry, in the principal’s own scope, on open', async () => {
@@ -106,9 +112,9 @@ describe('PrincipalScopeBar → the scope control', () => {
         const wrapper = mountBar()
         await wrapper.get('[data-test="scope-toggle"]').trigger('click')
         await flushPromises()
-        const options = wrapper.findAll('[role="option"]')
-        expect(options[0]?.text()).toContain('Personal')
-        expect(options[1]?.text()).toContain('Group')
+        const entries = wrapper.findAll('button[data-test^="scope-option-"]')
+        expect(entries[0]?.text()).toContain('Personal')
+        expect(entries[1]?.text()).toContain('Group')
         // Asserting "admin" or "member" here would be inventing a fact: the host
         // does not send a role, so the read/write split is stated once for all.
         expect(wrapper.get('[data-test="scope-menu"]').text()).toContain('owner or an admin')
