@@ -223,12 +223,20 @@ describe('SkillViewer', () => {
         expect(wrapper.get('[data-test="viewer-warnings"]').text()).toContain('BODY_SOFT_BYTE_LIMIT')
     })
 
-    it('emits the skill name for edit and close', async () => {
+    it('emits the skill name for edit', async () => {
         const wrapper = mountViewer({ skill: makeSkill() })
         await wrapper.get('[data-test="viewer-edit"]').trigger('click')
-        await wrapper.get('[data-test="viewer-close"]').trigger('click')
         expect(wrapper.emitted('edit')?.[0]).toEqual(['invoice-drafting'])
-        expect(wrapper.emitted('close')).toHaveLength(1)
+    })
+
+    it('offers no way to close, because the page above carries the back-link', () => {
+        // A page body with a dismiss button reads as a dialog, and the second route
+        // out of a page is a step that buys nothing — the back-link already goes
+        // where `close` used to send it.
+        const wrapper = mountViewer({ skill: makeSkill() })
+        expect(wrapper.find('[data-test="viewer-close"]').exists()).toBe(false)
+        expect(wrapper.find('[data-test="viewer-dismiss"]').exists()).toBe(false)
+        expect(wrapper.emitted('close')).toBeUndefined()
     })
 
     it('emits duplicate for a shipped skill', async () => {

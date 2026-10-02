@@ -7,6 +7,12 @@
  * Read-only by construction: every input is a `<dd>` or a preview, and nothing
  * here can emit a write.
  *
+ * No close affordance, in the header or the footer. This is a page body, not a
+ * dialog: the page above it carries a back-link, and both of these buttons emitted
+ * `close` for that same link's destination. Leaving a second way to leave a page is
+ * the kind of redundancy that reads as an extra step, and an ✕ in the corner of a
+ * page says "dismiss" when what it does is "go back".
+ *
  * Shipped skills need a separate component because the host's
  * `SkillController::detail()` returns `files` as `{path, bytes}` metadata with no
  * per-file read endpoint, so their sidecar *contents* are unavailable. Where
@@ -16,7 +22,7 @@
 import { computed, ref, watch } from 'vue'
 import { MdPreview } from 'md-editor-v3'
 import DOMPurify from 'dompurify'
-import { ChevronRight, Copy, FileText, Folder, Pencil, TriangleAlert, X } from 'lucide-vue-next'
+import { ChevronRight, Copy, FileText, Folder, Pencil, TriangleAlert } from 'lucide-vue-next'
 import SourceEditor from './SourceEditor.vue'
 import {
     fileTree,
@@ -45,7 +51,6 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-    close: []
     edit: [name: string]
     duplicate: [name: string]
 }>()
@@ -155,7 +160,7 @@ watch(
         class="rounded-xl border border-border bg-card p-5"
         data-test="viewer-pane"
     >
-        <header class="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
+        <header class="mb-4 border-b border-border pb-3">
             <div class="min-w-0">
                 <div class="flex items-center gap-2">
                     <h2 class="truncate font-mono text-sm font-semibold" data-test="viewer-title">
@@ -173,15 +178,6 @@ watch(
                     {{ detail.description }}
                 </p>
             </div>
-            <button
-                type="button"
-                class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted"
-                aria-label="Close inspector"
-                data-test="viewer-close"
-                @click="emit('close')"
-            >
-                <X class="h-4 w-4" />
-            </button>
         </header>
 
         <dl
@@ -361,14 +357,6 @@ watch(
             >
                 <Copy class="h-3.5 w-3.5" />
                 Duplicate to make it mine
-            </button>
-            <button
-                type="button"
-                class="inline-flex h-9 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium transition-colors hover:bg-muted"
-                data-test="viewer-dismiss"
-                @click="emit('close')"
-            >
-                Close
             </button>
         </footer>
     </section>

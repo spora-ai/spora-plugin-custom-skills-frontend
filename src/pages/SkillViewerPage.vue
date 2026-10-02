@@ -91,7 +91,6 @@ async function duplicate(): Promise<void> {
             :shipped="detail"
             contents-unavailable
             :theme="hostContext?.theme"
-            @close="router.push({ path: '/library' })"
             @duplicate="duplicate"
         />
     </div>
