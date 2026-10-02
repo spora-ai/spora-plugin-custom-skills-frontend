@@ -11,6 +11,7 @@
  * under the field its `path` names, with warnings and unattached errors in a
  * banner so nothing the validator said is dropped.
  */
+import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import SkillDesk from '../../src/components/SkillDesk.vue'
@@ -541,37 +542,80 @@ describe('SkillDesk → the file being written', () => {
 })
 
 describe('SkillDesk → write / split / preview', () => {
-    it('opens split, and swaps the panes without losing the buffer', async () => {
+    it('lets the editor own its preview, instead of a second copy of the same control', async () => {
         const wrapper = mountDesk()
-        expect(wrapper.find('[data-test="desk-source"]').exists()).toBe(true)
-        expect(wrapper.find('[data-test="desk-preview"]').exists()).toBe(true)
 
-        await wrapper.get('[data-test="mode-preview"]').trigger('click')
-        expect(wrapper.find('[data-test="desk-source"]').exists()).toBe(false)
-        expect(wrapper.get('[data-test="desk-preview"]').text()).toContain('Read the PO')
-
-        await wrapper.get('[data-test="mode-write"]').trigger('click')
+        // `MdEditor` ships a preview toggle in its own toolbar. The panel had a
+        // plainer Write / Split / Preview group above it, so there were two ways to
+        // say the same thing and the outer one could disagree with the inner one
+        // about what was on screen.
+        expect(wrapper.find('[data-test="mode-write"]').exists()).toBe(false)
+        expect(wrapper.find('[data-test="mode-split"]').exists()).toBe(false)
+        expect(wrapper.find('[data-test="mode-preview"]').exists()).toBe(false)
         expect(wrapper.find('[data-test="desk-preview"]').exists()).toBe(false)
-        expect((wrapper.get('[data-testid="md-editor-stub"]').element as HTMLTextAreaElement).value)
-            .toContain('Read the PO')
+        expect(wrapper.find('[data-test="desk-editor"]').exists()).toBe(true)
     })
 })
 
-describe('SkillDesk → the frontmatter disclosure', () => {
-    it('is closed by default and carries the fields the desk view does not show', () => {
+describe('SkillDesk → the frontmatter', () => {
+    it('is open on arrival, and carries the fields an agent matches on', () => {
+        // Collapsible is worth having — the body is what most visits are for — but it
+        // was closed by default, which put the description, the only field whose
+        // absence is silent, two clicks deep.
         const wrapper = mountDesk()
-        const details = wrapper.get('[data-test="frontmatter-toggle"]').element.closest('details')
-        expect(details?.hasAttribute('open')).toBe(false)
+        const disclosure = wrapper.get('[data-test="frontmatter"]')
+        expect(disclosure.element.tagName).toBe('DETAILS')
+        expect(disclosure.attributes('open')).toBeDefined()
+        expect(wrapper.find('[data-test="field-description"]').exists()).toBe(true)
         expect(wrapper.find('[data-test="field-metadata"]').exists()).toBe(true)
     })
 
-    it('carries the hand-written preview typography class, which is the only thing styling it', async () => {
-        // `src/style.css` scopes `.md-preview` by hand — `important` does not
-        // rewrite hand-written rules — so the class has to reach the rendered node
-        // or the preview is unstyled prose.
+    it('can still be folded away, and says so on the toggle', () => {
         const wrapper = mountDesk()
-        expect(wrapper.get('[data-test="desk-preview"] [data-testid="md-preview-stub"]').classes())
-            .toContain('md-preview')
+        const toggle = wrapper.get('[data-test="frontmatter-toggle"]')
+        expect(toggle.text()).toContain('SKILL.md frontmatter')
+        expect(toggle.text()).toContain('an agent matches')
+    })
+
+    it('gives the description room for the 1024 characters the contract allows', () => {
+        const wrapper = mountDesk()
+        const field = wrapper.get('[data-test="field-description"]')
+        // A single-line input scrolled this off the right edge with no wrap.
+        expect(field.element.tagName).toBe('TEXTAREA')
+        expect(field.attributes('maxlength')).toBe('1024')
+        expect(field.attributes('rows')).toBe('3')
+    })
+
+    it('is hidden while a sidecar is open, and says nothing about it', async () => {
+        // A sidecar has no frontmatter, and it can be renamed from the rail — so a
+        // message naming it would be about a file that may not exist under that name
+        // by the time it is read. It is simply not there.
+        const wrapper = mountDesk({
+            fileContents: { 'examples/invoice.md': '# Invoice' },
+        })
+        await flushPromises()
+        expect(wrapper.find('[data-test="frontmatter"]').exists()).toBe(true)
+
+        await wrapper.get('[data-test="rail-file-examples/invoice.md"]').trigger('click')
+
+        expect(wrapper.find('[data-test="frontmatter"]').exists()).toBe(false)
+        expect(wrapper.find('[data-test="frontmatter-elsewhere"]').exists()).toBe(false)
+        expect(wrapper.text()).not.toContain('no frontmatter')
+    })
+
+    it('styles the preview it no longer renders itself', () => {
+        // The desk let `<MdEditor>` own the preview pane, so the class this repo
+        // controls is gone from the desk — but `src/style.css` now scopes the prose
+        // rules to `.md-editor-preview` as well, which is what that pane renders.
+        // Without it the desk's prose would be `md-editor-v3`'s 16px default while
+        // the viewer read the same file at 14px.
+        const css = readFileSync('src/style.css', 'utf8')
+        expect(css).toContain('#spora-plugin-custom-skills .md-editor-preview {')
+        // …and the viewer still has its own class.
+        expect(css).toContain('#spora-plugin-custom-skills .md-preview,')
+        // Both fixes from the earlier pass, applied to whichever class is in play.
+        expect(css).toMatch(/\.md-editor-preview \*\s*\{\s*word-break: normal;\s*overflow-wrap: anywhere;/)
+        expect(css).not.toMatch(/max-width: 65ch/)
     })
 
     it('sends the edited frontmatter with the save', async () => {

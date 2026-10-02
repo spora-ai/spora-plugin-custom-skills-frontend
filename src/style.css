@@ -18,16 +18,22 @@
 }
 
 /*
- * Typography for the rendered preview. `md-editor-v3`'s own stylesheet styles the
- * editor and its preview pane, but the desk and the viewer render `<MdPreview>`
- * standalone, and the host's tokens do not reach inside it — so the prose scale
- * is set here, scoped to this plugin's root.
+ * Typography for rendered prose. `md-editor-v3`'s own stylesheet styles the editor
+ * and its preview pane, but the host's tokens do not reach inside it — so the prose
+ * scale is set here, scoped to this plugin's root.
+ *
+ * Two classes, because the rendered prose now comes from two places. The desk lets
+ * `<MdEditor>` own its preview pane, which renders `.md-editor-preview`; the viewer
+ * renders `<MdPreview>` standalone, which this repo marks with `.md-preview`. Same
+ * prose, so the same rules — otherwise a skill reads one way while being written
+ * and another way while being read.
  *
  * No `max-width`: it was capped at 65ch, which is a sensible reading measure for
  * prose but left the viewer with a narrow column in a wide pane, and the operator
  * asked for the full width. The containing column sets the measure now.
  */
-#spora-plugin-custom-skills .md-preview {
+#spora-plugin-custom-skills .md-preview,
+#spora-plugin-custom-skills .md-editor-preview {
     font-size: 0.875rem;
     width: 100%;
     max-width: none;
@@ -55,41 +61,50 @@
     word-break: normal;
     overflow-wrap: anywhere;
 }
+#spora-plugin-custom-skills .md-editor-preview h1,
 #spora-plugin-custom-skills .md-preview h1 {
     font-size: 1.2rem;
     font-weight: 700;
     margin: 0 0 0.7rem;
 }
+#spora-plugin-custom-skills .md-editor-preview h2,
 #spora-plugin-custom-skills .md-preview h2 {
     font-size: 1rem;
     font-weight: 600;
     margin: 1.1rem 0 0.45rem;
 }
+#spora-plugin-custom-skills .md-editor-preview h3,
 #spora-plugin-custom-skills .md-preview h3 {
     font-size: 0.9rem;
     font-weight: 600;
     margin: 0.9rem 0 0.4rem;
 }
+#spora-plugin-custom-skills .md-editor-preview p,
 #spora-plugin-custom-skills .md-preview p {
     margin: 0 0 0.7rem;
     line-height: 1.6;
 }
 #spora-plugin-custom-skills .md-preview ul,
+#spora-plugin-custom-skills .md-editor-preview ol,
 #spora-plugin-custom-skills .md-preview ol {
     margin: 0 0 0.7rem 1.1rem;
     list-style: disc;
 }
+#spora-plugin-custom-skills .md-editor-preview ol,
 #spora-plugin-custom-skills .md-preview ol {
     list-style: decimal;
 }
+#spora-plugin-custom-skills .md-editor-preview li,
 #spora-plugin-custom-skills .md-preview li {
     margin: 0.2rem 0;
     line-height: 1.55;
 }
+#spora-plugin-custom-skills .md-editor-preview a,
 #spora-plugin-custom-skills .md-preview a {
     text-decoration: underline;
     text-underline-offset: 2px;
 }
+#spora-plugin-custom-skills .md-editor-preview code,
 #spora-plugin-custom-skills .md-preview code {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.8em;
@@ -97,6 +112,7 @@
     padding: 0.1em 0.35em;
     border-radius: 4px;
 }
+#spora-plugin-custom-skills .md-editor-preview pre,
 #spora-plugin-custom-skills .md-preview pre {
     background: hsl(var(--muted));
     padding: 0.75rem;
@@ -104,21 +120,25 @@
     overflow-x: auto;
     margin: 0 0 0.7rem;
 }
+#spora-plugin-custom-skills .md-editor-preview pre code,
 #spora-plugin-custom-skills .md-preview pre code {
     background: none;
     padding: 0;
 }
+#spora-plugin-custom-skills .md-editor-preview blockquote,
 #spora-plugin-custom-skills .md-preview blockquote {
     border-left: 3px solid hsl(var(--border));
     padding-left: 0.75rem;
     margin: 0 0 0.7rem;
     color: hsl(var(--muted-foreground));
 }
+#spora-plugin-custom-skills .md-editor-preview table,
 #spora-plugin-custom-skills .md-preview table {
     border-collapse: collapse;
     margin: 0 0 0.7rem;
 }
 #spora-plugin-custom-skills .md-preview th,
+#spora-plugin-custom-skills .md-editor-preview td,
 #spora-plugin-custom-skills .md-preview td {
     border: 1px solid hsl(var(--border));
     padding: 0.35rem 0.6rem;

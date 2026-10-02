@@ -117,6 +117,23 @@ describe('CreateSkillPage → the name is required, and final', () => {
     })
 })
 
+describe('CreateSkillPage → the description field', () => {
+    it('is a textarea, because the contract allows 1024 characters', () => {
+        // As a single-line input a two-sentence description scrolled off the right
+        // edge with nothing to show that it had.
+        const field = mountPage(CreateSkillPage, pinia).get('[data-test="field-description"]')
+        expect(field.element.tagName).toBe('TEXTAREA')
+        expect(field.attributes('maxlength')).toBe('1024')
+        expect(field.attributes('rows')).toBe('3')
+    })
+
+    it('counts what has been written, so 1024 is a ceiling you can see coming', async () => {
+        const wrapper = mountPage(CreateSkillPage, pinia)
+        await wrapper.get('[data-test="field-description"]').setValue('Drafts an invoice.')
+        expect(wrapper.text()).toContain('18/1024')
+    })
+})
+
 describe('CreateSkillPage → what the create sends', () => {
     it('POSTs the name, the description and a seeded SKILL.md outline', async () => {
         const router = stubRoutes()

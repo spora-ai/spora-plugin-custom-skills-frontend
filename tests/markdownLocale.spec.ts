@@ -46,7 +46,11 @@ describe('markdown chrome is localised', () => {
             ...openingTags(readFileSync(f, 'utf8'), 'MdEditor'),
             ...openingTags(readFileSync(f, 'utf8'), 'MdPreview'),
         ])
-        expect(tags.length).toBeGreaterThanOrEqual(3)
+        // Two, and both still deliberate: `<MdEditor>` on the desk, which now owns
+        // its own preview pane, and `<MdPreview>` in the viewer, which has no editor
+        // to render one. The floor is the count that exists, so this cannot pass
+        // vacuously if one of them goes away.
+        expect(tags.length).toBeGreaterThanOrEqual(2)
     })
 
     it('passes :language at every MdEditor and MdPreview call site', () => {

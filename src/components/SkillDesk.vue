@@ -12,16 +12,17 @@
  * fixed. The pill therefore tracks divergence between the buffer and the stored
  * resource, which is the question the prototype's pill was actually asking.
  *
- * The remaining frontmatter keys sit in a closed disclosure. The desk's default
- * view is the prototype's — a name, the file, the body — but `license`,
- * `compatibility`, `allowed_tools` and `metadata` are part of the write contract
- * and had nowhere else to live.
+ * The frontmatter sits above the editor, open, and only while `SKILL.md` is the
+ * open file — it is that file's header and nothing else's. It was a closed
+ * disclosure above the editor whatever was open, which put the description (the
+ * field a skill is matched on, and the only one whose absence is silent) two
+ * clicks deep behind a summary.
  */
 import { computed, ref, useId, watch } from 'vue'
-import { MdEditor, MdPreview } from 'md-editor-v3'
+import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import DOMPurify from 'dompurify'
-import { ChevronDown, ChevronRight, Copy, FileText, Folder, Lock, MoreHorizontal, Pencil, Plus, Save, Trash2 } from 'lucide-vue-next'
+import { ChevronRight, Copy, FileText, Folder, Lock, MoreHorizontal, Pencil, Plus, Save, Trash2 } from 'lucide-vue-next'
 import SourceEditor from './SourceEditor.vue'
 import FileDialog from './FileDialog.vue'
 import {
@@ -123,9 +124,6 @@ const emit = defineEmits<{
     duplicate: [name: string]
 }>()
 
-type DeskMode = 'write' | 'split' | 'preview'
-
-const mode = ref<DeskMode>('split')
 const activePath = ref<string>(SKILL_ENTRY_FILE)
 const body = ref('')
 const description = ref('')
@@ -729,44 +727,12 @@ function handleSubmit(): void {
                 </div>
             </div>
 
-            <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2">
-                <div class="flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
-                    <button
-                        v-for="option in (['write', 'split', 'preview'] as const)"
-                        :key="option"
-                        type="button"
-                        class="rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors"
-                        :class="mode === option
-                            ? 'bg-background shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'"
-                        :data-test="`mode-${option}`"
-                        @click="mode = option"
-                    >
-                        {{ option === 'write' ? 'Write' : (option === 'split' ? 'Split' : 'Preview') }}
-                    </button>
-                </div>
-
-                <!-- The rail is hidden below `md`; without this a narrow window would
-                     have no way to reach a sidecar at all. -->
-                <select
-                    v-model="activePath"
-                    aria-label="File"
-                    class="h-7 min-w-0 rounded-lg border border-border bg-background px-2 font-mono text-[11px] md:hidden"
-                    data-test="file-select"
-                >
-                    <option :value="SKILL_ENTRY_FILE">SKILL.md</option>
-                    <option v-for="row in sidecars" :key="row.path" :value="row.path">{{ row.path }}</option>
-                </select>
-
-                <span class="text-[11px] text-muted-foreground" data-test="desk-size">
-                    {{ totalLines }} lines · {{ formatBytes(totalBytes) }}
-                    <span class="text-muted-foreground/60">
-                        / {{ MAX_FILE_BYTES / 1000 }} KB per file
-                    </span>
-                </span>
-
+            <div
+                v-if="activeSidecar"
+                class="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2"
+            >
                 <button
-                    v-if="activeSidecar && !readOnly"
+                    v-if="!readOnly"
                     type="button"
                     class="ml-auto inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
                     data-test="remove-sidecar"
@@ -775,7 +741,7 @@ function handleSubmit(): void {
                     <Trash2 class="h-3.5 w-3.5" />
                     Remove {{ activeSidecar.path }}
                 </button>
-                <span v-else-if="activeSidecar" class="ml-auto text-[11px] text-muted-foreground" data-test="sidecar-unavailable">
+                <span v-else class="ml-auto text-[11px] text-muted-foreground" data-test="sidecar-unavailable">
                     {{ shippedSidecarNote }}
                 </span>
             </div>
@@ -792,106 +758,134 @@ function handleSubmit(): void {
                 your own.
             </p>
 
-            <!-- The frontmatter the desk's default view does not show. Closed, so
-                 what is on screen is the prototype's screen. -->
-            <details class="group shrink-0 border-b border-border">
+            <!--
+                The frontmatter belongs to SKILL.md and to nothing else, so it is shown
+                only while that file is open, and nothing is said when it is not: a
+                sidecar has no frontmatter to explain, and a message naming a file the
+                operator can rename from the rail is worse than no message.
+
+                Collapsible, and open. The collapsing is worth having — the body is
+                what most visits are for — but it was closed by default, which put the
+                description two clicks deep. The description is the field a skill is
+                matched on and the only one whose absence is silent, so it starts on
+                screen and can be folded away by whoever wants the room.
+            -->
+            <details
+                v-if="activePath === SKILL_ENTRY_FILE"
+                open
+                class="group shrink-0 border-b border-border bg-muted/20"
+                data-test="frontmatter"
+            >
                 <summary
-                    class="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    class="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-xs font-semibold transition-colors hover:text-foreground"
                     data-test="frontmatter-toggle"
                 >
-                    <ChevronDown class="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
-                    Frontmatter
+                    <ChevronDown class="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
+                    SKILL.md frontmatter
                     <span class="font-normal text-muted-foreground">
-                        (the fields an agent matches and restricts itself by)
+                        the fields an agent matches and restricts itself by
                     </span>
                 </summary>
 
                 <div class="space-y-3 border-t border-border px-4 py-3">
-                    <div>
-                        <label :for="idFor('description')" class="mb-1.5 block text-xs font-medium">
-                            Description <span class="text-destructive">*</span>
-                        </label>
-                        <input
-                            :id="idFor('description')"
-                            v-model="description"
-                            type="text"
-                            maxlength="1024"
-                            :readonly="readOnly"
-                            class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                            :aria-invalid="fieldErrors('description').length > 0"
-                            data-test="field-description"
-                        />
-                        <ul
-                            v-for="entry in fieldErrors('description')"
-                            :key="entry.code + entry.message"
-                            class="mt-1 text-xs text-destructive"
-                            data-test="field-error"
-                        >
-                            {{ entry.message }}
-                        </ul>
-                    </div>
-
-                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div class="space-y-3">
                         <div>
-                            <label :for="idFor('license')" class="mb-1.5 block text-xs font-medium">License</label>
-                            <input
-                                :id="idFor('license')"
-                                v-model="license"
-                                type="text"
-                                placeholder="MIT"
+                            <label :for="idFor('description')" class="mb-1.5 block text-xs font-medium">
+                                Description <span class="text-destructive">*</span>
+                            </label>
+                            <!--
+                            A textarea, not an input: the contract allows 1024
+                            characters and the spec asks for both what the skill does
+                            and when to use it, which does not fit on one line and
+                            wrapped invisibly off the right edge of an input.
+                        -->
+                            <textarea
+                                :id="idFor('description')"
+                                v-model="description"
+                                rows="3"
+                                maxlength="1024"
                                 :readonly="readOnly"
-                                class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                                :aria-invalid="fieldErrors('license').length > 0"
-                                data-test="field-license"
+                                class="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm leading-relaxed"
+                                :aria-invalid="fieldErrors('description').length > 0"
+                                data-test="field-description"
                             />
+                            <p class="mt-1 text-[11px] text-muted-foreground">
+                                What the skill does and when to use it — this is the text a matching
+                                system reads to decide whether the skill applies.
+                                <span class="tabular-nums">{{ description.length }}/1024</span>
+                            </p>
+                            <ul
+                                v-for="entry in fieldErrors('description')"
+                                :key="entry.code + entry.message"
+                                class="mt-1 text-xs text-destructive"
+                                data-test="field-error"
+                            >
+                                {{ entry.message }}
+                            </ul>
                         </div>
+
+                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div>
+                                <label :for="idFor('license')" class="mb-1.5 block text-xs font-medium">License</label>
+                                <input
+                                    :id="idFor('license')"
+                                    v-model="license"
+                                    type="text"
+                                    placeholder="MIT"
+                                    :readonly="readOnly"
+                                    class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                                    :aria-invalid="fieldErrors('license').length > 0"
+                                    data-test="field-license"
+                                />
+                            </div>
+                            <div>
+                                <label :for="idFor('compatibility')" class="mb-1.5 block text-xs font-medium">
+                                    Compatibility
+                                </label>
+                                <input
+                                    :id="idFor('compatibility')"
+                                    v-model="compatibility"
+                                    type="text"
+                                    placeholder="spora>=0.28"
+                                    :readonly="readOnly"
+                                    class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                                    :aria-invalid="fieldErrors('compatibility').length > 0"
+                                    data-test="field-compatibility"
+                                />
+                            </div>
+                        </div>
+
                         <div>
-                            <label :for="idFor('compatibility')" class="mb-1.5 block text-xs font-medium">
-                                Compatibility
+                            <label :for="idFor('allowed-tools')" class="mb-1.5 block text-xs font-medium">
+                                Allowed tools <span class="text-muted-foreground">(comma separated)</span>
                             </label>
                             <input
-                                :id="idFor('compatibility')"
-                                v-model="compatibility"
+                                :id="idFor('allowed-tools')"
+                                v-model="allowedTools"
                                 type="text"
-                                placeholder="spora>=0.28"
+                                placeholder="read_email, send_email"
                                 :readonly="readOnly"
-                                class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                                :aria-invalid="fieldErrors('compatibility').length > 0"
-                                data-test="field-compatibility"
+                                class="h-9 w-full rounded-lg border border-input bg-background px-3 font-mono text-sm"
+                                :aria-invalid="fieldErrors('allowed_tools').length > 0"
+                                data-test="field-allowed-tools"
                             />
                         </div>
-                    </div>
 
-                    <div>
-                        <label :for="idFor('allowed-tools')" class="mb-1.5 block text-xs font-medium">
-                            Allowed tools <span class="text-muted-foreground">(comma separated)</span>
-                        </label>
-                        <input
-                            :id="idFor('allowed-tools')"
-                            v-model="allowedTools"
-                            type="text"
-                            placeholder="read_email, send_email"
-                            :readonly="readOnly"
-                            class="h-9 w-full rounded-lg border border-input bg-background px-3 font-mono text-sm"
-                            :aria-invalid="fieldErrors('allowed_tools').length > 0"
-                            data-test="field-allowed-tools"
-                        />
-                    </div>
-
-                    <div>
-                        <label :for="idFor('metadata')" class="mb-1.5 block text-xs font-medium">
-                            Metadata <span class="text-muted-foreground">(JSON object)</span>
-                        </label>
-                        <textarea
-                            :id="idFor('metadata')"
-                            v-model="metadataJson"
-                            rows="2"
-                            :readonly="readOnly"
-                            :placeholder="METADATA_PLACEHOLDER"
-                            class="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs"
-                            :aria-invalid="metadataError !== null"
-                            data-test="field-metadata"
-                        />
+                        <div>
+                            <label :for="idFor('metadata')" class="mb-1.5 block text-xs font-medium">
+                                Metadata <span class="text-muted-foreground">(JSON object)</span>
+                            </label>
+                            <textarea
+                                :id="idFor('metadata')"
+                                v-model="metadataJson"
+                                rows="2"
+                                :readonly="readOnly"
+                                :placeholder="METADATA_PLACEHOLDER"
+                                class="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs"
+                                :aria-invalid="metadataError !== null"
+                                data-test="field-metadata"
+                            />
+                        </div>
                     </div>
                 </div>
             </details>
@@ -913,64 +907,55 @@ function handleSubmit(): void {
                 </span>
             </output>
 
-            <div
-                class="grid min-h-0 flex-1"
-                :class="mode === 'split' ? 'grid-cols-1 md:grid-cols-2 md:divide-x md:divide-border' : 'grid-cols-1'"
-            >
-                <div v-if="mode !== 'preview'" class="min-h-0 overflow-hidden">
-                    <div :aria-label="`${activePath} source`" data-test="desk-source">
-                        <MdEditor
-                            v-if="activeIsMarkdown"
-                            :id="idFor('editor')"
-                            :model-value="activeContent"
-                            :theme="theme ?? 'light'"
-                            :language="EDITOR_LOCALE"
-                            :toolbars="readOnly ? [] : EDITOR_TOOLBARS"
-                            :preview="false"
-                            :read-only="readOnly"
-                            :sanitize="DOMPurify.sanitize"
-                            :max-length="MAX_FILE_BYTES"
-                            class="h-full min-h-[18rem]"
-                            @update:model-value="activeContent = $event"
-                        />
-                        <!--
-                            A markdown editor for a `.json` or `.py` sidecar would
-                            offer bold and task lists, and the preview pane would
-                            render the file as prose. The contract allows any file
-                            type, so anything that is not markdown gets CodeMirror
-                            with the mode its extension implies.
-                        -->
-                        <SourceEditor
-                            v-else
-                            :model-value="activeContent"
-                            :path="activePath"
-                            :read-only="readOnly"
-                            @update:model-value="activeContent = $event"
-                        />
-                    </div>
-                </div>
+            <!--
+                One pane, and the editor owns its own preview.
 
-                <div
-                    v-if="mode !== 'write'"
-                    class="scroll-quiet min-h-0 overflow-auto p-5"
-                    data-test="desk-preview"
-                >
-                    <MdPreview
+                The Write / Split / Preview buttons were a second, plainer copy of a
+                control `MdEditor` already ships in its toolbar — so the panel had two
+                ways to say the same thing, and the outer one could disagree with the
+                inner one about what was on screen. `preview` is on, which gives the
+                split view and the toggle in the editor's own chrome, next to the
+                formatting buttons that affect what it renders.
+            -->
+            <div class="min-h-0 flex-1 overflow-hidden">
+                <div :aria-label="`${activePath} source`" data-test="desk-source">
+                    <MdEditor
                         v-if="activeIsMarkdown"
-                        :id="`desk-preview-${skill.name}`"
-                        class="md-preview"
+                        :id="idFor('editor')"
                         :model-value="activeContent"
                         :theme="theme ?? 'light'"
                         :language="EDITOR_LOCALE"
+                        :toolbars="readOnly ? [] : EDITOR_TOOLBARS"
+                        :preview="true"
+                        :read-only="readOnly"
                         :sanitize="DOMPurify.sanitize"
+                        :max-length="MAX_FILE_BYTES"
+                        class="h-full min-h-[18rem]"
+                        data-test="desk-editor"
+                        @update:model-value="activeContent = $event"
                     />
-                    <pre
+                    <!--
+                        A markdown editor for a `.json` or `.py` sidecar would offer
+                        bold and task lists, and its preview would render the file as
+                        prose. The contract allows any file type, so anything that is
+                        not markdown gets CodeMirror with the mode its extension
+                        implies — and no preview, because there is nothing to render.
+                    -->
+                    <SourceEditor
                         v-else
-                        class="whitespace-pre-wrap break-words font-mono text-[13px] leading-[1.65]"
-                        data-test="plain-preview"
-                    >{{ activeContent }}</pre>
+                        :model-value="activeContent"
+                        :path="activePath"
+                        :read-only="readOnly"
+                        @update:model-value="activeContent = $event"
+                    />
                 </div>
             </div>
+
+            <!--
+                The separate preview pane is gone with the mode buttons. It also used
+                to render a JSON sidecar as prose in preview-only mode, which is the
+                thing the editor above exists to avoid.
+            -->
 
             <footer
                 class="flex shrink-0 flex-wrap items-center gap-3 border-t border-border bg-muted/30 px-4 py-1.5 text-[11px] text-muted-foreground"
@@ -980,6 +965,28 @@ function handleSubmit(): void {
                 <span>UTF-8</span>
                 <span v-if="activeIsMarkdown">Markdown</span>
                 <span v-else>{{ fileKind(activePath) }}</span>
+                <!--
+                    Below the editor rather than above it. The cap is per file and
+                    only matters while writing, and a size readout pinned above the
+                    body pushed the thing being written down the screen.
+                -->
+                <span class="text-muted-foreground" data-test="desk-size">
+                    {{ totalLines }} lines · {{ formatBytes(totalBytes) }}
+                    <span class="text-muted-foreground/60">
+                        / {{ MAX_FILE_BYTES / 1000 }} KB per file
+                    </span>
+                </span>
+                <!-- The rail is hidden below `md`; without this a narrow window would
+                     have no way to reach a sidecar at all. -->
+                <select
+                    v-model="activePath"
+                    aria-label="File"
+                    class="h-6 min-w-0 rounded border border-border bg-background px-1.5 font-mono text-[11px] md:hidden"
+                    data-test="file-select"
+                >
+                    <option :value="SKILL_ENTRY_FILE">SKILL.md</option>
+                    <option v-for="row in sidecars" :key="row.path" :value="row.path">{{ row.path }}</option>
+                </select>
                 <span class="ml-auto">
                     <template v-if="readOnly">
                         shipped<span v-if="shippedSource"> · {{ shippedSource }}</span>

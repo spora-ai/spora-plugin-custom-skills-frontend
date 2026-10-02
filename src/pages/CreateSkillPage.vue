@@ -248,13 +248,19 @@ async function submit(): Promise<void> {
                 <label for="skill-description" class="block text-sm font-medium">
                     Description <span class="text-destructive">*</span>
                 </label>
-                <input
+                <!--
+                    A textarea, matching the desk and the contract: `description` allows
+                    1024 characters and the spec asks for both what the skill does and
+                    when to use it, which is two or three sentences. As a single-line
+                    input that overflowed invisibly to the right.
+                -->
+                <textarea
                     id="skill-description"
                     v-model="description"
-                    type="text"
+                    rows="3"
                     maxlength="1024"
                     placeholder="How to draft an invoice for a customer, including VAT treatment."
-                    class="mt-1.5 h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring/20"
+                    class="mt-1.5 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring/20"
                     :aria-invalid="errorsForField(store.validationErrors, 'description').length > 0"
                     data-test="field-description"
                 />
@@ -262,9 +268,10 @@ async function submit(): Promise<void> {
                      reads to decide whether this skill applies. An empty description
                      does not fail loudly at activation, it just never matches. -->
                 <p class="mt-1.5 text-[11px] text-muted-foreground">
-                    One sentence on when this skill applies. This is what an agent reads to decide
-                    whether to use it — an empty description does not fail loudly, it simply never
-                    matches.
+                    What this skill does and when to use it. This is what an agent reads to
+                    decide whether it applies — an empty description does not fail loudly, it
+                    simply never matches.
+                    <span class="tabular-nums">{{ description.length }}/1024</span>
                 </p>
                 <ul
                     v-for="entry in errorsForField(store.validationErrors, 'description')"
