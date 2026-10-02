@@ -327,9 +327,19 @@ export const CONVENTIONAL_SKILL_FOLDERS = ['references', 'scripts', 'assets'] as
  */
 export const SKILL_ENTRY_FILE = 'SKILL.md'
 
-/** Leading and trailing slashes are a display habit, not a path. */
+/**
+ * Leading and trailing slashes are a display habit, not a path.
+ *
+ * Written as a scan rather than two anchored regexes: the whole string is at most
+ * a folder path, and a quantifier on an unbounded run of `/` is the shape of
+ * expression that reads as linear and is not.
+ */
 function trimSlashes(folder: string): string {
-    return folder.replace(/^\/+/, '').replace(/\/+$/, '')
+    let start = 0
+    let end = folder.length
+    while (start < end && folder[start] === '/') start += 1
+    while (end > start && folder[end - 1] === '/') end -= 1
+    return folder.slice(start, end)
 }
 
 /**
