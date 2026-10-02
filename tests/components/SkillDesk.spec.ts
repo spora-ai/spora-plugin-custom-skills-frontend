@@ -555,6 +555,27 @@ describe('SkillDesk → write / split / preview', () => {
         expect(wrapper.find('[data-test="desk-preview"]').exists()).toBe(false)
         expect(wrapper.find('[data-test="desk-editor"]').exists()).toBe(true)
     })
+
+    it('keeps the preview toggles in the editor toolbar, or the split is a trap', () => {
+        // `:preview="true"` gives the split view; the button that takes you out of
+        // it comes from the `toolbars` array, not from that prop. Omitting these two
+        // left the editor permanently split with no way to change it — which is what
+        // removing the panel's own toggle would have done on its own.
+        const toolbar = JSON.parse(
+            mountDesk().get('[data-testid="md-editor-stub"]').attributes('data-md-toolbars') ?? '[]',
+        ) as string[]
+
+        expect(toolbar).toContain('preview')
+        expect(toolbar).toContain('previewOnly')
+        // Still no diagram or math modes: a skill body is prose, not a document set.
+        expect(toolbar).not.toContain('mermaid')
+        expect(toolbar).not.toContain('katex')
+    })
+
+    it('starts the editor split, since that is what :preview asks for', () => {
+        expect(mountDesk().get('[data-testid="md-editor-stub"]').attributes('data-md-preview-on'))
+            .toBe('true')
+    })
 })
 
 describe('SkillDesk → the frontmatter', () => {
@@ -570,11 +591,33 @@ describe('SkillDesk → the frontmatter', () => {
         expect(wrapper.find('[data-test="field-metadata"]').exists()).toBe(true)
     })
 
-    it('can still be folded away, and says so on the toggle', () => {
+    it('can still be folded away, and says so on the toggle', async () => {
         const wrapper = mountDesk()
         const toggle = wrapper.get('[data-test="frontmatter-toggle"]')
         expect(toggle.text()).toContain('SKILL.md frontmatter')
         expect(toggle.text()).toContain('an agent matches')
+
+        // The chevron, because a toggle that looks like a static heading is not one.
+        // `lucide-vue-next` is real in these tests, so a missing import renders
+        // nothing here — which is exactly what happened when `ChevronDown` was used
+        // in the template without being imported, and nothing caught it.
+        expect(toggle.find('svg').exists()).toBe(true)
+
+        const disclosure = wrapper.get('[data-test="frontmatter"]')
+        await toggle.trigger('click')
+        expect(disclosure.element.hasAttribute('open')).toBe(false)
+
+        await toggle.trigger('click')
+        expect(disclosure.element.hasAttribute('open')).toBe(true)
+    })
+
+    it('keeps the buffer when the frontmatter is folded, because it is not the editor', async () => {
+        const wrapper = mountDesk()
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Rewritten')
+        await wrapper.get('[data-test="frontmatter-toggle"]').trigger('click')
+        expect(wrapper.get('[data-test="frontmatter"]').element.hasAttribute('open')).toBe(false)
+        expect((wrapper.get('[data-testid="md-editor-stub"]').element as HTMLTextAreaElement).value)
+            .toContain('# Rewritten')
     })
 
     it('gives the description room for the 1024 characters the contract allows', () => {

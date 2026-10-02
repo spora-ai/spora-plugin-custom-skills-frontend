@@ -22,7 +22,7 @@ import { computed, ref, useId, watch } from 'vue'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import DOMPurify from 'dompurify'
-import { ChevronRight, Copy, FileText, Folder, Lock, MoreHorizontal, Pencil, Plus, Save, Trash2 } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Copy, FileText, Folder, Lock, MoreHorizontal, Pencil, Plus, Save, Trash2 } from 'lucide-vue-next'
 import SourceEditor from './SourceEditor.vue'
 import FileDialog from './FileDialog.vue'
 import {
@@ -65,12 +65,21 @@ const EDITOR_LOCALE = MARKDOWN_LOCALE
  * uses this component rather than a plain field. `github`, `mermaid` and
  * `formula` are left out for the reason they are left out there — a skill body
  * is prose, not a document set.
+ *
+ * `preview` and `previewOnly` are the reason this list is load-bearing for the
+ * pane. The panel used to carry its own Write / Split / Preview group and hand
+ * `preview: false` to the editor, so `preview` here would have been a second
+ * control saying the same thing. With the panel's group gone, the split view comes
+ * from `:preview="true"` but *the toggle that switches between the two comes from
+ * this array* — so omitting these two leaves the editor stuck in a split it cannot
+ * be taken out of.
  */
 type EditorToolbarItem =
     | 'bold' | 'underline' | 'italic' | 'strikeThrough'
     | 'title' | 'sub' | 'sup' | 'quote'
     | 'unorderedList' | 'orderedList' | 'task'
     | 'code' | 'codeRow' | 'link' | 'image' | 'table'
+    | 'preview' | 'previewOnly'
     | '-'
 
 const EDITOR_TOOLBARS: EditorToolbarItem[] = [
@@ -81,6 +90,8 @@ const EDITOR_TOOLBARS: EditorToolbarItem[] = [
     'unorderedList', 'orderedList', 'task',
     '-',
     'code', 'codeRow', 'link', 'image', 'table',
+    '-',
+    'preview', 'previewOnly',
 ]
 
 const props = withDefaults(
@@ -788,104 +799,102 @@ function handleSubmit(): void {
                 </summary>
 
                 <div class="space-y-3 border-t border-border px-4 py-3">
-                    <div class="space-y-3">
-                        <div>
-                            <label :for="idFor('description')" class="mb-1.5 block text-xs font-medium">
-                                Description <span class="text-destructive">*</span>
-                            </label>
-                            <!--
+                    <div>
+                        <label :for="idFor('description')" class="mb-1.5 block text-xs font-medium">
+                            Description <span class="text-destructive">*</span>
+                        </label>
+                        <!--
                             A textarea, not an input: the contract allows 1024
                             characters and the spec asks for both what the skill does
                             and when to use it, which does not fit on one line and
                             wrapped invisibly off the right edge of an input.
                         -->
-                            <textarea
-                                :id="idFor('description')"
-                                v-model="description"
-                                rows="3"
-                                maxlength="1024"
-                                :readonly="readOnly"
-                                class="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm leading-relaxed"
-                                :aria-invalid="fieldErrors('description').length > 0"
-                                data-test="field-description"
-                            />
-                            <p class="mt-1 text-[11px] text-muted-foreground">
-                                What the skill does and when to use it — this is the text a matching
-                                system reads to decide whether the skill applies.
-                                <span class="tabular-nums">{{ description.length }}/1024</span>
-                            </p>
-                            <ul
-                                v-for="entry in fieldErrors('description')"
-                                :key="entry.code + entry.message"
-                                class="mt-1 text-xs text-destructive"
-                                data-test="field-error"
-                            >
-                                {{ entry.message }}
-                            </ul>
-                        </div>
+                        <textarea
+                            :id="idFor('description')"
+                            v-model="description"
+                            rows="3"
+                            maxlength="1024"
+                            :readonly="readOnly"
+                            class="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm leading-relaxed"
+                            :aria-invalid="fieldErrors('description').length > 0"
+                            data-test="field-description"
+                        />
+                        <p class="mt-1 text-[11px] text-muted-foreground">
+                            What the skill does and when to use it — this is the text a matching
+                            system reads to decide whether the skill applies.
+                            <span class="tabular-nums">{{ description.length }}/1024</span>
+                        </p>
+                        <ul
+                            v-for="entry in fieldErrors('description')"
+                            :key="entry.code + entry.message"
+                            class="mt-1 text-xs text-destructive"
+                            data-test="field-error"
+                        >
+                            {{ entry.message }}
+                        </ul>
+                    </div>
 
-                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <div>
-                                <label :for="idFor('license')" class="mb-1.5 block text-xs font-medium">License</label>
-                                <input
-                                    :id="idFor('license')"
-                                    v-model="license"
-                                    type="text"
-                                    placeholder="MIT"
-                                    :readonly="readOnly"
-                                    class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                                    :aria-invalid="fieldErrors('license').length > 0"
-                                    data-test="field-license"
-                                />
-                            </div>
-                            <div>
-                                <label :for="idFor('compatibility')" class="mb-1.5 block text-xs font-medium">
-                                    Compatibility
-                                </label>
-                                <input
-                                    :id="idFor('compatibility')"
-                                    v-model="compatibility"
-                                    type="text"
-                                    placeholder="spora>=0.28"
-                                    :readonly="readOnly"
-                                    class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                                    :aria-invalid="fieldErrors('compatibility').length > 0"
-                                    data-test="field-compatibility"
-                                />
-                            </div>
-                        </div>
-
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
-                            <label :for="idFor('allowed-tools')" class="mb-1.5 block text-xs font-medium">
-                                Allowed tools <span class="text-muted-foreground">(comma separated)</span>
+                            <label :for="idFor('license')" class="mb-1.5 block text-xs font-medium">License</label>
+                            <input
+                                :id="idFor('license')"
+                                v-model="license"
+                                type="text"
+                                placeholder="MIT"
+                                :readonly="readOnly"
+                                class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                                :aria-invalid="fieldErrors('license').length > 0"
+                                data-test="field-license"
+                            />
+                        </div>
+                        <div>
+                            <label :for="idFor('compatibility')" class="mb-1.5 block text-xs font-medium">
+                                Compatibility
                             </label>
                             <input
-                                :id="idFor('allowed-tools')"
-                                v-model="allowedTools"
+                                :id="idFor('compatibility')"
+                                v-model="compatibility"
                                 type="text"
-                                placeholder="read_email, send_email"
+                                placeholder="spora>=0.28"
                                 :readonly="readOnly"
-                                class="h-9 w-full rounded-lg border border-input bg-background px-3 font-mono text-sm"
-                                :aria-invalid="fieldErrors('allowed_tools').length > 0"
-                                data-test="field-allowed-tools"
+                                class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                                :aria-invalid="fieldErrors('compatibility').length > 0"
+                                data-test="field-compatibility"
                             />
                         </div>
+                    </div>
 
-                        <div>
-                            <label :for="idFor('metadata')" class="mb-1.5 block text-xs font-medium">
-                                Metadata <span class="text-muted-foreground">(JSON object)</span>
-                            </label>
-                            <textarea
-                                :id="idFor('metadata')"
-                                v-model="metadataJson"
-                                rows="2"
-                                :readonly="readOnly"
-                                :placeholder="METADATA_PLACEHOLDER"
-                                class="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs"
-                                :aria-invalid="metadataError !== null"
-                                data-test="field-metadata"
-                            />
-                        </div>
+                    <div>
+                        <label :for="idFor('allowed-tools')" class="mb-1.5 block text-xs font-medium">
+                            Allowed tools <span class="text-muted-foreground">(comma separated)</span>
+                        </label>
+                        <input
+                            :id="idFor('allowed-tools')"
+                            v-model="allowedTools"
+                            type="text"
+                            placeholder="read_email, send_email"
+                            :readonly="readOnly"
+                            class="h-9 w-full rounded-lg border border-input bg-background px-3 font-mono text-sm"
+                            :aria-invalid="fieldErrors('allowed_tools').length > 0"
+                            data-test="field-allowed-tools"
+                        />
+                    </div>
+
+                    <div>
+                        <label :for="idFor('metadata')" class="mb-1.5 block text-xs font-medium">
+                            Metadata <span class="text-muted-foreground">(JSON object)</span>
+                        </label>
+                        <textarea
+                            :id="idFor('metadata')"
+                            v-model="metadataJson"
+                            rows="2"
+                            :readonly="readOnly"
+                            :placeholder="METADATA_PLACEHOLDER"
+                            class="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs"
+                            :aria-invalid="metadataError !== null"
+                            data-test="field-metadata"
+                        />
                     </div>
                 </div>
             </details>
