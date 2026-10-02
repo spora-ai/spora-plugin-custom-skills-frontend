@@ -5,7 +5,7 @@ import * as api from '../api/customSkills'
 import * as preshippedApi from '../api/preshippedSkills'
 import * as allowlistApi from '../api/agentAllowlist'
 import * as agentsApi from '../api/agents'
-import { CUSTOM_SKILLS_SOURCE, forkName, plural } from '../lib/skillFormat'
+import { CUSTOM_SKILLS_SOURCE, plural } from '../lib/skillFormat'
 import { usePrincipalsStore } from './principals'
 import type {
     AgentSummary,
@@ -309,65 +309,6 @@ export const useSkillsStore = defineStore('custom-skills', () => {
     }
 
     /**
-     * Fork a shipped skill onto the acting principal. The host's
-     * `SkillController::detail()` is the only read it exposes — `files` as
-     * `{path, bytes}` with no per-file endpoint — so a fork copies the
-     * frontmatter and the `SKILL.md` body but NOT sidecar contents. Empty
-     * placeholders would overwrite the file set with blanks on the next save, so
-     * the operator is told which paths to re-add.
-     */
-    async function duplicateShippedSkill(source: PreShippedSkillSummary): Promise<CustomSkillResource> {
-        const detail = await preshippedApi.getPreShippedSkill(source.name)
-        const taken = new Set(skills.value.map((s) => s.name))
-        const created = await duplicateSkill(
-            source,
-            {
-                body: detail.body,
-                license: detail.license,
-                compatibility: detail.compatibility,
-                allowed_tools: detail.allowed_tools,
-                metadata: detail.metadata,
-                files: {},
-            },
-            forkName(source.name, taken),
-        )
-        const missing = detail.files.filter((f) => f.path !== 'SKILL.md')
-        notice.value = missing.length > 0
-            ? `Created “${created.name}” from ${source.name}. The host has no per-file read for shipped skills, so re-add ${plural(missing.length, 'sidecar file')} (${missing.map((f) => f.path).join(', ')}). It is not on any agent's allowlist yet.`
-            : `Created “${created.name}” from ${source.name}. It is not on any agent's allowlist yet.`
-        return created
-    }
-
-    /**
-     * The name is allocated by the caller here, not by `createSkill`: it must
-     * avoid the principal's skills AND the shipped catalogue, since a shipped name
-     * answers 409.
-     */
-    async function duplicateSkill(
-        source: PreShippedSkillSummary,
-        detail: {
-            body: string
-            license: string | null
-            compatibility: string | null
-            allowed_tools: string | null
-            metadata: Record<string, string>
-            files: Record<string, string>
-        },
-        name: string,
-    ): Promise<CustomSkillResource> {
-        return createSkill({
-            name,
-            description: source.description,
-            body: detail.body,
-            license: detail.license,
-            compatibility: detail.compatibility,
-            allowed_tools: detail.allowed_tools,
-            metadata: detail.metadata,
-            files: detail.files,
-        })
-    }
-
-    /**
      * Refreshes from the server so the row shows the authoritative post-write
      * state rather than an optimistic guess.
      */
@@ -434,8 +375,6 @@ export const useSkillsStore = defineStore('custom-skills', () => {
         updateSkill,
         deleteSkill,
         restoreSkill,
-        duplicateSkill,
-        duplicateShippedSkill,
         enableOnAgent,
         disableOnAgent,
     }

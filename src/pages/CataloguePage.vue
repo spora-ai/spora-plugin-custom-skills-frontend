@@ -2,7 +2,8 @@
 /**
  * `/library` — every skill the host ships. Global and read-only by contract ("Not
  * endpoints (deliberately)": this plugin must never re-serve them), so the only
- * way out of a row is *Duplicate*, which writes a copy onto the acting principal.
+ * way out of a row is *Duplicate*, which opens the create form with this skill as
+ * a template — nothing is written until the operator names it and presses create.
  *
  * Grouped by `source`, the field the host catalogue carries, because that is the
  * only way a reader can tell a core skill from one a plugin shipped.
@@ -32,13 +33,17 @@ const groups = computed(() => {
         .map(([source, items]) => ({ source, items: sortByName(items, sort.value) }))
 })
 
-async function duplicate(skill: PreShippedSkillSummary): Promise<void> {
-    try {
-        const created = await store.duplicateShippedSkill(skill)
-        await router.push({ path: `/skills/${created.name}` })
-    } catch {
-        // `error` carries the message.
-    }
+/**
+ * "Duplicate" means "start from this", not "copy this now".
+ *
+ * It used to POST a copy and land on the desk, which wrote a row before the
+ * operator had named it or read it — and the name is final, so a copy written on
+ * their behalf is a copy they then have to delete. The create form takes the
+ * shipped skill as a template instead: the name is theirs to pick, nothing is
+ * written until they press create, and what comes across is visible first.
+ */
+function duplicate(skill: PreShippedSkillSummary): void {
+    void router.push({ path: '/new', query: { template: skill.name } })
 }
 </script>
 
@@ -48,8 +53,8 @@ async function duplicate(skill: PreShippedSkillSummary): Promise<void> {
             <div class="min-w-0">
                 <h2 class="text-2xl font-semibold tracking-tight">Catalogue</h2>
                 <p class="mt-1 max-w-xl text-sm text-muted-foreground">
-                    Every skill the host ships, whatever the plugin. Read one, then copy it to make it
-                    yours — a shipped name is reserved, so a copy is always renamed.
+                    Every skill the host ships, whatever the plugin. Read one, then start from it to make
+                    it yours — a shipped name is reserved, so a copy is always renamed.
                 </p>
             </div>
             <SkillSortSelect id="library-sort" v-model="sort" :options="CATALOGUE_SORT_OPTIONS" />
@@ -86,13 +91,26 @@ async function duplicate(skill: PreShippedSkillSummary): Promise<void> {
                 <ul
                     class="mt-2 overflow-hidden rounded-xl border border-border [&>li]:border-b [&>li]:last:border-b-0"
                 >
+                    <!--
+                        A grid, not a flex row, and that is the whole fix for the
+                        alignment. In flex each row sized its own columns, so a row
+                        with a licence pushed the buttons left of a row without one
+                        and nothing lined up down the column. A grid sizes each column
+                        once for the whole list. `items-center` then centres the meta
+                        and the actions against the two-line name + description, which
+                        `items-start` had left hugging the first line.
+
+                        The `hidden` on the meta column is gone with the `sm:flex`: the
+                        breakpoint now moves it onto its own row instead of dropping
+                        it, so a narrow window shows the file count rather than nothing.
+                    -->
                     <li
                         v-for="skill in group.items"
                         :key="skill.name"
-                        class="flex items-start gap-4 px-4 py-3 transition-colors hover:bg-muted/40"
+                        class="grid grid-cols-1 items-center gap-x-4 gap-y-2 px-4 py-3 transition-colors hover:bg-muted/40 sm:grid-cols-[minmax(0,1fr)_auto_auto]"
                         data-test="shipped-row"
                     >
-                        <div class="min-w-0 flex-1">
+                        <div class="min-w-0">
                             <div class="flex flex-wrap items-center gap-2">
                                 <RouterLink
                                     :to="{ path: `/library/${skill.name}` }"
@@ -115,7 +133,10 @@ async function duplicate(skill: PreShippedSkillSummary): Promise<void> {
                             </p>
                         </div>
 
-                        <div class="hidden shrink-0 items-center gap-4 text-xs text-muted-foreground sm:flex">
+                        <div
+                            class="flex items-center gap-4 text-xs text-muted-foreground"
+                            data-test="shipped-meta"
+                        >
                             <span class="inline-flex items-center gap-1">
                                 <FileText class="h-3.5 w-3.5" />
                                 {{ skill.files_count }}
@@ -124,7 +145,7 @@ async function duplicate(skill: PreShippedSkillSummary): Promise<void> {
                             <span v-if="skill.license" class="font-mono">{{ skill.license }}</span>
                         </div>
 
-                        <div class="flex shrink-0 items-center gap-1.5">
+                        <div class="flex items-center gap-1.5">
                             <RouterLink
                                 :to="{ path: `/library/${skill.name}` }"
                                 class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
@@ -135,8 +156,7 @@ async function duplicate(skill: PreShippedSkillSummary): Promise<void> {
                             </RouterLink>
                             <button
                                 type="button"
-                                :disabled="store.saving"
-                                class="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                                class="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                                 data-test="duplicate-skill"
                                 @click="duplicate(skill)"
                             >

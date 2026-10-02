@@ -182,19 +182,19 @@ function restore(): void {
 }
 
 /**
- * Fork a shipped skill onto the selected principal and go to the new copy.
+ * Start from this shipped skill, via the create form.
  *
  * The only way forward from a read-only desk: the shipped file belongs to the
- * installation, so the copy is the first editable version of it. The store's
- * notice already covers what could not be carried over — the host serves no
- * per-file read for a shipped skill, so its sidecars have to be re-added.
+ * installation, so a copy is the first editable version of it. The form takes it
+ * as a template rather than writing the copy here — the name is final, and an
+ * operator who has not seen the body yet should not get a row on the principal
+ * because they clicked a button. The create page carries what it can and states
+ * what the host will not serve: the sidecars.
  */
 function duplicate(): void {
     const entry = shipped.value
     if (entry === null) return
-    void store.duplicateShippedSkill(entry).then((created) => {
-        void router.push({ path: `/skills/${created.name}` })
-    })
+    void router.push({ path: '/new', query: { template: entry.name } })
 }
 </script>
 

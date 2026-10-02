@@ -13,7 +13,7 @@ import * as allowlistApi from '../../src/api/agentAllowlist'
 import * as agentsApi from '../../src/api/agents'
 import { useSkillsStore, extractValidationErrors } from '../../src/stores/skills'
 import { usePrincipalsStore } from '../../src/stores/principals'
-import { makeSkill, makePreShipped, makePreShippedDetail, makeAllowlistEntry } from '../fixtures'
+import { makeSkill, makePreShipped, makeAllowlistEntry } from '../fixtures'
 import { CUSTOM_SKILLS_SOURCE } from '../../src/lib/skillFormat'
 
 vi.mock('../../src/api/customSkills')
@@ -365,83 +365,40 @@ describe('skills store → the notice', () => {
     })
 })
 
-describe('skills store → duplicate a shipped skill', () => {
-    it('forks the shipped body and announces the sidecars it could not copy', async () => {
-        const source = makePreShipped({ name: 'code-review' })
-        mockedPreshipped.getPreShippedSkill.mockResolvedValueOnce(makePreShippedDetail({
-            name: 'code-review',
-            files: [
-                { path: 'SKILL.md', bytes: 10 },
-                { path: 'references/REFERENCE.md', bytes: 20 },
-            ],
-        }))
-        mockedApi.createSkill.mockResolvedValueOnce(makeSkill({ name: 'code-review-copy' }))
+describe('skills store → creating from a shipped skill', () => {
+    it('has no duplicate of its own: the create form is the only path in', async () => {
+        // The store used to expose `duplicateShippedSkill`, which POSTed a copy
+        // itself. Three buttons called it, and it wrote a row before the operator
+        // had named it — the name being final, that copy then had to be deleted.
+        // Duplicating is now a navigation to `/new?template=`, and `createSkill` is
+        // the single write. Nothing here should reintroduce a second one.
+        expect('duplicateShippedSkill' in store).toBe(false)
+        expect('duplicateSkill' in store).toBe(false)
+    })
 
-        const created = await store.duplicateShippedSkill(source)
-        expect(created.name).toBe('code-review-copy')
-        expect(mockedApi.createSkill).toHaveBeenCalledWith(7, expect.objectContaining({
+    it('createSkill takes the shipped frontmatter verbatim when the form supplies it', async () => {
+        // The form builds the DTO from the template; the store must not reshape it.
+        mockedApi.createSkill.mockResolvedValueOnce(makeSkill({ name: 'code-review-copy' }))
+        await store.createSkill({
             name: 'code-review-copy',
+            description: 'Reviews code.',
             body: '# Review\n',
-            // No sidecar contents: the host has no per-file read for a shipped skill,
-            // and sending blanks would overwrite the file set on the next save.
-            files: {},
-        }))
-        expect(store.notice).toContain('re-add 1 sidecar file (references/REFERENCE.md)')
-    })
-
-    it('says only that the copy is not on an allowlist when there are no sidecars', async () => {
-        mockedPreshipped.getPreShippedSkill.mockResolvedValueOnce(makePreShippedDetail({ name: 'code-review' }))
-        mockedApi.createSkill.mockResolvedValueOnce(makeSkill({ name: 'code-review-copy' }))
-        await store.duplicateShippedSkill(makePreShipped({ name: 'code-review' }))
-        expect(store.notice).toBe(
-            'Created “code-review-copy” from code-review. It is not on any agent\'s allowlist yet.',
-        )
-    })
-
-    it('does not name a copy after a shipped skill — that answers 409', async () => {
-        mockedPreshipped.getPreShippedSkill.mockResolvedValueOnce(makePreShippedDetail({ name: 'code-review' }))
-        mockedApi.createSkill.mockResolvedValueOnce(makeSkill({ name: 'code-review-copy' }))
-        await store.duplicateShippedSkill(makePreShipped({ name: 'code-review' }))
-        expect(mockedApi.createSkill).toHaveBeenCalledWith(7, expect.objectContaining({
-            name: 'code-review-copy',
-        }))
-    })
-})
-
-describe('skills store → duplicate from pre-shipped', () => {
-    it('POSTs the shipped frontmatter and body onto the principal', async () => {
-        const source = makePreShipped({ name: 'code-review' })
-        mockedApi.createSkill.mockResolvedValueOnce(makeSkill({ name: 'code-review-copy' }))
-        const created = await store.duplicateSkill(
-            source,
-            {
-                body: '# Review',
-                license: 'MIT',
-                compatibility: null,
-                allowed_tools: null,
-                metadata: { tier: 'core' },
-                files: {},
-            },
-            'code-review-copy',
-        )
-        expect(mockedApi.createSkill).toHaveBeenCalledWith(7, {
-            name: 'code-review-copy',
-            description: source.description,
-            body: '# Review',
             license: 'MIT',
             compatibility: null,
             allowed_tools: null,
             metadata: { tier: 'core' },
             files: {},
         })
-        expect(created.name).toBe('code-review-copy')
+        expect(mockedApi.createSkill).toHaveBeenCalledWith(7, {
+            name: 'code-review-copy',
+            description: 'Reviews code.',
+            body: '# Review\n',
+            license: 'MIT',
+            compatibility: null,
+            allowed_tools: null,
+            metadata: { tier: 'core' },
+            files: {},
+        })
         expect(store.skills).toHaveLength(1)
-    })
-
-    it('the pre-shipped detail is read from the host route, not the plugin', async () => {
-        mockedPreshipped.getPreShippedSkill.mockResolvedValueOnce(makePreShippedDetail())
-        const detail = await preshippedApi.getPreShippedSkill('code-review')
-        expect(mockedPreshipped.getPreShippedSkill).toHaveBeenCalledWith('code-review')
-        expect(detail.body).toBe('# Review\n')
     })
 })

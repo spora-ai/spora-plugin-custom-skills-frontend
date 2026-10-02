@@ -128,7 +128,7 @@ describe('CataloguePage → the list', () => {
 })
 
 describe('CataloguePage → duplicate', () => {
-    it('POSTs a copy under a non-reserved name and opens its desk', async () => {
+    it('sends Duplicate to the create form as a template, and writes nothing', async () => {
         useSkillsStore().preShipped = [makePreShipped({ name: 'code-review' })]
         const wrapper = await mountOn('/library')
         await flushPromises()
@@ -136,52 +136,23 @@ describe('CataloguePage → duplicate', () => {
         await wrapper.get('[data-test="duplicate-skill"]').trigger('click')
         await flushPromises()
 
-        expect(mockedPreshipped.getPreShippedSkill).toHaveBeenCalledWith('code-review')
-        expect(mockedApi.createSkill).toHaveBeenCalledWith(7, expect.objectContaining({
-            name: 'code-review-copy',
-            body: '# Review\n',
-        }))
-        expect(router.currentRoute.value.path).toBe('/skills/code-review-copy')
+        // Nothing is written here. The name is final, and a copy written before the
+        // operator has seen it is a row they then have to delete.
+        expect(mockedApi.createSkill).not.toHaveBeenCalled()
+        expect(router.currentRoute.value.path).toBe('/new')
+        expect(router.currentRoute.value.query.template).toBe('code-review')
     })
 
-    it('warns that shipped sidecar contents are not readable through the host API', async () => {
-        useSkillsStore().preShipped = [makePreShipped({ name: 'code-review' })]
-        mockedPreshipped.getPreShippedSkill.mockResolvedValue(makePreShippedDetail({
-            name: 'code-review',
-            files: [
-                { path: 'SKILL.md', bytes: 10 },
-                { path: 'references/REFERENCE.md', bytes: 20 },
-            ],
-        }))
+    it('offers the template action whatever the shipped name is', async () => {
+        useSkillsStore().preShipped = [makePreShipped({ name: 'invoice-drafting' })]
         const wrapper = await mountOn('/library')
         await flushPromises()
+
         await wrapper.get('[data-test="duplicate-skill"]').trigger('click')
         await flushPromises()
-        expect(useSkillsStore().notice).toContain('re-add 1 sidecar file (references/REFERENCE.md)')
+        expect(router.currentRoute.value.query.template).toBe('invoice-drafting')
     })
 
-    it('increments the fork name until it is free on this principal', async () => {
-        useSkillsStore().skills = [makeSkill({ name: 'code-review-copy' })]
-        useSkillsStore().preShipped = [makePreShipped({ name: 'code-review' })]
-        mockedApi.createSkill.mockResolvedValue(makeSkill({ name: 'code-review-copy-2' }))
-        const wrapper = await mountOn('/library')
-        await flushPromises()
-        await wrapper.get('[data-test="duplicate-skill"]').trigger('click')
-        await flushPromises()
-        expect(mockedApi.createSkill).toHaveBeenCalledWith(7, expect.objectContaining({
-            name: 'code-review-copy-2',
-        }))
-    })
-
-    it('stays on the catalogue when the copy is rejected', async () => {
-        useSkillsStore().preShipped = [makePreShipped({ name: 'code-review' })]
-        mockedApi.createSkill.mockRejectedValue(new Error('422'))
-        const wrapper = await mountOn('/library')
-        await flushPromises()
-        await wrapper.get('[data-test="duplicate-skill"]').trigger('click')
-        await flushPromises()
-        expect(router.currentRoute.value.path).toBe('/library')
-    })
 })
 
 describe('SkillViewerPage → reading a shipped skill', () => {
@@ -203,16 +174,18 @@ describe('SkillViewerPage → reading a shipped skill', () => {
         expect(wrapper.find('[data-test="viewer-pane"]').exists()).toBe(false)
     })
 
-    it('duplicates from the viewer and lands on the new skill’s desk', async () => {
+    it('sends the viewer\u2019s Duplicate to the same create form, for the same reason', async () => {
         useSkillsStore().preShipped = [makePreShipped({ name: 'code-review' })]
         const wrapper = await mountOn('/library/code-review')
         await flushPromises()
         await wrapper.get('[data-test="viewer-duplicate"]').trigger('click')
         await flushPromises()
-        expect(mockedApi.createSkill).toHaveBeenCalledWith(7, expect.objectContaining({
-            name: 'code-review-copy',
-        }))
-        expect(router.currentRoute.value.path).toBe('/skills/code-review-copy')
+
+        // One word, one meaning. A Duplicate that wrote from one page and
+        // navigated from another is the kind of thing that gets clicked twice.
+        expect(mockedApi.createSkill).not.toHaveBeenCalled()
+        expect(router.currentRoute.value.path).toBe('/new')
+        expect(router.currentRoute.value.query.template).toBe('code-review')
     })
 
     it('goes back to the catalogue', async () => {
@@ -221,15 +194,14 @@ describe('SkillViewerPage → reading a shipped skill', () => {
         expect(wrapper.get('[data-test="viewer-back"]').attributes('href')).toBe('/library')
     })
 
-    it('does not duplicate a skill the catalogue did not list', async () => {
-        // The duplicate path allocates the fork name from the loaded list, so a
-        // deep link with nothing seeded has nothing to copy *from* and must not
-        // invent a name.
+    it('duplicates from a deep link even when the catalogue list is empty', async () => {
+        // The old path read the fork name off the loaded list, so a deep link with
+        // nothing seeded had nothing to copy from. The name is now the route
+        // parameter, so there is no list to be out of step with.
         const wrapper = await mountOn('/library/code-review')
         await flushPromises()
         await wrapper.get('[data-test="viewer-duplicate"]').trigger('click')
         await flushPromises()
-        expect(mockedApi.createSkill).not.toHaveBeenCalled()
-        expect(router.currentRoute.value.path).toBe('/library/code-review')
+        expect(router.currentRoute.value.query.template).toBe('code-review')
     })
 })

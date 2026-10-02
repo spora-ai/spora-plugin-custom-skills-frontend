@@ -120,7 +120,7 @@ describe('SkillDeskPage → opening', () => {
         expect(wrapper.get('[data-test="desk-readonly-note"]').text()).toContain('core')
     })
 
-    it('duplicates a shipped skill onto the principal and opens the copy', async () => {
+    it('sends the read-only desk\u2019s Duplicate to the create form as a template', async () => {
         useSkillsStore().skills = []
         mockedApi.getSkill.mockRejectedValue(new Error('404 SKILL_NOT_FOUND'))
         mockedPreShipped.listPreShippedSkills.mockResolvedValue([makePreShipped()])
@@ -132,8 +132,11 @@ describe('SkillDeskPage → opening', () => {
         await wrapper.get('[data-test="desk-duplicate"]').trigger('click')
         await flushPromises()
 
-        expect(mockedApi.createSkill).toHaveBeenCalled()
-        expect(router.currentRoute.value.path).toBe('/skills/code-review-2')
+        // Nothing written from here either. The name is final, and a row created
+        // for an operator who has not read the body yet is a row to delete.
+        expect(mockedApi.createSkill).not.toHaveBeenCalled()
+        expect(router.currentRoute.value.path).toBe('/new')
+        expect(router.currentRoute.value.query.template).toBe('code-review')
     })
 
     it('keeps a custom skill editable, since the catalogue fallback must not leak', async () => {

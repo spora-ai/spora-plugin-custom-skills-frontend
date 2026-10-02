@@ -16,26 +16,92 @@
  * check locally, and a rejected create after filling in the body is the rude way
  * to find out.
  */
-import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Check, ChevronRight, Layers, Lock, X } from 'lucide-vue-next'
 import AlertBanner from '../components/AlertBanner.vue'
 import { useSkillsStore } from '../stores/skills'
 import { usePrincipalsStore } from '../stores/principals'
+import * as preshippedApi from '../api/preshippedSkills'
 import {
     errorsForField,
+    forkName,
     isValidSkillName,
     skillNameConflict,
     starterBody,
     SKILL_LIMIT,
 } from '../lib/skillFormat'
+import type { PreShippedSkillDetail } from '../types'
 
 const store = useSkillsStore()
 const principals = usePrincipalsStore()
+const route = useRoute()
 const router = useRouter()
 
 const name = ref('')
 const description = ref('')
+
+/**
+ * A shipped skill to start from, named by `?template=`.
+ *
+ * This is what "Duplicate" in the catalogue means. It used to POST a copy and land
+ * on the desk, which wrote a row the operator had not named yet and had not looked
+ * at — and a name they could not change afterwards. Prefilling the form instead
+ * keeps the copy deliberate: the name is theirs to choose, and nothing is written
+ * until they press create.
+ */
+const templateName = computed(() => {
+    const raw = route.query.template
+    return typeof raw === 'string' ? raw : ''
+})
+
+const template = ref<PreShippedSkillDetail | null>(null)
+const templateError = ref<string | null>(null)
+const templateLoading = ref(false)
+
+watch(
+    templateName,
+    async (wanted) => {
+        template.value = null
+        templateError.value = null
+        if (wanted === '') return
+
+        templateLoading.value = true
+        try {
+            const detail = await preshippedApi.getPreShippedSkill(wanted)
+            template.value = detail
+            // Only into an untouched form. Arriving at `/new?template=x` after
+            // typing a name must not throw that name away.
+            if (name.value.trim() === '') {
+                name.value = forkName(
+                    detail.name,
+                    new Set([...store.skills.map((s) => s.name), ...store.preShipped.map((s) => s.name)]),
+                )
+            }
+            if (description.value.trim() === '') description.value = detail.description
+        } catch {
+            templateError.value = `The host has no skill named “${wanted}”.`
+        } finally {
+            templateLoading.value = false
+        }
+    },
+    { immediate: true },
+)
+
+/** The body the create will write: the template's, or the starter outline. */
+const seedBody = computed(() => template.value?.body ?? starterBody(trimmedName.value))
+
+/**
+ * What the host cannot carry across.
+ *
+ * `SkillController::detail()` returns `files` as `{path, bytes}` metadata with no
+ * per-file read, so a shipped skill's sidecar *contents* are unavailable. Saying so
+ * here is the difference between an operator re-adding three files and wondering
+ * why the copy came out with one.
+ */
+const sidecarsToReAdd = computed(() =>
+    (template.value?.files ?? []).filter((file) => file.path !== 'SKILL.md'),
+)
 
 const principal = computed(() => principals.currentPrincipal)
 
@@ -72,17 +138,31 @@ function nameError(): string | null {
 async function submit(): Promise<void> {
     if (!canSubmit.value) return
     store.clearError()
+    const from = template.value
     try {
         const created = await store.createSkill({
             name: trimmedName.value,
             description: description.value.trim(),
-            body: starterBody(trimmedName.value),
-            license: null,
-            compatibility: null,
-            allowed_tools: null,
-            metadata: {},
+            body: seedBody.value,
+            license: from?.license ?? null,
+            compatibility: from?.compatibility ?? null,
+            allowed_tools: from?.allowed_tools ?? null,
+            metadata: from?.metadata ?? {},
+            // Empty: the sidecar contents are not served, and an empty file the
+            // operator did not write is worse than an absent one they are told about.
             files: {},
         })
+        // The sidecar caveat has to survive the navigation, or the operator only
+        // finds out when the rail is missing files the skill they copied had.
+        if (sidecarsToReAdd.value.length > 0) {
+            store.setNotice(
+                `Created “${created.name}” from ${from?.name}. The host has no per-file read for `
+                + `shipped skills, so re-add ${sidecarsToReAdd.value.length} `
+                + `${sidecarsToReAdd.value.length === 1 ? 'sidecar file' : 'sidecar files'} `
+                + `(${sidecarsToReAdd.value.map((f) => f.path).join(', ')}). `
+                + 'It is not on any agent\'s allowlist yet.',
+            )
+        }
         await router.push({ path: `/skills/${created.name}` })
     } catch {
         // `error` and `validationErrors` are rendered by the layout and inline here,
@@ -198,14 +278,23 @@ async function submit(): Promise<void> {
 
             <!-- Starting point. Blank is the default and always available, because
                  "SKILL.md exists" is the guarantee and "SKILL.md is empty" is not a
-                 promise we need to make. The alternative is a route into the
-                 catalogue rather than a third option here: reading a shipped skill
-                 before copying it is a different activity from naming your own. -->
+                 promise we need to make. -->
             <fieldset>
                 <legend class="text-sm font-medium">Start from</legend>
                 <div class="mt-2 space-y-2">
-                    <label class="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-background p-3">
-                        <input type="radio" checked class="mt-0.5 h-4 w-4 accent-primary" data-test="start-blank" />
+                    <label
+                        class="flex items-start gap-2.5 rounded-lg border p-3"
+                        :class="template === null
+                            ? 'cursor-pointer border-border bg-background'
+                            : 'border-border opacity-60'"
+                    >
+                        <input
+                            type="radio"
+                            :checked="template === null"
+                            class="mt-0.5 h-4 w-4 accent-primary"
+                            data-test="start-blank"
+                            @change="router.push({ path: '/new' })"
+                        />
                         <span class="min-w-0">
                             <span class="flex items-center gap-2 text-sm font-medium">
                                 A blank
@@ -217,7 +306,13 @@ async function submit(): Promise<void> {
                         </span>
                     </label>
 
+                    <!--
+                        With `?template=` this is a radio rather than a link: the
+                        choice is already made, and showing a link to a catalogue the
+                        operator just left would suggest the selection is still open.
+                    -->
                     <RouterLink
+                        v-if="template === null"
                         :to="{ path: '/library' }"
                         class="flex items-start gap-2.5 rounded-lg border border-border p-3 transition-colors hover:bg-muted/40"
                         data-test="start-shipped"
@@ -231,12 +326,57 @@ async function submit(): Promise<void> {
                                 <ChevronRight class="h-3 w-3 text-muted-foreground" />
                             </span>
                             <span class="mt-0.5 block text-[11px] text-muted-foreground">
-                                Read one first in the catalogue, then copy it.
+                                Pick one in the catalogue and copy it into this form.
                                 {{ store.preShipped.length }} available.
                             </span>
                         </span>
                     </RouterLink>
+
+                    <div
+                        v-else
+                        class="flex items-start gap-2.5 rounded-lg border border-primary bg-primary/5 p-3"
+                        data-test="start-template"
+                    >
+                        <span class="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+                            <Check class="h-4 w-4 text-primary" />
+                        </span>
+                        <span class="min-w-0 flex-1">
+                            <span class="flex flex-wrap items-center gap-2 text-sm font-medium">
+                                <span class="truncate font-mono">{{ template.name }}</span>
+                                <RouterLink
+                                    :to="{ path: '/library' }"
+                                    class="text-[11px] font-normal text-muted-foreground underline"
+                                    data-test="template-change"
+                                >
+                                    choose another
+                                </RouterLink>
+                            </span>
+                            <span class="mt-0.5 block text-[11px] text-muted-foreground">
+                                Its description, licence and <span class="font-mono">SKILL.md</span>
+                                come across. You can change all of them before creating.
+                            </span>
+                        </span>
+                    </div>
                 </div>
+
+                <AlertBanner
+                    v-if="templateError !== null"
+                    type="error"
+                    :message="templateError"
+                />
+                <p
+                    v-if="templateLoading"
+                    class="mt-1.5 text-[11px] text-muted-foreground"
+                    data-test="template-loading"
+                >
+                    Loading {{ templateName }}…
+                </p>
+                <!-- Stated before the create, not only in the notice after it. -->
+                <AlertBanner
+                    v-if="sidecarsToReAdd.length > 0"
+                    type="warning"
+                    :message="`${template?.name ?? 'That skill'} also has ${sidecarsToReAdd.length} ${sidecarsToReAdd.length === 1 ? 'sidecar file' : 'sidecar files'} (${sidecarsToReAdd.map((f) => f.path).join(', ')}). The host serves no per-file read for shipped skills, so they will not come across — re-add them on the desk.`"
+                />
             </fieldset>
 
             <div class="flex items-center gap-2 border-t border-border pt-5">

@@ -15,14 +15,17 @@ import { flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
 import CreateSkillPage from '../../src/pages/CreateSkillPage.vue'
 import * as api from '../../src/api/customSkills'
+import * as preshippedApi from '../../src/api/preshippedSkills'
 import { useSkillsStore } from '../../src/stores/skills'
 import { usePrincipalsStore } from '../../src/stores/principals'
-import { makePrincipal, makePreShipped, makeSkill, makeValidationEntry } from '../fixtures'
+import { makePrincipal, makePreShipped, makePreShippedDetail, makeSkill, makeValidationEntry } from '../fixtures'
 import { mountPage, stubRoutes } from '../mountPage'
 
 vi.mock('../../src/api/customSkills')
+vi.mock('../../src/api/preshippedSkills')
 
 const mockedApi = vi.mocked(api)
+const mockedPreshipped = vi.mocked(preshippedApi)
 
 let pinia: Pinia
 
@@ -251,5 +254,117 @@ describe('CreateSkillPage → the page around the form', () => {
         const wrapper = mountPage(CreateSkillPage, pinia, router)
         expect(wrapper.get('[data-test="create-back"]').attributes('href')).toBe('/')
         expect(wrapper.get('[data-test="create-cancel"]').attributes('href')).toBe('/')
+    })
+})
+
+describe('CreateSkillPage → starting from a shipped skill', () => {
+    /** A detail the host would serve for `?template=`, sidecars listed but unreadable. */
+    function shippedDetail() {
+        return makePreShippedDetail({
+            name: 'code-review',
+            description: 'Reviews a diff for defects.',
+            license: 'MIT',
+            metadata: { tier: 'core' },
+            body: '# Review\n\n1. Read the diff.\n',
+            files: [
+                { path: 'SKILL.md', bytes: 10 },
+                { path: 'references/REFERENCE.md', bytes: 20 },
+            ],
+        })
+    }
+
+    async function mountWithTemplate(name: string) {
+        const router = stubRoutes()
+        await router.push({ path: '/new', query: { template: name } })
+        await router.isReady()
+        return mountPage(CreateSkillPage, pinia, router)
+    }
+
+    it('prefills the name, the description and the body from the template', async () => {
+        mockedPreshipped.getPreShippedSkill.mockResolvedValueOnce(shippedDetail())
+        const wrapper = await mountWithTemplate('code-review')
+        await flushPromises()
+
+        expect(mockedPreshipped.getPreShippedSkill).toHaveBeenCalledWith('code-review')
+        // The shipped name is reserved — a skill cannot be renamed afterwards — so
+        // the suggestion has to be a free one.
+        expect((wrapper.get('[data-test="field-name"]').element as HTMLInputElement).value)
+            .toBe('code-review-copy')
+        expect((wrapper.get('[data-test="field-description"]').element as HTMLInputElement).value)
+            .toBe('Reviews a diff for defects.')
+        expect(wrapper.get('[data-test="start-template"]').text()).toContain('code-review')
+    })
+
+    it('writes the shipped frontmatter and body, and names the sidecars it drops', async () => {
+        mockedPreshipped.getPreShippedSkill.mockResolvedValueOnce(shippedDetail())
+        mockedApi.createSkill.mockResolvedValueOnce(makeSkill({ name: 'code-review-copy' }))
+        const wrapper = await mountWithTemplate('code-review')
+        await flushPromises()
+
+        // Said before the create, not only in a notice after it.
+        expect(wrapper.text()).toContain('references/REFERENCE.md')
+
+        // A `submit` on the form, not a click on the button: happy-dom does not
+        // translate one into the other, and the handler is the form's.
+        await wrapper.get('[data-test="create-form"]').trigger('submit')
+        await flushPromises()
+
+        expect(mockedApi.createSkill).toHaveBeenCalledWith(7, expect.objectContaining({
+            name: 'code-review-copy',
+            description: 'Reviews a diff for defects.',
+            body: '# Review\n\n1. Read the diff.\n',
+            license: 'MIT',
+            metadata: { tier: 'core' },
+            // Empty on purpose: the host serves no per-file read for a shipped
+            // skill, and a blank file the operator did not write is worse than an
+            // absent one they have been told about.
+            files: {},
+        }))
+        expect(useSkillsStore().notice).toContain('re-add 1 sidecar file (references/REFERENCE.md)')
+    })
+
+    it('skips a fork name that this principal already has', async () => {
+        useSkillsStore().skills = [makeSkill({ name: 'code-review-copy' })]
+        mockedPreshipped.getPreShippedSkill.mockResolvedValueOnce(shippedDetail())
+        const wrapper = await mountWithTemplate('code-review')
+        await flushPromises()
+
+        expect((wrapper.get('[data-test="field-name"]').element as HTMLInputElement).value)
+            .toBe('code-review-copy-2')
+    })
+
+    it('does not overwrite a name the operator already typed', async () => {
+        mockedPreshipped.getPreShippedSkill.mockResolvedValueOnce(shippedDetail())
+        const router = stubRoutes()
+        await router.push({ path: '/new' })
+        await router.isReady()
+        const wrapper = mountPage(CreateSkillPage, pinia, router)
+        await wrapper.get('[data-test="field-name"]').setValue('my-own-name')
+
+        // Arriving at `?template=` after typing must not throw that name away.
+        await router.push({ path: '/new', query: { template: 'code-review' } })
+        await flushPromises()
+
+        expect((wrapper.get('[data-test="field-name"]').element as HTMLInputElement).value)
+            .toBe('my-own-name')
+    })
+
+    it('says so when the named skill does not exist, rather than starting blank', async () => {
+        mockedPreshipped.getPreShippedSkill.mockRejectedValueOnce(new Error('404'))
+        const wrapper = await mountWithTemplate('nope')
+        await flushPromises()
+
+        expect(wrapper.text()).toContain('The host has no skill named')
+        // Still a create form, not a dead end.
+        expect(wrapper.find('[data-test="create-form"]').exists()).toBe(true)
+    })
+
+    it('starts blank with no template, and links to the catalogue to pick one', async () => {
+        const wrapper = mountPage(CreateSkillPage, pinia)
+        await flushPromises()
+
+        expect((wrapper.get('[data-test="field-name"]').element as HTMLInputElement).value).toBe('')
+        expect(wrapper.find('[data-test="start-template"]').exists()).toBe(false)
+        expect(wrapper.get('[data-test="start-shipped"]').attributes('href')).toBe('/library')
     })
 })

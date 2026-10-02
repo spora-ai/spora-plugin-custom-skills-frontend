@@ -11,13 +11,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft } from 'lucide-vue-next'
 import SkillViewer from '../components/SkillViewer.vue'
 import * as preshippedApi from '../api/preshippedSkills'
-import { useSkillsStore } from '../stores/skills'
 import { HOST_CONTEXT_KEY, type PluginHostContext } from '../shims'
 import type { PreShippedSkillDetail } from '../types'
 
 const route = useRoute()
 const router = useRouter()
-const store = useSkillsStore()
 const hostContext = inject<PluginHostContext>(HOST_CONTEXT_KEY)
 
 const name = computed(() => {
@@ -47,15 +45,16 @@ watch(name, () => {
     void resolve()
 }, { immediate: true })
 
-async function duplicate(): Promise<void> {
-    const summary = store.preShipped.find((s) => s.name === name.value)
-    if (!summary) return
-    try {
-        const created = await store.duplicateShippedSkill(summary)
-        await router.push({ path: `/skills/${created.name}` })
-    } catch {
-        // `error` carries the message.
-    }
+/**
+ * Start from this shipped skill, via the create form.
+ *
+ * Same reasoning as the desk's Duplicate and the catalogue's: one word, one
+ * meaning. The form takes the skill as a template, so the operator names the copy
+ * before anything is written, and the create page states which sidecars the host
+ * will not serve.
+ */
+function duplicate(): void {
+    void router.push({ path: '/new', query: { template: name.value } })
 }
 </script>
 
