@@ -32,6 +32,8 @@ function makeSkill(overrides: Partial<CustomSkillResource> = {}): CustomSkillRes
             { path: 'examples/invoice.md', bytes: 120 },
         ],
         has_previous: false,
+        previous_at: null,
+        previous_by: null,
         warnings: [],
         warning_count: 0,
         ...overrides,

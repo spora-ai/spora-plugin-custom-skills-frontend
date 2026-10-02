@@ -40,6 +40,8 @@ export function makeSkill(overrides: Partial<CustomSkillResource> = {}): CustomS
             { path: 'examples/invoice.md', bytes: 1204 },
         ],
         has_previous: true,
+        previous_at: '2026-09-30 15:00:00',
+        previous_by: null,
         warnings: [],
         warning_count: 0,
         ...overrides,

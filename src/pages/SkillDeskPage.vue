@@ -67,6 +67,8 @@ function deskShape(detail: PreShippedSkillDetail): CustomSkillResource {
         updated_at: '',
         files: detail.files,
         has_previous: false,
+        previous_at: null,
+        previous_by: null,
         warnings: detail.warnings,
         warning_count: detail.warnings.length,
     }

@@ -45,6 +45,37 @@ function makeTarget(): HTMLElement {
     return target
 }
 
+/**
+ * The slice of the host's Vue Router this app touches.
+ *
+ * `afterEach` is a real Vue Router method the host exposes, so the fake fires the
+ * same imperative callback the code registers rather than pretending to be
+ * reactive — a `watch` on `currentRoute` would also "work" here and fail in the
+ * host, which is the whole reason the code uses `afterEach`.
+ */
+function fakeHostRouter(initial: { path: string; query?: Record<string, unknown> }) {
+    let guard: ((to: { path: string; query?: Record<string, unknown> }) => void) | null = null
+
+    return {
+        currentRoute: { value: { ...initial } as { path: string; query?: Record<string, unknown> } },
+        push: vi.fn().mockResolvedValue(undefined),
+        /** How many guards are currently registered — 1 while mounted, 0 after. */
+        get registered(): number {
+            return guard === null ? 0 : 1
+        },
+        afterEach(cb: (to: { path: string; query?: Record<string, unknown> }) => void): () => void {
+            guard = cb
+            return () => {
+                if (guard === cb) guard = null
+            }
+        },
+        navigate(to: { path: string; query?: Record<string, unknown> }): void {
+            this.currentRoute.value = { ...to }
+            guard?.(to)
+        },
+    }
+}
+
 beforeEach(() => {
     document.body.innerHTML = ''
     // Reset the module cache so the `window.SporaAppCustomSkills` assignment
@@ -77,6 +108,45 @@ describe('SporaApp (main.ts mount contract)', () => {
         // beneath; losing it unscopes the plugin CSS into the host.
         expect(target.querySelector('#spora-plugin-custom-skills')).not.toBeNull()
         expect(target.querySelector('[data-test="home-page"]')).not.toBeNull()
+    })
+
+    it('mount() opens the skill a host URL names, so a search hit lands on it', async () => {
+        const main = await import('../src/main')
+        const target = makeTarget()
+        const hostContext = makeHostContext()
+        hostContext.router = fakeHostRouter({ path: '/apps/custom-skills/skill/invoice-drafting' })
+
+        await main.default.mount(target, hostContext)
+        await new Promise((r) => setTimeout(r, 0))
+
+        // Without this the palette's link opened the panel's home page and dropped
+        // the skill, because the host registers no child route for the path. The
+        // assertion is on what rendered: the host's own URL is unchanged, since the
+        // app routes on its local memory-history router.
+        expect(target.querySelector('[data-test="desk-page"]')).not.toBeNull()
+        expect(target.querySelector('[data-test="home-page"]')).toBeNull()
+    })
+
+    it('follows a later host navigation, and unregisters the listener on unmount', async () => {
+        const main = await import('../src/main')
+        const target = makeTarget()
+        const hostContext = makeHostContext()
+        const hostRouter = fakeHostRouter({ path: '/apps/custom-skills' })
+        hostContext.router = hostRouter
+
+        await main.default.mount(target, hostContext)
+        await new Promise((r) => setTimeout(r, 0))
+        expect(hostRouter.registered).toBe(1)
+
+        hostRouter.navigate({ path: '/apps/custom-skills/skill/report' })
+        await new Promise((r) => setTimeout(r, 0))
+        expect(target.querySelector('[data-test="desk-page"]')).not.toBeNull()
+        expect(target.querySelector('[data-test="home-page"]')).toBeNull()
+
+        main.default.unmount(target)
+        // The host router outlives the app, so a surviving listener would push into
+        // a router whose element is gone — and the host remounts this bundle.
+        expect(hostRouter.registered).toBe(0)
     })
 
     it('mount() wires hostContext.api into the plugin-local api/client bridge', async () => {

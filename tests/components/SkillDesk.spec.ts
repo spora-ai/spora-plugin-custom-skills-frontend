@@ -329,10 +329,68 @@ describe('SkillDesk → the header', () => {
         expect(wrapper.get('[data-test="desk-state"]').text()).toBe('unsaved changes')
     })
 
+    it('says what restore will do, and that it is a toggle rather than a history', () => {
+        const wrapper = mountDesk()
+        const restore = wrapper.get('[data-test="desk-restore"]')
+        const text = restore.attributes('title') ?? ''
+
+        // One earlier version exists, so the label names it rather than implying a
+        // stack — and restoring swaps the two, so it is not destructive.
+        expect(restore.text()).toMatch(/Restore the version from|Restore previous version/)
+        expect(text).toContain('only earlier version kept')
+        expect(text).toContain('restore again to come back')
+        // Sidecars ride along, which is the part a "previous version" label hides.
+        expect(text).toContain('Sidecar files')
+        // Not hover-only.
+        expect(restore.attributes('aria-label')).toBe(text)
+    })
+
+    it('falls back to the plain label when the snapshot predates the timestamp', () => {
+        const wrapper = mountDesk({ skill: makeSkill({ previous_at: null }) })
+        expect(wrapper.get('[data-test="desk-restore"]').text()).toBe('Restore previous version')
+    })
+
     it('offers restore only when the server holds a previous snapshot', () => {
         expect(mountDesk().find('[data-test="desk-restore"]').exists()).toBe(true)
         expect(mountDesk({ skill: makeSkill({ has_previous: false }) })
             .find('[data-test="desk-restore"]').exists()).toBe(false)
+    })
+
+    it('keeps the open file open across a save', async () => {
+        // A save changes `updated_at`, which re-enters the reload. Resetting the open
+        // file there meant the desk jumped to SKILL.md under the cursor every time.
+        const skill = makeSkill()
+        const wrapper = mountDesk({ skill, fileContents: { 'examples/invoice.md': '# Invoice' } })
+        await flushPromises()
+        await wrapper.findAll('[data-test^="rail-file-"]')[0]?.trigger('click')
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Rewritten')
+        expect(wrapper.get('[data-test="desk-footer-file"]').text()).toBe('examples/invoice.md')
+
+        await wrapper.setProps({
+            skill: makeSkill({ body: skill.body, updated_at: '2026-10-02 10:00:00' }),
+            fileContents: { 'examples/invoice.md': '# Rewritten' },
+        })
+        await flushPromises()
+
+        expect(wrapper.get('[data-test="desk-footer-file"]').text()).toBe('examples/invoice.md')
+        expect(wrapper.get('[data-test="desk-state"]').text()).toBe('saved')
+    })
+
+    it('moves off a file that the save itself deleted', async () => {
+        const skill = makeSkill()
+        const wrapper = mountDesk({ skill, fileContents: { 'examples/invoice.md': '# Invoice' } })
+        await flushPromises()
+        await wrapper.findAll('[data-test^="rail-file-"]')[0]?.trigger('click')
+
+        await wrapper.setProps({
+            skill: makeSkill({
+                files: [{ path: 'SKILL.md', bytes: 10 }],
+                updated_at: '2026-10-02 10:00:00',
+            }),
+        })
+        await flushPromises()
+
+        expect(wrapper.get('[data-test="desk-footer-file"]').text()).toBe('SKILL.md')
     })
 
     it('emits the name for restore, cancel and delete', async () => {

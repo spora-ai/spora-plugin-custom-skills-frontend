@@ -115,7 +115,7 @@ describe('dev-mock → seeding helpers', () => {
             body: '', body_bytes: 0, provenance: 'human',
             created_by_user_id: 3, updated_by_user_id: 3,
             created_at: '2026-09-30 10:00:00', updated_at: '2026-09-30 10:00:00',
-            files: [{ path: 'SKILL.md', bytes: 0 }], has_previous: false,
+            files: [{ path: 'SKILL.md', bytes: 0 }], has_previous: false, previous_at: null, previous_by: null,
             warnings: [], warning_count: 0,
         })
         const list = await api.get<{ skills: Array<{ name: string }> }>('/custom-skills')

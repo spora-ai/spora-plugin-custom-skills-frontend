@@ -42,6 +42,16 @@ export interface PluginHostContext {
     router: {
         push: (to: string) => Promise<unknown>
         currentRoute: { value: { path: string; params?: Record<string, unknown>; query?: Record<string, unknown> } }
+        /**
+         * Optional because it is read defensively at runtime, not because the host
+         * lacks it — the host hands over a real Vue Router. Watching
+         * `currentRoute` reactively does not work from inside a plugin (separate
+         * `vue` copies, so the host's `shallowRef` sits behind a proxy that does
+         * not subscribe to it); `afterEach` is the imperative way out, and
+         * `spora-plugin-media-archive` reaches for the same one. Declared here so
+         * this does not need a cast.
+         */
+        afterEach?: (cb: (to: { path: string; query?: Record<string, unknown> }) => void) => () => void
     } | null
 }
 

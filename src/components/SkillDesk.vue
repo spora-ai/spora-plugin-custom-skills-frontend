@@ -35,6 +35,7 @@ import {
     SKILL_ENTRY_FILE,
     suggestFileName,
     unattachedErrors,
+    updatedLabel,
     byteSize,
     lineCount,
     MAX_FILE_BYTES,
@@ -212,6 +213,29 @@ const activeIsMarkdown = computed(() => isMarkdownPath(activePath.value))
 const showRestore = computed(() => props.skill.has_previous)
 
 /**
+ * What "Restore" is about to do, since the label alone was misleading.
+ *
+ * `CustomSkillWriter::restore()` snapshots the live state before writing the
+ * previous one back, so the two versions swap and a second restore returns you
+ * where you started. That makes it a toggle over two versions, not a history, and
+ * the button said "Restore previous version" as though there were a stack behind
+ * it — which is the reading that makes a restore look destructive. It is not: the
+ * version you are on is the one that becomes the rollback copy.
+ *
+ * The snapshot carries the sidecars too, so this restores added, edited and deleted
+ * files alike, and the time is what it was captured at, not when it was last edited.
+ */
+const restoreLabel = computed(() => {
+    const when = props.skill.previous_at ? updatedLabel(props.skill.previous_at) : ''
+    return when === '' ? 'Restore previous version' : `Restore the version from ${when}`
+})
+
+const restoreExplanation = computed(() =>
+    `${restoreLabel.value}. This is the only earlier version kept, and restoring swaps the two — `
+    + 'restore again to come back to what you have now. Sidecar files are restored with it.',
+)
+
+/**
  * Why a shipped sidecar is blank.
  *
  * `SkillController::detail()` returns `files` as `{path, bytes}` metadata and
@@ -290,8 +314,21 @@ function fieldErrors(field: Parameters<typeof errorsForField>[1]) {
     return errorsForField(props.validationErrors, field)
 }
 
-function loadFrom(skill: CustomSkillResource): void {
-    activePath.value = SKILL_ENTRY_FILE
+/**
+ * Refills the buffer from a stored skill.
+ *
+ * `$keepOpenFile` is what stops a save from closing the file you were editing: a
+ * save changes `updated_at`, which re-enters the reload below, and resetting the
+ * open file every time meant the desk jumped back to `SKILL.md` under the cursor
+ * the moment a save landed. It is honoured only when the open file still exists —
+ * a file deleted in the same save has to go somewhere else.
+ */
+function loadFrom(skill: CustomSkillResource, keepOpenFile: boolean): void {
+    const paths = new Set(skill.files.map((f) => f.path))
+    if (!keepOpenFile || !paths.has(activePath.value)) {
+        activePath.value = SKILL_ENTRY_FILE
+    }
+
     description.value = skill.description
     license.value = skill.license ?? ''
     compatibility.value = skill.compatibility ?? ''
@@ -320,8 +357,11 @@ watch(
         // the guard, a background list refresh would replace the buffer under a
         // half-typed body.
         if (skill.updated_at === loadedAt) return
+        // The first load has nothing to keep open; every later one is a save or a
+        // deliberate reload, and closing the file being worked on helps nobody.
+        const isReload = loadedAt !== ''
         loadedAt = skill.updated_at
-        loadFrom(skill)
+        loadFrom(skill, isReload)
         if (skill.files.some((f) => f.path !== SKILL_ENTRY_FILE)) {
             emit('loadFiles', skill.name)
         }
@@ -623,11 +663,13 @@ function handleSubmit(): void {
                             v-if="showRestore"
                             type="button"
                             :disabled="saving"
+                            :title="restoreExplanation"
+                            :aria-label="restoreExplanation"
                             class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
                             data-test="desk-restore"
                             @click="emit('restore', skill.name)"
                         >
-                            Restore previous version
+                            {{ restoreLabel }}
                         </button>
                         <button
                             type="button"

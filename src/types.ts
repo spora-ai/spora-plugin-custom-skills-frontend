@@ -51,6 +51,13 @@ export interface CustomSkillResource {
     files: CustomSkillFile[]
     /** `previous_snapshot` exists → "Restore previous version" is offered. */
     has_previous: boolean
+    /**
+     * When the rollback copy was taken, and who wrote it. Null on a row saved before
+     * the snapshot carried it — `has_previous` is still true in that case, which is
+     * why the two are separate rather than one nullable timestamp.
+     */
+    previous_at: string | null
+    previous_by: number | null
     warnings: SkillValidationEntry[]
     warning_count: number
 }
