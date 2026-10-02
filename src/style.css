@@ -22,10 +22,38 @@
  * editor and its preview pane, but the desk and the viewer render `<MdPreview>`
  * standalone, and the host's tokens do not reach inside it — so the prose scale
  * is set here, scoped to this plugin's root.
+ *
+ * No `max-width`: it was capped at 65ch, which is a sensible reading measure for
+ * prose but left the viewer with a narrow column in a wide pane, and the operator
+ * asked for the full width. The containing column sets the measure now.
  */
 #spora-plugin-custom-skills .md-preview {
     font-size: 0.875rem;
-    max-width: 65ch;
+    width: 100%;
+    max-width: none;
+}
+
+/*
+ * `md-editor-v3` sets `word-break: break-all` on `.md-editor-preview` and on every
+ * heading, which splits words mid-character even when the line has room — a
+ * heading like "Configuration" broke across two lines. `overflow-wrap: anywhere`
+ * is the rule that was wanted: break a token only when it cannot fit, and at any
+ * point when it cannot.
+ *
+ * The `#spora-plugin-custom-skills` prefix is what makes this stick, not the
+ * position in the bundle: the library's rules are a single class
+ * (`.md-editor-preview`, and `.md-editor-preview h1`), and an id plus a class
+ * outranks both whichever stylesheet is written first. That also keeps the
+ * override out of the host's document, which `scripts/smoke.js` checks.
+ *
+ * `word-break: normal` is not optional. Leaving the library's value in place
+ * would keep the eager break, because `overflow-wrap` only applies once the word
+ * cannot fit — the two are independent.
+ */
+#spora-plugin-custom-skills .md-editor-preview,
+#spora-plugin-custom-skills .md-editor-preview * {
+    word-break: normal;
+    overflow-wrap: anywhere;
 }
 #spora-plugin-custom-skills .md-preview h1 {
     font-size: 1.2rem;

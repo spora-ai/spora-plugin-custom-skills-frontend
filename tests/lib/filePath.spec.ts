@@ -12,7 +12,10 @@ import {
     fileFolderOptions,
     fileNameProblem,
     fileNameProblemText,
+    formatJsonForPreview,
     joinFilePath,
+    looksBinary,
+    previewModeFor,
     suggestFileName,
 } from '../../src/lib/skillFormat'
 
@@ -131,5 +134,72 @@ describe('suggestFileName', () => {
     it('suggests a free name, and never one already taken', () => {
         expect(suggestFileName(['SKILL.md'])).toBe('notes-2.md')
         expect(suggestFileName(['SKILL.md', 'notes-2.md', 'notes-3.md'])).toBe('notes-4.md')
+    })
+})
+
+/** A NUL byte, the decisive marker. Written as an escape on purpose. */
+const NUL = '\u0000'
+
+describe('looksBinary', () => {
+    it('treats a NUL byte as decisive', () => {
+        expect(looksBinary(`PNG${NUL}${NUL}binary`)).toBe(true)
+    })
+
+    it('does not call ordinary text binary', () => {
+        expect(looksBinary('# Title\n\nA paragraph with prose.\n')).toBe(false)
+        // Tab, newline and carriage return are whitespace, not control noise.
+        expect(looksBinary('a\tb\r\nc')).toBe(false)
+        // Non-ASCII prose is text; a code point does not make it binary.
+        expect(looksBinary('Größe: 12 µm — 日本語')).toBe(false)
+        expect(looksBinary('')).toBe(false)
+    })
+
+    it('catches a blob with no NUL by its control-character ratio', () => {
+        expect(looksBinary('\u0001\u0002\u0003\u0004\u0005\u0006')).toBe(true)
+        // One odd byte inside prose is not a blob.
+        expect(looksBinary(`a long line of prose \u0007 and more prose`)).toBe(false)
+    })
+})
+
+describe('previewModeFor', () => {
+    it('renders markdown', () => {
+        expect(previewModeFor('SKILL.md', '# Title')).toBe('markdown')
+        expect(previewModeFor('references/GUIDE.MD', '# Title')).toBe('markdown')
+    })
+
+    it('formats JSON, so a config file is readable rather than a wall of text', () => {
+        expect(previewModeFor('assets/data.json', '{"a":1}')).toBe('formatted')
+        expect(previewModeFor('assets/data.jsonc', '{}')).toBe('formatted')
+    })
+
+    it('shows anything else as source', () => {
+        expect(previewModeFor('scripts/extract.py', 'print()')).toBe('source')
+        expect(previewModeFor('references/notes.txt', 'plain')).toBe('source')
+        expect(previewModeFor('Makefile', 'all:\n\techo hi')).toBe('source')
+    })
+
+    it('decides binary from the bytes, not the extension', () => {
+        // An extension says what a file is meant to be; the bytes say what it is.
+        // A `.txt` that is really a PDF is the case a name-only rule gets wrong.
+        expect(previewModeFor('assets/data.txt', `PDF${NUL}`)).toBe('binary')
+        expect(previewModeFor('data.json', `PDF${NUL}`)).toBe('binary')
+    })
+})
+
+describe('formatJsonForPreview', () => {
+    it('reindents valid JSON', () => {
+        expect(formatJsonForPreview('{"a":1,"b":[2,3]}')).toBe(
+            '{\n  "a": 1,\n  "b": [\n    2,\n    3\n  ]\n}',
+        )
+    })
+
+    it('returns null rather than the input, so a broken file is shown as written', () => {
+        expect(formatJsonForPreview('{"a": 1,')).toBeNull()
+        expect(formatJsonForPreview('not json at all')).toBeNull()
+    })
+
+    it('handles a scalar document, which JSON allows', () => {
+        expect(formatJsonForPreview('42')).toBe('42')
+        expect(formatJsonForPreview('"x"')).toBe('"x"')
     })
 })

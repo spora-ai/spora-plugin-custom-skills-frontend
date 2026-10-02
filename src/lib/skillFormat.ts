@@ -295,6 +295,74 @@ export function fileKind(path: string): string {
     return extension === path || extension === '' ? 'Text' : extension.toUpperCase()
 }
 
+/**
+ * How the read-only viewer renders a file.
+ *
+ * The viewer used to branch on `isMarkdownPath` alone, so every other format fell
+ * through to the source editor and a JSON file was shown as unformatted text. That
+ * reads as "not previewable" even though the panel can read it fine.
+ *
+ * `binary` is decided from the content rather than the extension, because an
+ * extension says what a file is meant to be and the bytes say what it is: a `.txt`
+ * that is actually a PDF is the case a name-based rule gets wrong.
+ */
+export type PreviewMode = 'markdown' | 'formatted' | 'source' | 'binary'
+
+/** Extensions worth reformatting rather than showing verbatim. */
+const JSON_EXTENSIONS = new Set(['json', 'jsonc'])
+
+/**
+ * A NUL byte, or a run of control characters with no whitespace, is what a binary
+ * blob looks like once it has been through a text field. One NUL is decisive; the
+ * ratio catches the rest without a false positive on, say, a Latin-1 CSV.
+ */
+export function looksBinary(text: string): boolean {
+    if (text.includes('\u0000')) return true
+    const sample = text.slice(0, 4096)
+    if (sample === '') return false
+
+    let control = 0
+    for (const character of sample) {
+        const code = character.charCodeAt(0)
+        // Tab, newline and carriage return are whitespace, not control noise.
+        if (code < 32 && code !== 9 && code !== 10 && code !== 13) control += 1
+    }
+
+    return control / sample.length > 0.05
+}
+
+/**
+ * What to render for a file's contents, or `null` when there are none.
+ *
+ * `formatted` covers JSON only. Pretty-printing YAML or TOML would need a parser,
+ * and pulling one in to reindent a read-only view is a dependency the panel does not
+ * otherwise have; the language mode already highlights them, which is the part a
+ * reader is actually missing.
+ */
+export function previewModeFor(path: string, contents: string): PreviewMode {
+    if (looksBinary(contents)) return 'binary'
+    if (isMarkdownPath(path)) return 'markdown'
+
+    const extension = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
+    return JSON_EXTENSIONS.has(extension) ? 'formatted' : 'source'
+}
+
+/**
+ * JSON indented for reading, or `null` when it does not parse.
+ *
+ * `null` rather than the input unchanged, so a malformed file is shown as written
+ * instead of being silently presented as if the reformatting had succeeded — a
+ * half-written config is exactly the thing an operator opens this panel to check.
+ */
+export function formatJsonForPreview(contents: string): string | null {
+    try {
+        const parsed: unknown = JSON.parse(contents)
+        return JSON.stringify(parsed, null, 2)
+    } catch {
+        return null
+    }
+}
+
 /** A node in the file rail: a folder has children, a file does not. */
 export interface FileTreeNode {
     /** The segment shown in the rail — a folder name or a file's basename. */
