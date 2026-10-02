@@ -639,9 +639,9 @@ function handleSubmit(): void {
             </div>
         </div>
 
-        <div class="flex min-h-0 flex-1 overflow-hidden md:flex-row">
+        <div class="flex min-h-0 min-w-0 flex-1 overflow-hidden md:flex-row">
             <aside
-                class="flex w-56 shrink-0 flex-col border-b border-border bg-muted/30 md:border-b-0 md:border-r"
+                class="flex max-h-[38vh] w-56 shrink-0 flex-col border-b border-border bg-muted/30 md:max-h-none md:border-b-0 md:border-r"
                 data-test="file-rail"
             >
                 <div class="flex items-center justify-between px-3 py-2.5">
@@ -659,7 +659,7 @@ function handleSubmit(): void {
                     </button>
                 </div>
 
-                <nav class="px-1.5 pb-3 text-sm">
+                <nav class="scroll-quiet overflow-auto px-1.5 pb-3 text-sm">
                     <!-- The one row that cannot be removed: the contract synthesises it. -->
                     <button
                         type="button"
@@ -744,7 +744,7 @@ function handleSubmit(): void {
                 </div>
             </aside>
 
-            <div class="flex min-h-0 flex-1 flex-col">
+            <div class="flex min-h-0 min-w-0 flex-1 flex-col">
                 <!--
                 The open file, and what can be done to it. The rename pencil
                 is also on the rail row, and having it in both places is the
@@ -953,7 +953,7 @@ function handleSubmit(): void {
                 split view and the toggle in the editor's own chrome, next to the
                 formatting buttons that affect what it renders.
             -->
-                    <div class="min-h-0 flex-1 overflow-hidden">
+                    <div class="min-h-0 min-w-0 flex-1 overflow-hidden">
                         <div :aria-label="`${activePath} source`" data-test="desk-source">
                             <MdEditor
                                 v-if="activeIsMarkdown"
