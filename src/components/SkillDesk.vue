@@ -43,6 +43,15 @@ import { MARKDOWN_LOCALE } from '../lib/markdownLocale'
 import type { CustomSkillResource, SkillValidationEntry, UpdateSkillDto } from '../types'
 
 const METADATA_PLACEHOLDER = '{"tier": "pro"}'
+
+/**
+ * Why the name is fixed, and what to do instead. One string so the tooltip and the
+ * accessible name cannot drift apart.
+ */
+const NAME_LOCK_REASON =
+    'The name cannot be changed: every agent that allows this skill refers to it by name, '
+    + 'so a rename would orphan those entries. Use Duplicate to copy it under a new name, '
+    + 'then delete this one.'
 const EDITOR_LOCALE = MARKDOWN_LOCALE
 
 /**
@@ -569,9 +578,21 @@ function handleSubmit(): void {
         <div class="flex min-h-0 flex-1 flex-col">
             <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
                 <h3 class="font-mono text-sm font-semibold" data-test="desk-title">{{ skill.name }}</h3>
+                <!--
+                    The name is the skill's identity, so it is not editable here, and
+                    saying only "cannot be changed" leaves the operator looking for the
+                    way round it. `CustomSkillWriter::update()` refuses the same way:
+                    every agent that allows this skill refers to it by name, so a
+                    rename would orphan those entries. Duplicate carries them across.
+                    The `aria-label` carries the same text as the `title` because a
+                    tooltip alone is hover-only, which a pointer and a keyboard do
+                    not have in common.
+                -->
                 <Lock
                     class="h-3.5 w-3.5 text-muted-foreground"
-                    title="The name cannot be changed once created"
+                    :title="NAME_LOCK_REASON"
+                    :aria-label="NAME_LOCK_REASON"
+                    role="img"
                     data-test="desk-name-lock"
                 />
                 <span

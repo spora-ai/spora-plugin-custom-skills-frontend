@@ -274,9 +274,14 @@ describe('SkillDesk → the header', () => {
         const wrapper = mountDesk()
         expect(wrapper.get('[data-test="desk-title"]').text()).toBe('invoice-drafting')
         // The contract rejects a rename with 422, so there is no name input to
-        // offer here at all.
+        // offer here at all. The lock has to say why *and* what to do instead —
+        // "cannot be changed" on its own leaves the operator hunting.
+        const lock = wrapper.get('[data-test="desk-name-lock"]')
         expect(wrapper.find('[data-test="field-name"]').exists()).toBe(false)
-        expect(wrapper.get('[data-test="desk-name-lock"]').attributes('title')).toContain('cannot be changed')
+        expect(lock.attributes('title')).toContain('cannot be changed')
+        expect(lock.attributes('title')).toContain('Duplicate')
+        // Not hover-only: the same text is the accessible name.
+        expect(lock.attributes('aria-label')).toBe(lock.attributes('title'))
     })
 
     it('opens "saved", and says "unsaved changes" only once the buffer diverges', async () => {
