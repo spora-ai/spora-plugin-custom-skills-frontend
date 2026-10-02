@@ -556,6 +556,21 @@ describe('SkillDesk → write / split / preview', () => {
         expect(wrapper.find('[data-test="desk-editor"]').exists()).toBe(true)
     })
 
+    it('the desk is a column, with no variant that turns it back into a row', () => {
+        // A leftover `md:flex-row` here beat `flex-col` at desktop widths, so the
+        // whole desk laid out as a row — headline beside the file list beside the
+        // editor — and the page grew to five times the viewport. The class is
+        // invisible in a rendered screenshot; this is the only place it shows up.
+        const root = mountDesk().get('[data-test="skill-desk"]')
+        const classes = (root.attributes('class') ?? '').split(/\s+/)
+        expect(classes).toContain('flex-col')
+        for (const c of classes) {
+            expect(c, `"${c}" conflicts with flex-col on the desk root`).not.toBe('flex-row')
+            expect(c, `"${c}" conflicts with flex-col on the desk root`).not.toBe('md:flex-row')
+            expect(c, `"${c}" conflicts with flex-col on the desk root`).not.toBe('md:flex-col')
+        }
+    })
+
     it('keeps the preview toggles in the editor toolbar, or the split is a trap', () => {
         // `:preview="true"` gives the split view; the button that takes you out of
         // it comes from the `toolbars` array, not from that prop. Omitting these two

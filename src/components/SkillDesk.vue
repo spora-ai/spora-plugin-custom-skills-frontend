@@ -519,7 +519,7 @@ function handleSubmit(): void {
 </script>
 
 <template>
-    <div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-background md:flex-row" data-test="skill-desk">
+    <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background" data-test="skill-desk">
         <!--
             The headline spans the rail and the editor, because it names
             the thing both belong to. It used to sit inside the editor
