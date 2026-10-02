@@ -178,6 +178,18 @@ describe('SkillDesk → the file dialog', () => {
         expect(wrapper.findAll('[data-test^="rail-file-"]')).toHaveLength(1)
     })
 
+    it('dismisses on Escape and on a click away, not only on the button', async () => {
+        const wrapper = mountDesk()
+        await wrapper.get('[data-test="add-file"]').trigger('click')
+        await wrapper.get('[data-test="file-dialog"]').trigger('keydown.esc')
+        expect(wrapper.find('[data-test="file-dialog"]').exists()).toBe(false)
+
+        await wrapper.get('[data-test="add-file"]').trigger('click')
+        await wrapper.get('[data-test="file-dialog-backdrop"]').trigger('click')
+        expect(wrapper.find('[data-test="file-dialog"]').exists()).toBe(false)
+        expect(wrapper.findAll('[data-test^="rail-file-"]')).toHaveLength(1)
+    })
+
     it('opens no dialog for a shipped skill, which has nothing to write', async () => {
         const wrapper = mountDesk({ readOnly: true })
         expect(wrapper.find('[data-test="add-file"]').exists()).toBe(false)

@@ -106,13 +106,36 @@ function submit(): void {
         v-if="open"
         class="fixed inset-0 z-50 flex items-center justify-center p-4"
         data-test="file-dialog"
+        @keydown.esc="emit('cancel')"
     >
-        <div class="absolute inset-0 bg-black/50" @click="emit('cancel')" />
-        <div
-            role="dialog"
-            aria-modal="true"
+        <!--
+            A button, so the backdrop is a real control with a name rather than a
+            click-only div: clicking away to dismiss is only fair if the keyboard
+            can reach the same thing, which Escape on the container also does.
+            `tabindex="-1"` keeps it out of the tab order — the footer has a Cancel
+            button for that, and a full-screen stop before every field is worse than
+            useless.
+        -->
+        <button
+            type="button"
+            tabindex="-1"
+            aria-label="Cancel"
+            class="absolute inset-0 h-full w-full cursor-default bg-black/50"
+            data-test="file-dialog-backdrop"
+            @click="emit('cancel')"
+        />
+        <!--
+            A real `<dialog>`, but rendered with the `open` attribute rather than
+            `showModal()`: the top layer and focus trap are unavailable here, and
+            happy-dom — where every one of these tests runs — does not implement
+            `showModal()` at all. The semantics are still the browser's own, and the
+            backdrop above supplies the modality this component fakes.
+        -->
+        <dialog
+            open
             :aria-label="title"
-            class="relative w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg"
+            class="relative m-0 w-full max-w-md rounded-xl border border-border bg-card p-5 text-card-foreground shadow-lg backdrop:bg-transparent"
+            data-test="file-dialog-panel"
         >
             <div class="mb-1 flex items-center gap-2">
                 <FileText class="h-4 w-4 text-muted-foreground" />
@@ -213,6 +236,6 @@ function submit(): void {
                     {{ submitLabel }}
                 </button>
             </div>
-        </div>
+        </dialog>
     </div>
 </template>

@@ -329,7 +329,7 @@ export const SKILL_ENTRY_FILE = 'SKILL.md'
 
 /** Leading and trailing slashes are a display habit, not a path. */
 function trimSlashes(folder: string): string {
-    return folder.replace(/^\/+|\/+$/g, '')
+    return folder.replace(/^\/+/, '').replace(/\/+$/, '')
 }
 
 /**
@@ -358,7 +358,7 @@ const PROBLEM_TEXT: Record<FileNameProblem, string> = {
     empty: 'Name the file.',
     'has-separator': 'Put the folder in the folder field — the name cannot contain “/”.',
     traversal: '“.” and “..” are not file names.',
-    backslash: 'Use “/” between folders, not “\\”.',
+    backslash: 'Use a forward slash between folders, not a backslash.',
     control: 'That name contains characters a file cannot have.',
     padded: 'Remove the leading or trailing space.',
     'bad-folder': 'That folder cannot be used — try a plain name like “references”.',
