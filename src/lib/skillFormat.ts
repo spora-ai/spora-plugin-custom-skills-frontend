@@ -20,6 +20,18 @@ export const SKILL_FIELDS = [
 export const SKILL_LIMIT = 25
 
 /**
+ * `CustomSkillProvider::SOURCE` — the `source` this plugin's own skills carry in
+ * core's `GET /api/v1/skills` listing.
+ *
+ * That listing is the union over every principal the caller can see, so it comes
+ * back holding this plugin's principal-scoped skills alongside the host's shipped
+ * ones. A shipped skill is global and has no principal row, so anything from this
+ * source in that response is somebody's *own* skill rather than a catalogue entry
+ * — which makes it the one signal that separates the two.
+ */
+export const CUSTOM_SKILLS_SOURCE = 'custom-skills'
+
+/**
  * `SkillProviderInterface::MAX_FILE_BYTES`, restated only for the desk's size
  * readout. A 50 KB file is a 413 `FILE_TOO_LARGE` on read and a 422 on write, so
  * the ceiling is worth showing while there is still room to get under it.

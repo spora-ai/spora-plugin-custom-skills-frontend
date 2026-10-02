@@ -70,6 +70,24 @@ describe('CataloguePage → the list', () => {
             .toEqual(['core · 2', 'marketing · 1'])
     })
 
+    it('never lists a principal-scoped skill as a shipped one', async () => {
+        // Driven through the real load, not a hand-set `preShipped`, because the
+        // guarantee lives in the store: `/api/v1/skills` answers with the union
+        // over every principal the caller can see, so the response carries this
+        // plugin's own skills. The Catalogue claims to be what the host ships.
+        mockedPreshipped.listPreShippedSkills.mockResolvedValueOnce([
+            makePreShipped({ name: 'code-review', source: 'core' }),
+            makePreShipped({ name: 'hello-world', source: 'custom-skills' }),
+        ])
+        const store = useSkillsStore()
+        await store.loadPreShippedSkills()
+        const wrapper = await mountOn('/library')
+        await flushPromises()
+        expect(wrapper.findAll('[data-test="preshipped-name"]').map((n) => n.text()))
+            .toEqual(['code-review'])
+        expect(wrapper.text()).not.toContain('hello-world')
+    })
+
     it('names the host route, because this plugin must never re-serve it', async () => {
         useSkillsStore().preShipped = [makePreShipped()]
         const wrapper = await mountOn('/library')

@@ -5,7 +5,7 @@ import * as api from '../api/customSkills'
 import * as preshippedApi from '../api/preshippedSkills'
 import * as allowlistApi from '../api/agentAllowlist'
 import * as agentsApi from '../api/agents'
-import { forkName, plural } from '../lib/skillFormat'
+import { CUSTOM_SKILLS_SOURCE, forkName, plural } from '../lib/skillFormat'
 import { usePrincipalsStore } from './principals'
 import type {
     AgentSummary,
@@ -137,7 +137,16 @@ export const useSkillsStore = defineStore('custom-skills', () => {
     async function loadPreShippedSkills(): Promise<void> {
         preShippedLoading.value = true
         try {
-            preShipped.value = await preshippedApi.listPreShippedSkills()
+            // `GET /api/v1/skills` unions every principal the caller can see, so it
+            // carries this plugin's own principal-scoped skills as well as the host's.
+            // `preShipped` means "shipped" everywhere it is read — the Catalogue lists
+            // it, and the desk treats a name found in it as a read-only global skill —
+            // so this plugin's own skills are removed here rather than at each call
+            // site. Their own rows are already principal-scoped, and a foreign
+            // principal's is correctly not visible from this one.
+            preShipped.value = (await preshippedApi.listPreShippedSkills()).filter(
+                (row) => row.source !== CUSTOM_SKILLS_SOURCE,
+            )
         } catch {
             // A different backend surface: a host-catalogue failure must not
             // land in the shared `error` the "My skills" pane renders.

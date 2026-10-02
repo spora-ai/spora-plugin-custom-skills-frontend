@@ -14,6 +14,7 @@ import * as agentsApi from '../../src/api/agents'
 import { useSkillsStore, extractValidationErrors } from '../../src/stores/skills'
 import { usePrincipalsStore } from '../../src/stores/principals'
 import { makeSkill, makePreShipped, makePreShippedDetail, makeAllowlistEntry } from '../fixtures'
+import { CUSTOM_SKILLS_SOURCE } from '../../src/lib/skillFormat'
 
 vi.mock('../../src/api/customSkills')
 vi.mock('../../src/api/preshippedSkills')
@@ -60,6 +61,24 @@ describe('skills store → loading triple', () => {
         expect(mockedPreshipped.listPreShippedSkills).toHaveBeenCalledWith()
         expect(store.preShipped).toHaveLength(1)
         expect(store.preShippedLoading).toBe(false)
+    })
+
+    it('drops this plugin’s own skills from the shipped catalogue', async () => {
+        // `GET /api/v1/skills` without `?principal_id=` is the union over every
+        // principal the caller can see, so it carries principal-scoped skills too.
+        // `preShipped` means "shipped" wherever it is read, so they must not land
+        // here — otherwise the Catalogue lists somebody's own skill as a shipped
+        // global one, and the desk opens it read-only.
+        mockedPreshipped.listPreShippedSkills.mockResolvedValueOnce([
+            makePreShipped({ name: 'agent-creation', source: 'core' }),
+            makePreShipped({ name: 'hello-world', source: CUSTOM_SKILLS_SOURCE }),
+            makePreShipped({ name: 'some-plugin-skill', source: 'typst' }),
+        ])
+        await store.loadPreShippedSkills()
+        expect(store.preShipped.map((row) => row.name)).toEqual([
+            'agent-creation',
+            'some-plugin-skill',
+        ])
     })
 
     it('a pre-shipped failure must not blank the shared error banner', async () => {
