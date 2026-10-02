@@ -323,7 +323,10 @@ export function looksBinary(text: string): boolean {
 
     let control = 0
     for (const character of sample) {
-        const code = character.charCodeAt(0)
+        // `for…of` yields whole code points, so this is the character's own value and
+        // a surrogate pair is one iteration — which is what we want, since neither
+        // half of one is a control character.
+        const code = character.codePointAt(0) ?? 0
         // Tab, newline and carriage return are whitespace, not control noise.
         if (code < 32 && code !== 9 && code !== 10 && code !== 13) control += 1
     }
