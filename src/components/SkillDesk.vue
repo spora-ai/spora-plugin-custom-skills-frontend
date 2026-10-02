@@ -21,8 +21,9 @@ import { computed, ref, useId, watch } from 'vue'
 import { MdEditor, MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import DOMPurify from 'dompurify'
-import { ChevronDown, ChevronRight, Copy, FileText, Folder, Lock, MoreHorizontal, Plus, Save, Trash2 } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Copy, FileText, Folder, Lock, MoreHorizontal, Pencil, Plus, Save, Trash2 } from 'lucide-vue-next'
 import SourceEditor from './SourceEditor.vue'
+import FileDialog from './FileDialog.vue'
 import {
     errorsForField,
     fileKind,
@@ -31,6 +32,8 @@ import {
     folderPaths,
     formatBytes,
     isMarkdownPath,
+    SKILL_ENTRY_FILE,
+    suggestFileName,
     unattachedErrors,
     byteSize,
     lineCount,
@@ -39,7 +42,6 @@ import {
 import { MARKDOWN_LOCALE } from '../lib/markdownLocale'
 import type { CustomSkillResource, SkillValidationEntry, UpdateSkillDto } from '../types'
 
-const SKILL_ENTRY_FILE = 'SKILL.md'
 const METADATA_PLACEHOLDER = '{"tier": "pro"}'
 const EDITOR_LOCALE = MARKDOWN_LOCALE
 
@@ -297,21 +299,67 @@ function fileSize(path: string): number {    if (path === SKILL_ENTRY_FILE) retu
 }
 
 /**
- * A new row gets a unique default path and immediately becomes the active file:
- * the operator clicked "Add file" to write in it, and a blank path is rejected
- * server-side, so it is never a useful starting state.
+ * Create and rename both run through the dialog.
+ *
+ * A file used to be added under an invented name (`notes-4.md`) that could only
+ * then be corrected by typing a whole path into the row, and that correction did
+ * not work: the rail keys rows on the path, so the first character of a rename
+ * re-created the input and took the focus with it. The name and the folder are
+ * therefore one decision, made once, where both can be seen.
  */
-function addSidecar(): void {
-    const taken = new Set(sidecars.value.map((r) => r.path))
-    let n = sidecars.value.length + 1
-    const folder = targetFolder.value === '' ? '' : `${targetFolder.value}/`
-    let path = `${folder}notes-${n}.md`
-    while (taken.has(path)) {
-        n += 1
-        path = `${folder}notes-${n}.md`
+const fileDialog = ref<{ open: boolean; mode: 'create' | 'rename'; name: string; folder: string; selfPath?: string }>({
+    open: false,
+    mode: 'create',
+    name: '',
+    folder: '',
+})
+
+const takenPaths = computed(() => sidecars.value.map((row) => row.path))
+
+function openCreateDialog(): void {
+    fileDialog.value = {
+        open: true,
+        mode: 'create',
+        name: suggestFileName(takenPaths.value),
+        // Where the operator is working, so a file lands next to what they opened.
+        folder: targetFolder.value,
     }
-    sidecars.value = [...sidecars.value, { path, content: '' }]
+}
+
+/** Renaming the open sidecar. Folders in the picker are the file's own ancestors. */
+function openRenameDialog(): void {
+    const current = activeSidecar.value
+    if (current === null) return
+    const slash = current.path.lastIndexOf('/')
+    fileDialog.value = {
+        open: true,
+        mode: 'rename',
+        name: slash === -1 ? current.path : current.path.slice(slash + 1),
+        folder: slash === -1 ? '' : current.path.slice(0, slash),
+        selfPath: current.path,
+    }
+}
+
+function closeFileDialog(): void {
+    fileDialog.value = { ...fileDialog.value, open: false }
+}
+
+/**
+ * Applies a path from the dialog.
+ *
+ * A rename keeps the content and re-points `activePath` at the new path, because
+ * the path is the row's identity: leaving it behind would blank the open file.
+ */
+function applyFilePath(path: string): void {
+    if (fileDialog.value.mode === 'create') {
+        sidecars.value = [...sidecars.value, { path, content: '' }]
+    } else {
+        const index = activeSidecarIndex.value
+        if (index < 0) return
+        sidecars.value = sidecars.value.map((row, i) => (i === index ? { ...row, path } : row))
+    }
     activePath.value = path
+    closeFileDialog()
 }
 
 function removeActiveSidecar(): void {
@@ -319,17 +367,6 @@ function removeActiveSidecar(): void {
     if (index < 0) return
     sidecars.value = sidecars.value.filter((_, i) => i !== index)
     activePath.value = SKILL_ENTRY_FILE
-}
-
-/**
- * The rail row is keyed on the path, so a rename that did not move `activePath`
- * would blank the file mid-typing — the path is the identity here.
- */
-function renameActiveSidecar(path: string): void {
-    const index = activeSidecarIndex.value
-    if (index < 0 || sidecars.value[index]?.path === path) return
-    sidecars.value = sidecars.value.map((row, i) => (i === index ? { ...row, path } : row))
-    activePath.value = path
 }
 
 function parseMetadata(): { value: Record<string, unknown> } | { error: string } {
@@ -385,12 +422,13 @@ function handleSubmit(): void {
             <div class="flex items-center justify-between px-3 py-2.5">
                 <h2 class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Files</h2>
                 <button
+                    v-if="!readOnly"
                     type="button"
                     class="flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
                     title="Add a file"
                     aria-label="Add a file"
                     data-test="add-file"
-                    @click="addSidecar"
+                    @click="openCreateDialog"
                 >
                     <Plus class="h-3.5 w-3.5" />
                 </button>
@@ -430,31 +468,44 @@ function handleSubmit(): void {
                         <span class="truncate">{{ row.name }}</span>
                     </button>
 
-                    <button
+                    <!--
+                        A wrapper rather than a nested button: the row selects the file
+                        and the pencil renames it, and a `<button>` inside a `<button>`
+                        is invalid HTML that also swallows the inner click in some
+                        browsers. Only the open row offers the pencil, so the rail
+                        carries one affordance at a time.
+                    -->
+                    <div
                         v-else
-                        type="button"
-                        class="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[13px] transition-colors hover:bg-background"
-                        :class="activePath === row.path ? 'bg-background shadow-sm ring-1 ring-border' : ''"
+                        class="group flex items-center gap-0.5"
                         :style="row.depth > 0 ? { paddingLeft: `${1.25 + (row.depth - 1) * 0.75}rem` } : undefined"
-                        :data-test="`rail-file-${row.path}`"
-                        @click="activePath = row.path"
                     >
-                        <FileText class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        <input
+                        <button
+                            type="button"
+                            class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[13px] transition-colors hover:bg-background"
+                            :class="activePath === row.path ? 'bg-background shadow-sm ring-1 ring-border' : ''"
+                            :title="row.path"
+                            :data-test="`rail-file-${row.path}`"
+                            @click="activePath = row.path"
+                        >
+                            <FileText class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <span class="min-w-0 flex-1 truncate">{{ row.name }}</span>
+                            <span class="shrink-0 text-[10px] text-muted-foreground">
+                                {{ formatBytes(fileSize(row.path)) }}
+                            </span>
+                        </button>
+                        <button
                             v-if="activePath === row.path"
-                            :value="row.path"
-                            type="text"
-                            :aria-label="`Path for ${row.path}`"
-                            class="min-w-0 flex-1 bg-transparent font-mono text-[13px] outline-none"
-                            data-test="sidecar-path"
-                            @click.stop
-                            @input="renameActiveSidecar(($event.target as HTMLTextAreaElement).value)"
-                        />
-                        <span v-else class="min-w-0 flex-1 truncate">{{ row.name }}</span>
-                        <span class="shrink-0 text-[10px] text-muted-foreground">
-                            {{ formatBytes(fileSize(row.path)) }}
-                        </span>
-                    </button>
+                            type="button"
+                            class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            :aria-label="`Rename ${row.path}`"
+                            title="Rename or move"
+                            data-test="rename-file"
+                            @click.stop="openRenameDialog"
+                        >
+                            <Pencil class="h-3 w-3" />
+                        </button>
+                    </div>
                 </template>
             </nav>
 
@@ -829,5 +880,22 @@ function handleSubmit(): void {
                 </span>
             </footer>
         </div>
+
+        <!--
+            Not rendered at all for a shipped skill: the desk is read-only there, so
+            offering a way to add or rename a file would be offering to write.
+        -->
+        <FileDialog
+            v-if="!readOnly"
+            :open="fileDialog.open"
+            :mode="fileDialog.mode"
+            :initial-name="fileDialog.name"
+            :initial-folder="fileDialog.folder"
+            :folders="folders"
+            :taken-paths="takenPaths"
+            :self-path="fileDialog.selfPath"
+            @submit="applyFilePath"
+            @cancel="closeFileDialog"
+        />
     </div>
 </template>

@@ -305,6 +305,173 @@ export interface FileTreeNode {
 }
 
 /**
+ * The directories the Agent Skills spec names, offered when a file is created.
+ *
+ * The spec calls these recommendations rather than rules — "A skill directory may
+ * contain any files and directories beyond the required `SKILL.md`" — but an
+ * operator who is not writing a skill by hand every day will otherwise invent
+ * `docs/`, `doc/`, `resources/` and `files/` for the same thing, and a skill
+ * that is read by an agent it does not know is easier to follow if it uses the
+ * names the ecosystem already agrees on. See
+ * https://agentskills.io/specification#optional-directories.
+ */
+export const CONVENTIONAL_SKILL_FOLDERS = ['references', 'scripts', 'assets'] as const
+
+/**
+ * The one path a sidecar may not take.
+ *
+ * `SKILL.md` is synthesised on read from the skill's own columns — the body lives
+ * in `custom_skills.body`, not in `files` — and `CustomSkillWriter` rejects a
+ * `files` row under this name as an unwritable second copy. So it is reserved, and
+ * the dialog has to say so rather than let the save fail.
+ */
+export const SKILL_ENTRY_FILE = 'SKILL.md'
+
+/** Leading and trailing slashes are a display habit, not a path. */
+function trimSlashes(folder: string): string {
+    return folder.replace(/^\/+|\/+$/g, '')
+}
+
+/**
+ * The full path a file would be stored under, from the folder chosen in the
+ * dialog and the name typed into it. An empty folder means the skill root, which
+ * is where a sidecar with no directory lives.
+ */
+export function joinFilePath(folder: string, name: string): string {
+    const trimmed = trimSlashes(folder)
+    return trimmed === '' ? name : `${trimmed}/${name}`
+}
+
+/** Why a path cannot be used, or `null` when it can. */
+export type FileNameProblem =
+    | 'empty'
+    | 'has-separator'
+    | 'traversal'
+    | 'backslash'
+    | 'control'
+    | 'padded'
+    | 'bad-folder'
+    | 'reserved'
+    | 'duplicate'
+
+const PROBLEM_TEXT: Record<FileNameProblem, string> = {
+    empty: 'Name the file.',
+    'has-separator': 'Put the folder in the folder field — the name cannot contain “/”.',
+    traversal: '“.” and “..” are not file names.',
+    backslash: 'Use “/” between folders, not “\\”.',
+    control: 'That name contains characters a file cannot have.',
+    padded: 'Remove the leading or trailing space.',
+    'bad-folder': 'That folder cannot be used — try a plain name like “references”.',
+    reserved: `${SKILL_ENTRY_FILE} is the skill itself and always exists.`,
+    duplicate: 'A file with that path already exists.',
+}
+
+/** The characters a stored path may not contain, per the server's own rule. */
+// eslint-disable-next-line no-control-regex -- the same range `isSafePath` rejects.
+const CONTROL_CHARACTERS = /[\x00-\x1F\x7F]/
+
+/** A single path segment that is not a real name. */
+function isBadSegment(segment: string): boolean {
+    return segment === '' || segment === '.' || segment === '..' || CONTROL_CHARACTERS.test(segment)
+}
+
+/**
+ * Why a file cannot be created or renamed to `name` inside `folder`, or `null`.
+ *
+ * Mirrors `CustomSkillProvider::isSafePath`, which is the server's rule for a
+ * sidecar path: plain relative, no traversal, no backslash, no control
+ * characters, no empty segment. Checked here so the dialog can say *why* rather
+ * than letting a 422 come back after the fact — the plugin is the only layer that
+ * knows the operator's intent, and `files` is written as a whole map, so one
+ * rejected path fails the entire save rather than just the new file.
+ *
+ * The folder is checked with the same rules as the name, because the spec allows
+ * "any additional files or directories" and the picker offers a suggestion rather
+ * than a closed list: `references/../secrets` is a folder the operator must not be
+ * able to create, and a `..` that survives to the server costs a whole save.
+ *
+ * `selfPath` is the file being renamed, which keeps its own path available to
+ * itself: renaming `a.md` to `a.md` is a no-op, not a collision.
+ */
+export function fileNameProblem(
+    name: string,
+    folder: string,
+    takenPaths: readonly string[],
+    selfPath?: string,
+): FileNameProblem | null {
+    if (name === '') return 'empty'
+    if (name !== name.trim()) return 'padded'
+    if (name.includes('/')) return 'has-separator'
+    if (name.includes('\\')) return 'backslash'
+    if (isBadSegment(name)) return CONTROL_CHARACTERS.test(name) ? 'control' : 'traversal'
+
+    // Split after trimming, so `/references/` is one segment while `a//b` keeps
+    // the empty one the server rejects. A leading or trailing slash is forgiven
+    // because it is a typing habit, not a claim about the path.
+    if (folder.includes('\\')) return 'backslash'
+    const trimmed = trimSlashes(folder)
+    const segments = trimmed === '' ? [] : trimmed.split('/')
+    if (segments.some((segment) => isBadSegment(segment) || segment !== segment.trim())) {
+        return 'bad-folder'
+    }
+
+    const path = joinFilePath(folder, name)
+    // Checked before the duplicate scan: the entry file is not in `takenPaths`,
+    // because it is not a `files` row, so only this catches it.
+    if (path === SKILL_ENTRY_FILE) return 'reserved'
+    return takenPaths.includes(path) && path !== selfPath ? 'duplicate' : null
+}
+
+export function fileNameProblemText(problem: FileNameProblem): string {
+    return PROBLEM_TEXT[problem]
+}
+
+/** One choice in the dialog's folder picker. The root is the empty path. */
+export interface FileFolderOption {
+    value: string
+    label: string
+}
+
+/**
+ * What the folder picker offers: the skill root, every folder that already exists
+ * in this skill, and the spec's three conventions.
+ *
+ * Existing folders come first and are never dropped, because a file that is
+ * already two levels deep has to stay reachable — the picker is for where a file
+ * goes, and moving it shallower is a move the spec encourages. The conventions
+ * are appended only when absent, so a skill that already has `references/` shows
+ * one entry, not two.
+ */
+export function fileFolderOptions(existingFolders: readonly string[]): FileFolderOption[] {
+    const options: FileFolderOption[] = [{ value: '', label: 'Skill root' }]
+
+    for (const folder of [...existingFolders].sort((a, b) => a.localeCompare(b, 'en'))) {
+        options.push({ value: folder, label: `${folder}/` })
+    }
+
+    for (const folder of CONVENTIONAL_SKILL_FOLDERS) {
+        if (!existingFolders.includes(folder)) {
+            options.push({ value: folder, label: `${folder}/` })
+        }
+    }
+
+    return options
+}
+
+/**
+ * A free name to pre-fill the dialog with, so the common case is one keystroke
+ * and Enter rather than typing a filename from nothing.
+ *
+ * Only ever a suggestion: the field is editable, because the whole point of the
+ * dialog is that `notes-3.md` is not the answer.
+ */
+export function suggestFileName(takenPaths: readonly string[]): string {
+    let n = takenPaths.length + 1
+    while (takenPaths.includes(`notes-${n}.md`)) n += 1
+    return `notes-${n}.md`
+}
+
+/**
  * The rail's tree, derived from the stored paths.
  *
  * Folders are not stored: the contract's `files` is a flat `path => content` map,

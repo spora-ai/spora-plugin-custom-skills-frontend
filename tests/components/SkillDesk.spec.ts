@@ -16,6 +16,7 @@ import { mount } from '@vue/test-utils'
 import SkillDesk from '../../src/components/SkillDesk.vue'
 import SourceEditor from '../../src/components/SourceEditor.vue'
 import { makeSkill, makeValidationEntry } from '../fixtures'
+import { CONVENTIONAL_SKILL_FOLDERS } from '../../src/lib/skillFormat'
 
 function mountDesk(props: Record<string, unknown> = {}) {
     return mount(SkillDesk, { props: { skill: makeSkill(), ...props } })
@@ -91,26 +92,106 @@ describe('SkillDesk → folders', () => {
         await wrapper.get('[data-test="rail-file-examples/invoice.md"]').trigger('click')
         await wrapper.get('[data-test="add-file"]').trigger('click')
         // It belongs where the operator is working, not at the root.
-        const added = wrapper.findAll('[data-test^="rail-file-examples/notes-"]')
-        expect(added.length).toBeGreaterThan(0)
-        // And it is the open file, ready to be typed into.
-        expect((wrapper.get('[data-test="sidecar-path"]').element as HTMLInputElement).value).toContain('examples/notes-')
+        expect((wrapper.get('[data-test="file-dialog-folder"]').element as HTMLInputElement).value)
+            .toBe('examples')
     })
 
     it('adds at the root when the open file is at the root', async () => {
         const wrapper = nested()
         await wrapper.get('[data-test="add-file"]').trigger('click')
-        expect(wrapper.findAll('[data-test^="rail-file-notes-"]').length).toBeGreaterThan(0)
-        expect((wrapper.get('[data-test="sidecar-path"]').element as HTMLInputElement).value).not.toContain('/')
+        expect((wrapper.get('[data-test="file-dialog-folder"]').element as HTMLInputElement).value)
+            .toBe('')
     })
 
-    it('renames a file into a new folder by typing the path', async () => {
+    it('moves a file into a folder through the dialog', async () => {
         const wrapper = nested()
         await wrapper.get('[data-test="rail-file-data.json"]').trigger('click')
-        await wrapper.get('[data-test="sidecar-path"]').setValue('config/settings.json')
+        await wrapper.get('[data-test="rename-file"]').trigger('click')
+        await wrapper.get('[data-test="file-dialog-folder"]').setValue('config')
+        await wrapper.get('[data-test="file-dialog-submit"]').trigger('click')
         // The folder appears because a file inside it now exists.
         expect(wrapper.find('[data-test="rail-folder-config"]').exists()).toBe(true)
-        expect(wrapper.find('[data-test="rail-file-config/settings.json"]').exists()).toBe(true)
+        expect(wrapper.find('[data-test="rail-file-config/data.json"]').exists()).toBe(true)
+    })
+})
+
+describe('SkillDesk → the file dialog', () => {
+    it('offers the spec’s own folder names, because that is what a reader expects', async () => {
+        const wrapper = mountDesk()
+        await wrapper.get('[data-test="add-file"]').trigger('click')
+        const dialog = wrapper.get('[data-test="file-dialog"]')
+        for (const folder of CONVENTIONAL_SKILL_FOLDERS) {
+            expect(dialog.text()).toContain(folder)
+        }
+    })
+
+    it('suggests a name that is free, and does not insist on it', async () => {
+        const wrapper = mountDesk()
+        await wrapper.get('[data-test="add-file"]').trigger('click')
+        // A suggestion, not a decision: the point of the dialog is that the name is
+        // the operator's to choose, which the inline path edit never allowed.
+        expect((wrapper.get('[data-test="file-dialog-name"]').element as HTMLInputElement).value)
+            .toBe('notes-2.md')
+        await wrapper.get('[data-test="file-dialog-name"]').setValue('REFERENCE.md')
+        await wrapper.get('[data-test="file-dialog-folder"]').setValue('references')
+        await wrapper.get('[data-test="file-dialog-submit"]').trigger('click')
+        expect(wrapper.find('[data-test="rail-file-references/REFERENCE.md"]').exists()).toBe(true)
+    })
+
+    it('will not create a file on top of another one', async () => {
+        const wrapper = mountDesk()
+        await wrapper.get('[data-test="add-file"]').trigger('click')
+        await wrapper.get('[data-test="file-dialog-name"]').setValue('invoice.md')
+        await wrapper.get('[data-test="file-dialog-folder"]').setValue('examples')
+        await wrapper.get('[data-test="file-dialog-submit"]').trigger('click')
+        expect(wrapper.find('[data-test="file-dialog-error"]').text()).toContain('already exists')
+        // Still open, and nothing was added.
+        expect(wrapper.find('[data-test="file-dialog"]').exists()).toBe(true)
+        expect(wrapper.findAll('[data-test^="rail-file-"]')).toHaveLength(1)
+    })
+
+    it('will not add a second SKILL.md, which the server cannot store', async () => {
+        const wrapper = mountDesk()
+        await wrapper.get('[data-test="add-file"]').trigger('click')
+        await wrapper.get('[data-test="file-dialog-name"]').setValue('SKILL.md')
+        await wrapper.get('[data-test="file-dialog-submit"]').trigger('click')
+        // `SKILL.md` is synthesised from the skill's own columns, so it is not a
+        // `files` row and no duplicate scan would ever catch it.
+        expect(wrapper.find('[data-test="file-dialog-error"]').text()).toContain('always exists')
+        expect(wrapper.findAll('[data-test^="rail-file-"]')).toHaveLength(1)
+    })
+
+    it('refuses a folder that climbs out of the skill', async () => {
+        const wrapper = mountDesk()
+        await wrapper.get('[data-test="add-file"]').trigger('click')
+        await wrapper.get('[data-test="file-dialog-folder"]').setValue('../secrets')
+        await wrapper.get('[data-test="file-dialog-submit"]').trigger('click')
+        expect(wrapper.find('[data-test="file-dialog-error"]').exists()).toBe(true)
+        expect(wrapper.findAll('[data-test^="rail-file-"]')).toHaveLength(1)
+    })
+
+    it('cancels without adding a file', async () => {
+        const wrapper = mountDesk()
+        await wrapper.get('[data-test="add-file"]').trigger('click')
+        await wrapper.get('[data-test="file-dialog-cancel"]').trigger('click')
+        expect(wrapper.find('[data-test="file-dialog"]').exists()).toBe(false)
+        expect(wrapper.findAll('[data-test^="rail-file-"]')).toHaveLength(1)
+    })
+
+    it('opens no dialog for a shipped skill, which has nothing to write', async () => {
+        const wrapper = mountDesk({ readOnly: true })
+        expect(wrapper.find('[data-test="add-file"]').exists()).toBe(false)
+    })
+
+    it('opens the new file in the editor its extension calls for', async () => {
+        const wrapper = mountDesk()
+        await wrapper.get('[data-test="add-file"]').trigger('click')
+        await wrapper.get('[data-test="file-dialog-name"]').setValue('extract.py')
+        await wrapper.get('[data-test="file-dialog-folder"]').setValue('scripts')
+        await wrapper.get('[data-test="file-dialog-submit"]').trigger('click')
+        // A python script is not prose, so the markdown toolbar would be a lie.
+        expect(wrapper.find('[data-testid="md-editor-stub"]').exists()).toBe(false)
+        expect(wrapper.find('[data-test="source-editor"]').exists()).toBe(true)
     })
 })
 
@@ -309,6 +390,7 @@ describe('SkillDesk → the file being written', () => {
     it('gives a new sidecar a usable path and opens it', async () => {
         const wrapper = mountDesk()
         await wrapper.get('[data-test="add-file"]').trigger('click')
+        await wrapper.get('[data-test="file-dialog-submit"]').trigger('click')
         const rows = wrapper.findAll('[data-test^="rail-file-"]')
         expect(rows).toHaveLength(2)
         expect(wrapper.get('[data-test="desk-source"]').attributes('aria-label')).toBe('notes-2.md source')
@@ -318,7 +400,9 @@ describe('SkillDesk → the file being written', () => {
         const wrapper = mountDesk({ fileContents: { 'examples/invoice.md': '# Example' } })
         await wrapper.findAll('[data-test^="rail-file-"]')[0]?.trigger('click')
         await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Example')
-        await wrapper.get('[data-test="sidecar-path"]').setValue('examples/renamed.md')
+        await wrapper.get('[data-test="rename-file"]').trigger('click')
+        await wrapper.get('[data-test="file-dialog-name"]').setValue('renamed.md')
+        await wrapper.get('[data-test="file-dialog-submit"]').trigger('click')
         wrapper.get('[data-test="desk-save"]').trigger('click')
 
         const payload = wrapper.emitted('save')?.[0]?.[0] as { files: Record<string, string> }
