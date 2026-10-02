@@ -611,8 +611,7 @@ describe('SkillDesk → the frontmatter', () => {
         expect(disclosure.element.hasAttribute('open')).toBe(true)
     })
 
-    it('keeps the buffer when the frontmatter is folded, because it is not the editor', async () => {
-        const wrapper = mountDesk()
+    it('keeps the buffer when the frontmatter is folded, because it is not the editor', async () => {        const wrapper = mountDesk()
         await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Rewritten')
         await wrapper.get('[data-test="frontmatter-toggle"]').trigger('click')
         expect(wrapper.get('[data-test="frontmatter"]').element.hasAttribute('open')).toBe(false)
@@ -750,5 +749,76 @@ describe('SkillDesk → validation feedback', () => {
 
     it('renders no banner when there is nothing to report', () => {
         expect(mountDesk().find('[data-test="validation-banner"]').exists()).toBe(false)
+    })
+})
+
+describe('SkillDesk → what surrounds the editor', () => {
+    const layout = (wrapper: ReturnType<typeof mountDesk>) => {
+        const html = wrapper.html()
+        return {
+            headline: html.indexOf('data-test="desk-title"'),
+            rail: html.indexOf('data-test="file-rail"'),
+            openFile: html.indexOf('data-test="open-file"'),
+        }
+    }
+
+    it('puts the skill headline above the rail as well as the editor', () => {
+        // It used to sit inside the editor column, which read as though the skill
+        // belonged to whichever file happened to be open.
+        const positions = layout(mountDesk())
+        expect(positions.headline).toBeGreaterThan(-1)
+        expect(positions.headline).toBeLessThan(positions.rail)
+    })
+
+    it('names the open file on the right, where that file’s controls are', async () => {
+        const wrapper = mountDesk({
+            fileContents: { 'examples/invoice.md': '# Invoice' },
+        })
+        await flushPromises()
+
+        expect(wrapper.get('[data-test="open-file-name"]').text()).toBe('SKILL.md')
+
+        await wrapper.get('[data-test="rail-file-examples/invoice.md"]').trigger('click')
+        expect(wrapper.get('[data-test="open-file-name"]').text()).toBe('examples/invoice.md')
+    })
+
+    it('offers the rename next to the open file name, as well as on the rail row', async () => {
+        const wrapper = mountDesk({
+            fileContents: { 'examples/invoice.md': '# Invoice' },
+        })
+        await flushPromises()
+        // SKILL.md cannot be renamed, so neither control is offered for it.
+        expect(wrapper.find('[data-test="open-file-rename"]').exists()).toBe(false)
+
+        await wrapper.get('[data-test="rail-file-examples/invoice.md"]').trigger('click')
+
+        // Both, deliberately: the rail says which file is open, this says what it is
+        // called and what can be done to it.
+        expect(wrapper.find('[data-test="rename-file"]').exists()).toBe(true)
+        expect(wrapper.find('[data-test="open-file-rename"]').exists()).toBe(true)
+
+        // And the one here actually opens the dialog.
+        await wrapper.get('[data-test="open-file-rename"]').trigger('click')
+        expect(wrapper.find('[data-test="file-dialog"]').exists()).toBe(true)
+    })
+
+    it('does not offer the rename on a shipped skill, which cannot be written', async () => {
+        const wrapper = mountDesk({
+            skill: makeSkill(),
+            readOnly: true,
+            fileContents: { 'examples/invoice.md': '# Invoice' },
+        })
+        await flushPromises()
+        await wrapper.get('[data-test="rail-file-examples/invoice.md"]').trigger('click')
+
+        expect(wrapper.find('[data-test="open-file-rename"]').exists()).toBe(false)
+        expect(wrapper.find('[data-test="remove-sidecar"]').exists()).toBe(false)
+        expect(wrapper.find('[data-test="sidecar-unavailable"]').exists()).toBe(true)
+    })
+
+    it('shows no open-file bar controls when SKILL.md is the open file', () => {
+        const wrapper = mountDesk()
+        expect(wrapper.find('[data-test="open-file"]').exists()).toBe(true)
+        expect(wrapper.find('[data-test="remove-sidecar"]').exists()).toBe(false)
     })
 })

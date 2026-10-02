@@ -520,256 +520,283 @@ function handleSubmit(): void {
 
 <template>
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-background md:flex-row" data-test="skill-desk">
-        <aside
-            class="flex w-56 shrink-0 flex-col border-b border-border bg-muted/30 md:border-b-0 md:border-r"
-            data-test="file-rail"
-        >
-            <div class="flex items-center justify-between px-3 py-2.5">
-                <h2 class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Files</h2>
-                <button
-                    v-if="!readOnly"
-                    type="button"
-                    class="flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-                    title="Add a file"
-                    aria-label="Add a file"
-                    data-test="add-file"
-                    @click="openCreateDialog"
-                >
-                    <Plus class="h-3.5 w-3.5" />
-                </button>
-            </div>
+        <!--
+            The headline spans the rail and the editor, because it names
+            the thing both belong to. It used to sit inside the editor
+            column, which read as though the skill belonged to whichever
+            file happened to be open.
+        -->
+        <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
+            <h3 class="font-mono text-sm font-semibold" data-test="desk-title">{{ skill.name }}</h3>
+            <!--
+                The name is the skill's identity, so it is not editable here, and
+                saying only "cannot be changed" leaves the operator looking for the
+                way round it. `CustomSkillWriter::update()` refuses the same way:
+                every agent that allows this skill refers to it by name, so a
+                rename would orphan those entries. Duplicate carries them across.
+                The `aria-label` carries the same text as the `title` because a
+                tooltip alone is hover-only, which a pointer and a keyboard do
+                not have in common.
+            -->
+            <Lock
+                class="h-3.5 w-3.5 text-muted-foreground"
+                :title="NAME_LOCK_REASON"
+                :aria-label="NAME_LOCK_REASON"
+                role="img"
+                data-test="desk-name-lock"
+            />
+            <span
+                class="ml-1 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset"
+                :class="readOnly
+                    ? 'bg-muted text-muted-foreground ring-border'
+                    : (dirty
+                        ? 'bg-amber-500/15 text-amber-700 ring-amber-500/25'
+                        : 'bg-muted text-muted-foreground ring-border')"
+                data-test="desk-state"
+            >
+                {{ readOnly ? 'read-only' : (dirty ? 'unsaved changes' : 'saved') }}
+            </span>
 
-            <nav class="px-1.5 pb-3 text-sm">
-                <!-- The one row that cannot be removed: the contract synthesises it. -->
+            <div class="ml-auto flex items-center gap-1.5">
                 <button
+                    v-if="readOnly"
                     type="button"
-                    class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[13px] transition-colors hover:bg-background"
-                    :class="activePath === SKILL_ENTRY_FILE ? 'bg-background shadow-sm ring-1 ring-border' : ''"
-                    data-test="rail-entry"
-                    @click="activePath = SKILL_ENTRY_FILE"
+                    class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+                    data-test="desk-duplicate"
+                    @click="emit('duplicate', skill.name)"
                 >
-                    <FileText class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span class="truncate">{{ SKILL_ENTRY_FILE }}</span>
-                    <span class="ml-auto shrink-0 text-[10px] text-muted-foreground">
-                        {{ formatBytes(fileSize(SKILL_ENTRY_FILE)) }}
-                    </span>
+                    <Copy class="h-3.5 w-3.5" />
+                    Duplicate
                 </button>
-
-                <template v-for="row in rows" :key="row.path">
+                <template v-else>
                     <button
-                        v-if="row.kind === 'folder'"
+                        v-if="showRestore"
                         type="button"
-                        class="flex w-full items-center gap-1.5 rounded-md py-1.5 pr-2 text-left font-mono text-[13px] text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-                        :style="{ paddingLeft: `${0.5 + row.depth * 0.75}rem` }"
-                        :aria-expanded="!isCollapsed(row.path)"
-                        :data-test="`rail-folder-${row.path}`"
-                        @click="toggleFolder(row.path)"
+                        :disabled="saving"
+                        :title="restoreExplanation"
+                        :aria-label="restoreExplanation"
+                        class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
+                        data-test="desk-restore"
+                        @click="emit('restore', skill.name)"
                     >
-                        <ChevronRight
-                            class="h-3 w-3 shrink-0 transition-transform"
-                            :class="isCollapsed(row.path) ? '' : 'rotate-90'"
+                        {{ restoreLabel }}
+                    </button>
+                    <button
+                        type="button"
+                        class="inline-flex h-8 items-center rounded-lg px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        data-test="desk-cancel"
+                        @click="emit('cancel')"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        :disabled="saving || !dirty"
+                        class="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                        data-test="desk-save"
+                        @click="handleSubmit"
+                    >
+                        <Save class="h-3.5 w-3.5" />
+                        {{ saving ? 'Saving…' : 'Save skill' }}
+                    </button>
+                    <div class="relative shrink-0">
+                        <button
+                            v-if="menuOpen"
+                            type="button"
+                            class="fixed inset-0 z-10 cursor-default"
+                            aria-label="Close the menu"
+                            data-test="desk-menu-backdrop"
+                            @click="closeMenu"
                         />
-                        <Folder class="h-3.5 w-3.5 shrink-0" />
-                        <span class="truncate">{{ row.name }}</span>
+                        <button
+                            type="button"
+                            :disabled="saving"
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                            aria-label="More actions for this skill"
+                            data-test="desk-menu-trigger"
+                            @click="menuOpen = !menuOpen"
+                        >
+                            <MoreHorizontal class="h-3.5 w-3.5" />
+                        </button>
+
+                        <div
+                            v-if="menuOpen"
+                            class="absolute right-0 top-9 z-20 w-56 overflow-hidden rounded-xl border border-border bg-card text-left shadow-lg"
+                            data-test="desk-menu"
+                        >
+                            <button
+                                type="button"
+                                class="flex w-full items-center gap-2 px-3 py-2 text-xs text-destructive transition-colors hover:bg-destructive/10"
+                                data-test="desk-delete"
+                                @click="closeMenu(); emit('delete', skill.name)"
+                            >
+                                <Trash2 class="h-3.5 w-3.5" />
+                                Delete skill
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <div class="flex min-h-0 flex-1 overflow-hidden md:flex-row">
+            <aside
+                class="flex w-56 shrink-0 flex-col border-b border-border bg-muted/30 md:border-b-0 md:border-r"
+                data-test="file-rail"
+            >
+                <div class="flex items-center justify-between px-3 py-2.5">
+                    <h2 class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Files</h2>
+                    <button
+                        v-if="!readOnly"
+                        type="button"
+                        class="flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                        title="Add a file"
+                        aria-label="Add a file"
+                        data-test="add-file"
+                        @click="openCreateDialog"
+                    >
+                        <Plus class="h-3.5 w-3.5" />
+                    </button>
+                </div>
+
+                <nav class="px-1.5 pb-3 text-sm">
+                    <!-- The one row that cannot be removed: the contract synthesises it. -->
+                    <button
+                        type="button"
+                        class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[13px] transition-colors hover:bg-background"
+                        :class="activePath === SKILL_ENTRY_FILE ? 'bg-background shadow-sm ring-1 ring-border' : ''"
+                        data-test="rail-entry"
+                        @click="activePath = SKILL_ENTRY_FILE"
+                    >
+                        <FileText class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span class="truncate">{{ SKILL_ENTRY_FILE }}</span>
+                        <span class="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                            {{ formatBytes(fileSize(SKILL_ENTRY_FILE)) }}
+                        </span>
                     </button>
 
-                    <!--
+                    <template v-for="row in rows" :key="row.path">
+                        <button
+                            v-if="row.kind === 'folder'"
+                            type="button"
+                            class="flex w-full items-center gap-1.5 rounded-md py-1.5 pr-2 text-left font-mono text-[13px] text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                            :style="{ paddingLeft: `${0.5 + row.depth * 0.75}rem` }"
+                            :aria-expanded="!isCollapsed(row.path)"
+                            :data-test="`rail-folder-${row.path}`"
+                            @click="toggleFolder(row.path)"
+                        >
+                            <ChevronRight
+                                class="h-3 w-3 shrink-0 transition-transform"
+                                :class="isCollapsed(row.path) ? '' : 'rotate-90'"
+                            />
+                            <Folder class="h-3.5 w-3.5 shrink-0" />
+                            <span class="truncate">{{ row.name }}</span>
+                        </button>
+
+                        <!--
                         A wrapper rather than a nested button: the row selects the file
                         and the pencil renames it, and a `<button>` inside a `<button>`
                         is invalid HTML that also swallows the inner click in some
                         browsers. Only the open row offers the pencil, so the rail
                         carries one affordance at a time.
                     -->
-                    <div
-                        v-else
-                        class="group flex items-center gap-0.5"
-                        :style="row.depth > 0 ? { paddingLeft: `${1.25 + (row.depth - 1) * 0.75}rem` } : undefined"
-                    >
-                        <button
-                            type="button"
-                            class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[13px] transition-colors hover:bg-background"
-                            :class="activePath === row.path ? 'bg-background shadow-sm ring-1 ring-border' : ''"
-                            :title="row.path"
-                            :data-test="`rail-file-${row.path}`"
-                            @click="activePath = row.path"
+                        <div
+                            v-else
+                            class="group flex items-center gap-0.5"
+                            :style="row.depth > 0 ? { paddingLeft: `${1.25 + (row.depth - 1) * 0.75}rem` } : undefined"
                         >
-                            <FileText class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            <span class="min-w-0 flex-1 truncate">{{ row.name }}</span>
-                            <span class="shrink-0 text-[10px] text-muted-foreground">
-                                {{ formatBytes(fileSize(row.path)) }}
-                            </span>
-                        </button>
-                        <button
-                            v-if="activePath === row.path"
-                            type="button"
-                            class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                            :aria-label="`Rename ${row.path}`"
-                            title="Rename or move"
-                            data-test="rename-file"
-                            @click.stop="openRenameDialog"
-                        >
-                            <Pencil class="h-3 w-3" />
-                        </button>
-                    </div>
-                </template>
-            </nav>
-
-            <!-- Why the rail cannot be empty, stated once, where someone who just
-                 looked for a delete on SKILL.md is already looking. -->
-            <div class="mt-auto border-t border-border p-3">
-                <p class="text-[11px] leading-snug text-muted-foreground">
-                    Every skill has a <span class="font-mono text-foreground">SKILL.md</span>. Add
-                    sidecars for references and examples.
-                </p>
-            </div>
-        </aside>
-
-        <div class="flex min-h-0 flex-1 flex-col">
-            <div class="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
-                <h3 class="font-mono text-sm font-semibold" data-test="desk-title">{{ skill.name }}</h3>
-                <!--
-                    The name is the skill's identity, so it is not editable here, and
-                    saying only "cannot be changed" leaves the operator looking for the
-                    way round it. `CustomSkillWriter::update()` refuses the same way:
-                    every agent that allows this skill refers to it by name, so a
-                    rename would orphan those entries. Duplicate carries them across.
-                    The `aria-label` carries the same text as the `title` because a
-                    tooltip alone is hover-only, which a pointer and a keyboard do
-                    not have in common.
-                -->
-                <Lock
-                    class="h-3.5 w-3.5 text-muted-foreground"
-                    :title="NAME_LOCK_REASON"
-                    :aria-label="NAME_LOCK_REASON"
-                    role="img"
-                    data-test="desk-name-lock"
-                />
-                <span
-                    class="ml-1 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset"
-                    :class="readOnly
-                        ? 'bg-muted text-muted-foreground ring-border'
-                        : (dirty
-                            ? 'bg-amber-500/15 text-amber-700 ring-amber-500/25'
-                            : 'bg-muted text-muted-foreground ring-border')"
-                    data-test="desk-state"
-                >
-                    {{ readOnly ? 'read-only' : (dirty ? 'unsaved changes' : 'saved') }}
-                </span>
-
-                <div class="ml-auto flex items-center gap-1.5">
-                    <button
-                        v-if="readOnly"
-                        type="button"
-                        class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
-                        data-test="desk-duplicate"
-                        @click="emit('duplicate', skill.name)"
-                    >
-                        <Copy class="h-3.5 w-3.5" />
-                        Duplicate
-                    </button>
-                    <template v-else>
-                        <button
-                            v-if="showRestore"
-                            type="button"
-                            :disabled="saving"
-                            :title="restoreExplanation"
-                            :aria-label="restoreExplanation"
-                            class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
-                            data-test="desk-restore"
-                            @click="emit('restore', skill.name)"
-                        >
-                            {{ restoreLabel }}
-                        </button>
-                        <button
-                            type="button"
-                            class="inline-flex h-8 items-center rounded-lg px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                            data-test="desk-cancel"
-                            @click="emit('cancel')"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            :disabled="saving || !dirty"
-                            class="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                            data-test="desk-save"
-                            @click="handleSubmit"
-                        >
-                            <Save class="h-3.5 w-3.5" />
-                            {{ saving ? 'Saving…' : 'Save skill' }}
-                        </button>
-                        <div class="relative shrink-0">
-                            <button
-                                v-if="menuOpen"
-                                type="button"
-                                class="fixed inset-0 z-10 cursor-default"
-                                aria-label="Close the menu"
-                                data-test="desk-menu-backdrop"
-                                @click="closeMenu"
-                            />
                             <button
                                 type="button"
-                                :disabled="saving"
-                                class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-                                aria-label="More actions for this skill"
-                                data-test="desk-menu-trigger"
-                                @click="menuOpen = !menuOpen"
+                                class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[13px] transition-colors hover:bg-background"
+                                :class="activePath === row.path ? 'bg-background shadow-sm ring-1 ring-border' : ''"
+                                :title="row.path"
+                                :data-test="`rail-file-${row.path}`"
+                                @click="activePath = row.path"
                             >
-                                <MoreHorizontal class="h-3.5 w-3.5" />
+                                <FileText class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                <span class="min-w-0 flex-1 truncate">{{ row.name }}</span>
+                                <span class="shrink-0 text-[10px] text-muted-foreground">
+                                    {{ formatBytes(fileSize(row.path)) }}
+                                </span>
                             </button>
-
-                            <div
-                                v-if="menuOpen"
-                                class="absolute right-0 top-9 z-20 w-56 overflow-hidden rounded-xl border border-border bg-card text-left shadow-lg"
-                                data-test="desk-menu"
+                            <button
+                                v-if="activePath === row.path"
+                                type="button"
+                                class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                :aria-label="`Rename ${row.path}`"
+                                title="Rename or move"
+                                data-test="rename-file"
+                                @click.stop="openRenameDialog"
                             >
-                                <button
-                                    type="button"
-                                    class="flex w-full items-center gap-2 px-3 py-2 text-xs text-destructive transition-colors hover:bg-destructive/10"
-                                    data-test="desk-delete"
-                                    @click="closeMenu(); emit('delete', skill.name)"
-                                >
-                                    <Trash2 class="h-3.5 w-3.5" />
-                                    Delete skill
-                                </button>
-                            </div>
+                                <Pencil class="h-3 w-3" />
+                            </button>
                         </div>
                     </template>
+                </nav>
+
+                <!-- Why the rail cannot be empty, stated once, where someone who just
+                 looked for a delete on SKILL.md is already looking. -->
+                <div class="mt-auto border-t border-border p-3">
+                    <p class="text-[11px] leading-snug text-muted-foreground">
+                        Every skill has a <span class="font-mono text-foreground">SKILL.md</span>. Add
+                        sidecars for references and examples.
+                    </p>
                 </div>
-            </div>
+            </aside>
 
-            <div
-                v-if="activeSidecar"
-                class="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2"
-            >
-                <button
-                    v-if="!readOnly"
-                    type="button"
-                    class="ml-auto inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
-                    data-test="remove-sidecar"
-                    @click="removeActiveSidecar"
-                >
-                    <Trash2 class="h-3.5 w-3.5" />
-                    Remove {{ activeSidecar.path }}
-                </button>
-                <span v-else class="ml-auto text-[11px] text-muted-foreground" data-test="sidecar-unavailable">
-                    {{ shippedSidecarNote }}
-                </span>
-            </div>
+            <div class="flex min-h-0 flex-1 flex-col">
+                <!--
+                The open file, and what can be done to it. The rename pencil
+                is also on the rail row, and having it in both places is the
+                point: the rail says which file is open, this says what the
+                open file is called and offers the two things that apply to it.
+            -->
+                <div class="flex shrink-0 items-center gap-2 border-b border-border px-4 py-1.5 text-[11px]" data-test="open-file">
+                    <FileText class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span class="truncate font-mono text-xs font-medium" data-test="open-file-name">{{ activePath }}</span>
+                    <button
+                        v-if="activeSidecar && !readOnly"
+                        type="button"
+                        class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        :aria-label="`Rename ${activeSidecar.path}`"
+                        title="Rename or move"
+                        data-test="open-file-rename"
+                        @click="openRenameDialog"
+                    >
+                        <Pencil class="h-3 w-3" />
+                    </button>
+                    <div
+                        v-if="activeSidecar"
+                        class="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2"
+                    >
+                        <button
+                            v-if="!readOnly"
+                            type="button"
+                            class="ml-auto inline-flex h-7 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
+                            data-test="remove-sidecar"
+                            @click="removeActiveSidecar"
+                        >
+                            <Trash2 class="h-3.5 w-3.5" />
+                            Remove {{ activeSidecar.path }}
+                        </button>
+                        <span v-else class="ml-auto text-[11px] text-muted-foreground" data-test="sidecar-unavailable">
+                            {{ shippedSidecarNote }}
+                        </span>
+                    </div>
 
-            <!-- A shipped skill has no write path, so the frontmatter is shown as
+                    <!-- A shipped skill has no write path, so the frontmatter is shown as
                  the specification it is rather than as a form. -->
-            <p
-                v-if="readOnly"
-                class="shrink-0 border-b border-border bg-muted/30 px-4 py-2 text-[11px] text-muted-foreground"
-                data-test="desk-readonly-note"
-            >
-                Shipped with Spora{{ shippedSource ? ` (${shippedSource})` : '' }}. It lives in the
-                installation, not on a principal, so it cannot be edited here — duplicate it to make
-                your own.
-            </p>
+                    <p
+                        v-if="readOnly"
+                        class="shrink-0 border-b border-border bg-muted/30 px-4 py-2 text-[11px] text-muted-foreground"
+                        data-test="desk-readonly-note"
+                    >
+                        Shipped with Spora{{ shippedSource ? ` (${shippedSource})` : '' }}. It lives in the
+                        installation, not on a principal, so it cannot be edited here — duplicate it to make
+                        your own.
+                    </p>
 
-            <!--
+                    <!--
                 The frontmatter belongs to SKILL.md and to nothing else, so it is shown
                 only while that file is open, and nothing is said when it is not: a
                 sidecar has no frontmatter to explain, and a message naming a file the
@@ -781,142 +808,142 @@ function handleSubmit(): void {
                 matched on and the only one whose absence is silent, so it starts on
                 screen and can be folded away by whoever wants the room.
             -->
-            <details
-                v-if="activePath === SKILL_ENTRY_FILE"
-                open
-                class="group shrink-0 border-b border-border bg-muted/20"
-                data-test="frontmatter"
-            >
-                <summary
-                    class="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-xs font-semibold transition-colors hover:text-foreground"
-                    data-test="frontmatter-toggle"
-                >
-                    <ChevronDown class="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
-                    SKILL.md frontmatter
-                    <span class="font-normal text-muted-foreground">
-                        the fields an agent matches and restricts itself by
-                    </span>
-                </summary>
+                    <details
+                        v-if="activePath === SKILL_ENTRY_FILE"
+                        open
+                        class="group shrink-0 border-b border-border bg-muted/20"
+                        data-test="frontmatter"
+                    >
+                        <summary
+                            class="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-xs font-semibold transition-colors hover:text-foreground"
+                            data-test="frontmatter-toggle"
+                        >
+                            <ChevronDown class="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
+                            SKILL.md frontmatter
+                            <span class="font-normal text-muted-foreground">
+                                the fields an agent matches and restricts itself by
+                            </span>
+                        </summary>
 
-                <div class="space-y-3 border-t border-border px-4 py-3">
-                    <div>
-                        <label :for="idFor('description')" class="mb-1.5 block text-xs font-medium">
-                            Description <span class="text-destructive">*</span>
-                        </label>
-                        <!--
+                        <div class="space-y-3 border-t border-border px-4 py-3">
+                            <div>
+                                <label :for="idFor('description')" class="mb-1.5 block text-xs font-medium">
+                                    Description <span class="text-destructive">*</span>
+                                </label>
+                                <!--
                             A textarea, not an input: the contract allows 1024
                             characters and the spec asks for both what the skill does
                             and when to use it, which does not fit on one line and
                             wrapped invisibly off the right edge of an input.
                         -->
-                        <textarea
-                            :id="idFor('description')"
-                            v-model="description"
-                            rows="3"
-                            maxlength="1024"
-                            :readonly="readOnly"
-                            class="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm leading-relaxed"
-                            :aria-invalid="fieldErrors('description').length > 0"
-                            data-test="field-description"
-                        />
-                        <p class="mt-1 text-[11px] text-muted-foreground">
-                            What the skill does and when to use it — this is the text a matching
-                            system reads to decide whether the skill applies.
-                            <span class="tabular-nums">{{ description.length }}/1024</span>
-                        </p>
-                        <ul
-                            v-for="entry in fieldErrors('description')"
-                            :key="entry.code + entry.message"
-                            class="mt-1 text-xs text-destructive"
-                            data-test="field-error"
+                                <textarea
+                                    :id="idFor('description')"
+                                    v-model="description"
+                                    rows="3"
+                                    maxlength="1024"
+                                    :readonly="readOnly"
+                                    class="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm leading-relaxed"
+                                    :aria-invalid="fieldErrors('description').length > 0"
+                                    data-test="field-description"
+                                />
+                                <p class="mt-1 text-[11px] text-muted-foreground">
+                                    What the skill does and when to use it — this is the text a matching
+                                    system reads to decide whether the skill applies.
+                                    <span class="tabular-nums">{{ description.length }}/1024</span>
+                                </p>
+                                <ul
+                                    v-for="entry in fieldErrors('description')"
+                                    :key="entry.code + entry.message"
+                                    class="mt-1 text-xs text-destructive"
+                                    data-test="field-error"
+                                >
+                                    {{ entry.message }}
+                                </ul>
+                            </div>
+
+                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div>
+                                    <label :for="idFor('license')" class="mb-1.5 block text-xs font-medium">License</label>
+                                    <input
+                                        :id="idFor('license')"
+                                        v-model="license"
+                                        type="text"
+                                        placeholder="MIT"
+                                        :readonly="readOnly"
+                                        class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                                        :aria-invalid="fieldErrors('license').length > 0"
+                                        data-test="field-license"
+                                    />
+                                </div>
+                                <div>
+                                    <label :for="idFor('compatibility')" class="mb-1.5 block text-xs font-medium">
+                                        Compatibility
+                                    </label>
+                                    <input
+                                        :id="idFor('compatibility')"
+                                        v-model="compatibility"
+                                        type="text"
+                                        placeholder="spora>=0.28"
+                                        :readonly="readOnly"
+                                        class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                                        :aria-invalid="fieldErrors('compatibility').length > 0"
+                                        data-test="field-compatibility"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label :for="idFor('allowed-tools')" class="mb-1.5 block text-xs font-medium">
+                                    Allowed tools <span class="text-muted-foreground">(comma separated)</span>
+                                </label>
+                                <input
+                                    :id="idFor('allowed-tools')"
+                                    v-model="allowedTools"
+                                    type="text"
+                                    placeholder="read_email, send_email"
+                                    :readonly="readOnly"
+                                    class="h-9 w-full rounded-lg border border-input bg-background px-3 font-mono text-sm"
+                                    :aria-invalid="fieldErrors('allowed_tools').length > 0"
+                                    data-test="field-allowed-tools"
+                                />
+                            </div>
+
+                            <div>
+                                <label :for="idFor('metadata')" class="mb-1.5 block text-xs font-medium">
+                                    Metadata <span class="text-muted-foreground">(JSON object)</span>
+                                </label>
+                                <textarea
+                                    :id="idFor('metadata')"
+                                    v-model="metadataJson"
+                                    rows="2"
+                                    :readonly="readOnly"
+                                    :placeholder="METADATA_PLACEHOLDER"
+                                    class="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs"
+                                    :aria-invalid="metadataError !== null"
+                                    data-test="field-metadata"
+                                />
+                            </div>
+                        </div>
+                    </details>
+
+                    <output
+                        v-if="bannerEntries.length > 0"
+                        class="block shrink-0 rounded-b-lg bg-amber-500/10 px-4 py-2 text-[11px] text-amber-800 dark:text-amber-200"
+                        data-test="validation-banner"
+                    >
+                        <span
+                            v-for="entry in bannerEntries"
+                            :key="`${entry.code}-${entry.path ?? ''}-${entry.message}`"
+                            class="mr-3 inline-block"
+                            data-test="banner-entry"
                         >
-                            {{ entry.message }}
-                        </ul>
-                    </div>
+                            <code class="font-mono font-medium">{{ entry.code }}</code>
+                            <span v-if="entry.path"> ({{ entry.path }})</span>
+                            — {{ entry.message }}
+                        </span>
+                    </output>
 
-                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                            <label :for="idFor('license')" class="mb-1.5 block text-xs font-medium">License</label>
-                            <input
-                                :id="idFor('license')"
-                                v-model="license"
-                                type="text"
-                                placeholder="MIT"
-                                :readonly="readOnly"
-                                class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                                :aria-invalid="fieldErrors('license').length > 0"
-                                data-test="field-license"
-                            />
-                        </div>
-                        <div>
-                            <label :for="idFor('compatibility')" class="mb-1.5 block text-xs font-medium">
-                                Compatibility
-                            </label>
-                            <input
-                                :id="idFor('compatibility')"
-                                v-model="compatibility"
-                                type="text"
-                                placeholder="spora>=0.28"
-                                :readonly="readOnly"
-                                class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                                :aria-invalid="fieldErrors('compatibility').length > 0"
-                                data-test="field-compatibility"
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label :for="idFor('allowed-tools')" class="mb-1.5 block text-xs font-medium">
-                            Allowed tools <span class="text-muted-foreground">(comma separated)</span>
-                        </label>
-                        <input
-                            :id="idFor('allowed-tools')"
-                            v-model="allowedTools"
-                            type="text"
-                            placeholder="read_email, send_email"
-                            :readonly="readOnly"
-                            class="h-9 w-full rounded-lg border border-input bg-background px-3 font-mono text-sm"
-                            :aria-invalid="fieldErrors('allowed_tools').length > 0"
-                            data-test="field-allowed-tools"
-                        />
-                    </div>
-
-                    <div>
-                        <label :for="idFor('metadata')" class="mb-1.5 block text-xs font-medium">
-                            Metadata <span class="text-muted-foreground">(JSON object)</span>
-                        </label>
-                        <textarea
-                            :id="idFor('metadata')"
-                            v-model="metadataJson"
-                            rows="2"
-                            :readonly="readOnly"
-                            :placeholder="METADATA_PLACEHOLDER"
-                            class="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs"
-                            :aria-invalid="metadataError !== null"
-                            data-test="field-metadata"
-                        />
-                    </div>
-                </div>
-            </details>
-
-            <output
-                v-if="bannerEntries.length > 0"
-                class="block shrink-0 rounded-b-lg bg-amber-500/10 px-4 py-2 text-[11px] text-amber-800 dark:text-amber-200"
-                data-test="validation-banner"
-            >
-                <span
-                    v-for="entry in bannerEntries"
-                    :key="`${entry.code}-${entry.path ?? ''}-${entry.message}`"
-                    class="mr-3 inline-block"
-                    data-test="banner-entry"
-                >
-                    <code class="font-mono font-medium">{{ entry.code }}</code>
-                    <span v-if="entry.path"> ({{ entry.path }})</span>
-                    — {{ entry.message }}
-                </span>
-            </output>
-
-            <!--
+                    <!--
                 One pane, and the editor owns its own preview.
 
                 The Write / Split / Preview buttons were a second, plainer copy of a
@@ -926,102 +953,104 @@ function handleSubmit(): void {
                 split view and the toggle in the editor's own chrome, next to the
                 formatting buttons that affect what it renders.
             -->
-            <div class="min-h-0 flex-1 overflow-hidden">
-                <div :aria-label="`${activePath} source`" data-test="desk-source">
-                    <MdEditor
-                        v-if="activeIsMarkdown"
-                        :id="idFor('editor')"
-                        :model-value="activeContent"
-                        :theme="theme ?? 'light'"
-                        :language="EDITOR_LOCALE"
-                        :toolbars="readOnly ? [] : EDITOR_TOOLBARS"
-                        :preview="true"
-                        :read-only="readOnly"
-                        :sanitize="DOMPurify.sanitize"
-                        :max-length="MAX_FILE_BYTES"
-                        class="h-full min-h-[18rem]"
-                        data-test="desk-editor"
-                        @update:model-value="activeContent = $event"
-                    />
-                    <!--
+                    <div class="min-h-0 flex-1 overflow-hidden">
+                        <div :aria-label="`${activePath} source`" data-test="desk-source">
+                            <MdEditor
+                                v-if="activeIsMarkdown"
+                                :id="idFor('editor')"
+                                :model-value="activeContent"
+                                :theme="theme ?? 'light'"
+                                :language="EDITOR_LOCALE"
+                                :toolbars="readOnly ? [] : EDITOR_TOOLBARS"
+                                :preview="true"
+                                :read-only="readOnly"
+                                :sanitize="DOMPurify.sanitize"
+                                :max-length="MAX_FILE_BYTES"
+                                class="h-full min-h-[18rem]"
+                                data-test="desk-editor"
+                                @update:model-value="activeContent = $event"
+                            />
+                            <!--
                         A markdown editor for a `.json` or `.py` sidecar would offer
                         bold and task lists, and its preview would render the file as
                         prose. The contract allows any file type, so anything that is
                         not markdown gets CodeMirror with the mode its extension
                         implies — and no preview, because there is nothing to render.
                     -->
-                    <SourceEditor
-                        v-else
-                        :model-value="activeContent"
-                        :path="activePath"
-                        :read-only="readOnly"
-                        @update:model-value="activeContent = $event"
-                    />
-                </div>
-            </div>
+                            <SourceEditor
+                                v-else
+                                :model-value="activeContent"
+                                :path="activePath"
+                                :read-only="readOnly"
+                                @update:model-value="activeContent = $event"
+                            />
+                        </div>
+                    </div>
 
-            <!--
+                    <!--
                 The separate preview pane is gone with the mode buttons. It also used
                 to render a JSON sidecar as prose in preview-only mode, which is the
                 thing the editor above exists to avoid.
             -->
 
-            <footer
-                class="flex shrink-0 flex-wrap items-center gap-3 border-t border-border bg-muted/30 px-4 py-1.5 text-[11px] text-muted-foreground"
-                data-test="desk-footer"
-            >
-                <span class="font-mono" data-test="desk-footer-file">{{ activePath }}</span>
-                <span>UTF-8</span>
-                <span v-if="activeIsMarkdown">Markdown</span>
-                <span v-else>{{ fileKind(activePath) }}</span>
-                <!--
+                    <footer
+                        class="flex shrink-0 flex-wrap items-center gap-3 border-t border-border bg-muted/30 px-4 py-1.5 text-[11px] text-muted-foreground"
+                        data-test="desk-footer"
+                    >
+                        <span class="font-mono" data-test="desk-footer-file">{{ activePath }}</span>
+                        <span>UTF-8</span>
+                        <span v-if="activeIsMarkdown">Markdown</span>
+                        <span v-else>{{ fileKind(activePath) }}</span>
+                        <!--
                     Below the editor rather than above it. The cap is per file and
                     only matters while writing, and a size readout pinned above the
                     body pushed the thing being written down the screen.
                 -->
-                <span class="text-muted-foreground" data-test="desk-size">
-                    {{ totalLines }} lines · {{ formatBytes(totalBytes) }}
-                    <span class="text-muted-foreground/60">
-                        / {{ MAX_FILE_BYTES / 1000 }} KB per file
-                    </span>
-                </span>
-                <!-- The rail is hidden below `md`; without this a narrow window would
+                        <span class="text-muted-foreground" data-test="desk-size">
+                            {{ totalLines }} lines · {{ formatBytes(totalBytes) }}
+                            <span class="text-muted-foreground/60">
+                                / {{ MAX_FILE_BYTES / 1000 }} KB per file
+                            </span>
+                        </span>
+                        <!-- The rail is hidden below `md`; without this a narrow window would
                      have no way to reach a sidecar at all. -->
-                <select
-                    v-model="activePath"
-                    aria-label="File"
-                    class="h-6 min-w-0 rounded border border-border bg-background px-1.5 font-mono text-[11px] md:hidden"
-                    data-test="file-select"
-                >
-                    <option :value="SKILL_ENTRY_FILE">SKILL.md</option>
-                    <option v-for="row in sidecars" :key="row.path" :value="row.path">{{ row.path }}</option>
-                </select>
-                <span class="ml-auto">
-                    <template v-if="readOnly">
-                        shipped<span v-if="shippedSource"> · {{ shippedSource }}</span>
-                    </template>
-                    <template v-else>
-                        in <span class="font-medium text-foreground">{{ principalName || 'this principal' }}</span>
-                    </template>
-                </span>
-            </footer>
-        </div>
+                        <select
+                            v-model="activePath"
+                            aria-label="File"
+                            class="h-6 min-w-0 rounded border border-border bg-background px-1.5 font-mono text-[11px] md:hidden"
+                            data-test="file-select"
+                        >
+                            <option :value="SKILL_ENTRY_FILE">SKILL.md</option>
+                            <option v-for="row in sidecars" :key="row.path" :value="row.path">{{ row.path }}</option>
+                        </select>
+                        <span class="ml-auto">
+                            <template v-if="readOnly">
+                                shipped<span v-if="shippedSource"> · {{ shippedSource }}</span>
+                            </template>
+                            <template v-else>
+                                in <span class="font-medium text-foreground">{{ principalName || 'this principal' }}</span>
+                            </template>
+                        </span>
+                    </footer>
+                </div>
 
-        <!--
+                <!--
             Not rendered at all for a shipped skill: the desk is read-only there, so
             offering a way to add or rename a file would be offering to write.
         -->
-        <FileDialog
-            v-if="!readOnly"
-            :open="fileDialog.open"
-            :mode="fileDialog.mode"
-            :initial-name="fileDialog.name"
-            :initial-folder="fileDialog.folder"
-            :folders="folders"
-            :taken-paths="takenPaths"
-            :self-path="fileDialog.selfPath"
-            @submit="applyFilePath"
-            @cancel="closeFileDialog"
-        />
+                <FileDialog
+                    v-if="!readOnly"
+                    :open="fileDialog.open"
+                    :mode="fileDialog.mode"
+                    :initial-name="fileDialog.name"
+                    :initial-folder="fileDialog.folder"
+                    :folders="folders"
+                    :taken-paths="takenPaths"
+                    :self-path="fileDialog.selfPath"
+                    @submit="applyFilePath"
+                    @cancel="closeFileDialog"
+                />
+            </div>
+        </div>
     </div>
 </template>
