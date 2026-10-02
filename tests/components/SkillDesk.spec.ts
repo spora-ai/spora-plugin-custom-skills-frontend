@@ -556,6 +556,39 @@ describe('SkillDesk → write / split / preview', () => {
         expect(wrapper.find('[data-test="desk-editor"]').exists()).toBe(true)
     })
 
+    it('nests the pane, not just the class names', async () => {
+        // A `</div>` went missing when the open-file bar was added, so the bar
+        // swallowed the frontmatter, the editor and the footer as its children. It
+        // renders as a plain `flex items-center` row, so the result looked like a
+        // layout nobody designed rather than an error. Asserting the class lists
+        // did not catch it; only the shape does.
+        const wrapper = mountDesk({
+            fileContents: { 'examples/invoice.md': '# Invoice' },
+        })
+        await flushPromises()
+
+        const pane = (test: string) => wrapper.get(`[data-test="${test}"]`).element
+        const editorColumn = pane('open-file').parentElement as HTMLElement
+
+        // The bar is a leaf row: the icon, the name, and the file's own actions.
+        // Nothing that is a *region* may be a child of it — that is the regression.
+        const barChildren = Array.from(pane('open-file').children)
+            .map((c) => c.getAttribute('data-test') ?? c.tagName.toLowerCase())
+        for (const region of ['frontmatter', 'desk-source', 'desk-footer']) {
+            expect(barChildren, `${region} became a child of the open-file bar`).not.toContain(region)
+        }
+        expect(barChildren).toContain('open-file-name')
+
+        // …and it is a sibling of the three regions below it, not their parent.
+        for (const region of ['frontmatter', 'desk-source', 'desk-footer']) {
+            expect(editorColumn.contains(pane(region)), `${region} must be a sibling of the open-file bar`).toBe(true)
+            expect(pane('open-file').contains(pane(region)), `${region} must not be inside the open-file bar`).toBe(false)
+        }
+
+        // The rail is outside the editor column, in the split beside it.
+        expect(editorColumn.contains(pane('file-rail'))).toBe(false)
+    })
+
     it('the desk is a column, with no variant that turns it back into a row', () => {
         // A leftover `md:flex-row` here beat `flex-col` at desktop widths, so the
         // whole desk laid out as a row — headline beside the file list beside the
