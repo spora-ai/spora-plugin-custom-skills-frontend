@@ -124,7 +124,6 @@ const compatibility = ref('')
 const allowedTools = ref('')
 const metadataJson = ref('')
 const sidecars = ref<Array<{ path: string; content: string }>>([])
-const storedSnapshot = ref('')
 const metadataError = ref<string | null>(null)
 
 /**
@@ -214,6 +213,31 @@ const showRestore = computed(() => props.skill.has_previous)
  */
 const shippedSidecarNote = 'Shipped sidecar contents are not served — only their size is.'
 
+/**
+ * How the metadata textarea is derived from a stored skill.
+ *
+ * Shared by the buffer and the baseline so the two cannot disagree: an empty map
+ * is an empty textarea rather than `{}`, which is what an operator would have had
+ * to delete to get it back.
+ */
+function metadataText(metadata: Record<string, unknown>): string {
+    return Object.keys(metadata).length > 0 ? JSON.stringify(metadata, null, 2) : ''
+}
+
+/**
+ * The server's sidecar set, with the contents it holds.
+ *
+ * `files` on the resource is metadata only — `{path, bytes}`, no body — so a
+ * sidecar's contents arrive in a second request after the row is on screen. They
+ * are part of what the server holds, so the baseline reads them from the same
+ * place the buffer gets them rather than assuming they were empty at load time.
+ */
+const serverSidecars = computed(() =>
+    props.skill.files
+        .filter((f) => f.path !== SKILL_ENTRY_FILE)
+        .map((f) => ({ path: f.path, content: props.fileContents[f.path] ?? '' })),
+)
+
 const draft = computed(() => JSON.stringify({
     description: description.value,
     license: license.value,
@@ -223,7 +247,28 @@ const draft = computed(() => JSON.stringify({
     body: body.value,
     files: sidecars.value,
 }))
-const dirty = computed(() => draft.value !== storedSnapshot.value)
+
+/**
+ * What the server holds, as the same shape as {@link draft}.
+ *
+ * Derived rather than snapshotted at load time, and that is the fix: the previous
+ * version captured the buffer's own value on load, which was taken before the
+ * sidecar contents arrived. Every skill with a sidecar therefore read as unsaved
+ * the moment its contents loaded, and saving did not clear it, because the next
+ * load repeated the same early snapshot. A new file is still detected, because a
+ * path the server does not list is in the buffer and not here.
+ */
+const baseline = computed(() => JSON.stringify({
+    description: props.skill.description,
+    license: props.skill.license ?? '',
+    compatibility: props.skill.compatibility ?? '',
+    allowed_tools: props.skill.allowed_tools ?? '',
+    metadata: metadataText(props.skill.metadata),
+    body: props.skill.body,
+    files: serverSidecars.value,
+}))
+
+const dirty = computed(() => draft.value !== baseline.value)
 
 /** Warnings, plus any error no field claims — both would be invisible otherwise. */
 const bannerEntries = computed<SkillValidationEntry[]>(() => [
@@ -242,12 +287,14 @@ function loadFrom(skill: CustomSkillResource): void {
     license.value = skill.license ?? ''
     compatibility.value = skill.compatibility ?? ''
     allowedTools.value = skill.allowed_tools ?? ''
-    metadataJson.value = Object.keys(skill.metadata).length > 0 ? JSON.stringify(skill.metadata, null, 2) : ''
+    metadataJson.value = metadataText(skill.metadata)
     body.value = skill.body
     sidecars.value = skill.files
         .filter((f) => f.path !== SKILL_ENTRY_FILE)
+        // Contents stay empty here and are filled by the `fileContents` watcher; the
+        // dirty baseline is derived from the server's side of the comparison, so it
+        // does not matter which lands first.
         .map((f) => ({ path: f.path, content: '' }))
-    storedSnapshot.value = draft.value
 }
 
 /**

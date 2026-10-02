@@ -12,7 +12,7 @@
  * banner so nothing the validator said is dropped.
  */
 import { describe, it, expect } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import SkillDesk from '../../src/components/SkillDesk.vue'
 import SourceEditor from '../../src/components/SourceEditor.vue'
 import { makeSkill, makeValidationEntry } from '../fixtures'
@@ -287,6 +287,41 @@ describe('SkillDesk → the header', () => {
         await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Rewritten')
         expect(wrapper.get('[data-test="desk-state"]').text()).toBe('unsaved changes')
         expect(wrapper.get('[data-test="desk-save"]').attributes('disabled')).toBeUndefined()
+    })
+
+    it('stays "saved" once the sidecar contents land', async () => {
+        // The page loads sidecar bodies in a second request, so they arrive after
+        // the row is first rendered. The baseline is what the *server* holds, so
+        // content arriving is not an edit — comparing against the buffer at load
+        // time made every skill with a sidecar look permanently unsaved, and saving
+        // it did not help because the next load repeated it.
+        const wrapper = mountDesk({
+            fileContents: { 'examples/invoice.md': '# Invoice' },
+        })
+        await flushPromises()
+        expect(wrapper.get('[data-test="desk-state"]').text()).toBe('saved')
+        expect(wrapper.get('[data-test="desk-save"]').attributes('disabled')).toBeDefined()
+    })
+
+    it('calls an edited sidecar unsaved, so its content is still a real edit', async () => {
+        const wrapper = mountDesk({
+            fileContents: { 'examples/invoice.md': '# Invoice' },
+        })
+        await flushPromises()
+        await wrapper.findAll('[data-test^="rail-file-"]')[0]?.trigger('click')
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Changed')
+        expect(wrapper.get('[data-test="desk-state"]').text()).toBe('unsaved changes')
+    })
+
+    it('calls a newly added sidecar unsaved, because the server has no such file', async () => {
+        const wrapper = mountDesk({
+            fileContents: { 'examples/invoice.md': '# Invoice' },
+        })
+        await flushPromises()
+        expect(wrapper.get('[data-test="desk-state"]').text()).toBe('saved')
+        await wrapper.get('[data-test="add-file"]').trigger('click')
+        await wrapper.get('[data-test="file-dialog-submit"]').trigger('click')
+        expect(wrapper.get('[data-test="desk-state"]').text()).toBe('unsaved changes')
     })
 
     it('offers restore only when the server holds a previous snapshot', () => {

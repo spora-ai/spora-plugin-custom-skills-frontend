@@ -146,6 +146,25 @@ describe('SkillDeskPage → opening', () => {
         expect(wrapper.find('[data-test="desk-duplicate"]').exists()).toBe(false)
     })
 
+    it('returns to "saved" after a save, once the sidecar contents have landed', async () => {
+        // The reported symptom end to end: a skill with a sidecar read as
+        // "unsaved changes" permanently, and saving it changed nothing. The contents
+        // arrive in a second request, so this only reproduces through the page.
+        const wrapper = await mountOn('invoice-drafting')
+        await flushPromises()
+        expect(wrapper.get('[data-test="desk-state"]').text()).toBe('saved')
+
+        await wrapper.findAll('[data-test^="rail-file-"]')[0]?.trigger('click')
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Rewritten')
+        expect(wrapper.get('[data-test="desk-state"]').text()).toBe('unsaved changes')
+
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+        await flushPromises()
+
+        expect(mockedApi.updateSkill).toHaveBeenCalled()
+        expect(wrapper.get('[data-test="desk-state"]').text()).toBe('saved')
+    })
+
     it('fetches the sidecar contents, because save replaces the file set wholesale', async () => {
         const wrapper = await mountOn('invoice-drafting')
         await flushPromises()
