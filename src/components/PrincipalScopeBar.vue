@@ -47,7 +47,11 @@ function initials(name: string): string {
         .split(/\s+/)
         .filter((part) => /[a-z0-9]/i.test(part))
         .slice(0, 2)
-        .map((part) => part.charAt(0).toUpperCase())
+        // `[...part][0]`, not `charAt(0)`: a word can pass the filter above on an
+        // ASCII letter while *starting* with an astral character ("🚀 Team"), and
+        // `charAt` indexes UTF-16 code units, so it would return a lone surrogate
+        // and the badge would render a replacement glyph instead of the T.
+        .map((part) => [...part][0]!.toUpperCase())
         .join('')
 }
 

@@ -210,7 +210,7 @@ watch(
             handful of sidecars. No add, rename or remove affordances — nothing here
             can write.
         -->
-        <div class="flex min-h-0 gap-4 md:flex-row">
+        <div class="flex min-h-0 flex-col gap-4 md:flex-row">
             <aside
                 class="flex max-h-64 w-56 shrink-0 flex-col rounded-lg border border-border bg-muted/30 md:max-h-96"
                 data-test="viewer-rail"

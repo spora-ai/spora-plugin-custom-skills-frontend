@@ -86,3 +86,38 @@ describe('flattenTree', () => {
         expect(rows.map((r) => r.path)).toEqual(['a', 'a/b', 'a/one.md', 'top.md'])
     })
 })
+
+describe('a name that is both a file and a folder', () => {
+    // The contract forbids neither `a` nor `a/b`, and the create dialog can
+    // produce the pair. The walk used to clear children when it passed a leaf,
+    // so one of the two vanished from the rail while staying in the save
+    // payload — a file the operator could not see, open or remove.
+    const orderings: string[][] = [
+        ['a', 'a/b'],
+        ['a/b', 'a'],
+    ]
+
+    for (const order of orderings) {
+        const label = order.join(' then ')
+
+        it(`keeps every stored path through the tree (${label})`, () => {
+            const rail = flattenTree(fileTree(order)).map((entry) => entry.path)
+
+            for (const stored of order) {
+                expect(rail).toContain(stored)
+            }
+        })
+
+        it(`nests the child under the shared name (${label})`, () => {
+            const tree = fileTree(order)
+
+            expect(tree).toHaveLength(1)
+            expect(tree[0]?.name).toBe('a')
+            expect(tree[0]?.children.map((child) => child.path)).toEqual(['a/b'])
+        })
+    }
+
+    it('builds the same tree whatever order the paths arrive in', () => {
+        expect(fileTree(orderings[1]!)).toEqual(fileTree(orderings[0]!))
+    })
+})

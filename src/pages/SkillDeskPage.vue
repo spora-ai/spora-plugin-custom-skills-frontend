@@ -176,9 +176,14 @@ async function save(data: UpdateSkillDto): Promise<void> {
 }
 
 function restore(): void {
-    void store.restoreSkill(name.value).then((skill) => {
-        store.setNotice(`Restored the previous version of ${skill.name}.`)
-    })
+    void store
+        .restoreSkill(name.value)
+        .then((skill) => {
+            store.setNotice(`Restored the previous version of ${skill.name}.`)
+        })
+        .catch(() => {
+            // `error` carries the message; the store re-throws after setting it.
+        })
 }
 
 /**

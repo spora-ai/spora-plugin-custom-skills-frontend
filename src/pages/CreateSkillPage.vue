@@ -283,9 +283,11 @@ async function submit(): Promise<void> {
                 </ul>
             </div>
 
-            <!-- Starting point. Blank is the default and always available, because
-                 "SKILL.md exists" is the guarantee and "SKILL.md is empty" is not a
-                 promise we need to make. -->
+            <!-- Starting point. The outline is the default, because a skill that
+                 says what it is for is easier to judge than an empty box, and the
+                 headings are cheap to delete. Arriving with no `?template=` is the
+                 same choice, so this radio is a way back to it rather than a second
+                 option. -->
             <fieldset>
                 <legend class="text-sm font-medium">Start from</legend>
                 <div class="mt-2 space-y-2">
@@ -304,7 +306,7 @@ async function submit(): Promise<void> {
                         />
                         <span class="min-w-0">
                             <span class="flex items-center gap-2 text-sm font-medium">
-                                A blank
+                                The starter
                                 <span class="font-mono text-[11px] font-normal text-muted-foreground">SKILL.md</span>
                             </span>
                             <span class="mt-0.5 block text-[11px] text-muted-foreground">

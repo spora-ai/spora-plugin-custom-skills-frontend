@@ -38,6 +38,13 @@ interface MountTarget extends HTMLElement {
 
 const SporaApp: MountContract = {
     mount(target: HTMLElement, hostContext: PluginHostContext): void {
+        // The host mounts and unmounts this bundle repeatedly, and a target can
+        // still hold a previous app. Vue's `mount()` on a non-empty container
+        // tries to reconcile against an app it knows nothing about and throws
+        // while tearing the old tree down, so the prior app is released first —
+        // through its own `unmount()`, which also drops the host-route listener.
+        (target as MountTarget).__sporaApp?.unmount()
+
         // Bridge the host's typed REST client into the plugin-local `getApi()`
         // container.
         setApi(hostContext.api)

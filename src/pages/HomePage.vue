@@ -31,18 +31,24 @@ const sort = ref<SkillSort>('updated')
 const principal = computed(() => principals.currentPrincipal)
 const rows = computed(() => sortSkills(store.skills, sort.value))
 
+// The three store calls below re-throw after setting `error`, so each needs a
+// catch: `void` alone satisfies no-floating-promises while leaving the rejection
+// unhandled. The banner shows the message either way.
 function enable(name: string, agentId: number): void {
-    void store.enableOnAgent(name, agentId)
+    void store.enableOnAgent(name, agentId).catch(() => {})
 }
 
 function disable(name: string, agentId: number): void {
-    void store.disableOnAgent(name, agentId)
+    void store.disableOnAgent(name, agentId).catch(() => {})
 }
 
 function restore(name: string): void {
-    void store.restoreSkill(name).then((skill) => {
-        store.setNotice(`Restored the previous version of ${skill.name}.`)
-    })
+    void store
+        .restoreSkill(name)
+        .then((skill) => {
+            store.setNotice(`Restored the previous version of ${skill.name}.`)
+        })
+        .catch(() => {})
 }
 </script>
 

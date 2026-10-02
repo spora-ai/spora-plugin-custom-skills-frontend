@@ -562,6 +562,14 @@ export function suggestFileName(takenPaths: readonly string[]): string {
  *
  * Folders sort before files at every level, and both sort alphabetically, so the
  * order does not shift as files are added.
+ *
+ * A node is a folder when it ended up with children, and the walk does not
+ * overwrite them. A stored set may legitimately contain both `a` and `a/b` — the
+ * contract's path rules forbid neither, and the create dialog can produce it — and
+ * a walk that cleared children on the way past a leaf would drop one of the two
+ * from the rail, leaving a file the operator can neither see, open nor remove
+ * while it is still in the save payload. Folder-ness is decided by the shape the
+ * walk leaves behind, so both survive.
  */
 export function fileTree(paths: string[]): FileTreeNode[] {
     const root: FileTreeNode = { name: '', path: '', children: [] }
@@ -576,15 +584,13 @@ export function fileTree(paths: string[]): FileTreeNode[] {
 
         let node = root
         let walked = ''
-        segments.forEach((segment, index) => {
+        segments.forEach((segment) => {
             walked = walked === '' ? segment : `${walked}/${segment}`
-            const isLeaf = index === segments.length - 1
             let child = node.children.find((candidate) => candidate.name === segment)
             if (!child) {
                 child = { name: segment, path: walked, children: [] }
                 node.children.push(child)
             }
-            if (isLeaf) child.children = []
             node = child
         })
     }

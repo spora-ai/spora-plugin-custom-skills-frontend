@@ -45,6 +45,40 @@ describe('hand-written CSS stays inside the plugin boundary', () => {
         expect(unscoped, 'a hand-written selector would leak into the host document').toEqual([])
     })
 
+    it.skipIf(!BUILT)('emits the scope prefix as a descendant selector, not as the scope element', () => {
+        // `important: '#spora-plugin-custom-skills'` compiles to
+        // `#spora-plugin-custom-skills .flex` — a *descendant* selector, which
+        // cannot match the element carrying the id. So a utility class placed on
+        // the panel root in App.vue is dead CSS that still looks correct in the
+        // source, and the frame silently collapses to a content-sized block.
+        // `App.vue` puts the frame on a child for this reason.
+        //
+        // This asserts the shape rather than the fix, so changing the prefix to
+        // something that *does* match the scope element is allowed — it just has
+        // to be a conscious change, and the root's classes become live again.
+        const css = stripComments(readFileSync(resolve(ROOT, 'frontend/style.css'), 'utf8'))
+        // Descendant form is `#id .util` (whitespace before the dot); a form that
+        // also matches the scope element is `#id.util` (no whitespace).
+        const matchesScopeElementItself = /#spora-plugin-custom-skills\./
+
+        expect(
+            matchesScopeElementItself.test(css),
+            'the prefix now matches the scope element itself, so App.vue can put utilities on the root again',
+        ).toBe(false)
+    })
+
+    it('the panel root carries no utility class, because none could reach it', () => {
+        const source = readFileSync(resolve(ROOT, 'src/App.vue'), 'utf8')
+        const rootTag = source.match(/<div id="spora-plugin-custom-skills"([^>]*)>/)
+        expect(rootTag, 'the panel root should be findable by its scope id').not.toBeNull()
+
+        const classes = (rootTag?.[1].match(/class="([^"]*)"/)?.[1] ?? '').split(/\s+/).filter(Boolean)
+        expect(
+            classes,
+            'a class on the scope element cannot be styled by the prefixed bundle; put the frame on a child',
+        ).toEqual([])
+    })
+
     it.skipIf(!BUILT)("carries md-editor-v3's stylesheet, which is unscoped by nature", () => {
         // The desk writes in `<MdEditor>`, so `md-editor-v3/lib/style.css` ships with
         // it. That library's rules are not scoped to the plugin root and cannot be

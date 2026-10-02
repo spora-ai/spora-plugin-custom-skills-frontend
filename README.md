@@ -111,12 +111,34 @@ src/
 
 ## Responsive rule
 
-**The scope bar wraps** and stays sticky. **The desk's file rail is hidden below
-`md`**, with a file `<select>` in the mode bar taking over — otherwise a narrow
-window would have no way to reach a sidecar at all. **The desk's preview drops out
-below `md`** in split mode, so the source pane keeps a usable measure rather than
-compressing into a column of hyphenated words. **The catalogue's per-row file
-count and licence drop below `sm`**, leaving Read and Duplicate reachable.
+**The scope bar wraps** and stays sticky. **The desk stacks below `md` and splits
+above it**, and the split says so with an explicit base `flex-col` plus
+`md:flex-row` — a direction variant with no base direction resolves to the CSS
+initial `row` and silently disables every `md:` sizing on the rail beside it.
+The rail is **not** hidden at any width: it is capped at `38vh` and scrolls inside
+that, so a skill with a dozen sidecars cannot push the editor off the bottom of the
+window, and a file `<select>` in the footer is the second way to name the open file
+in a narrow one. **The desk's preview is not responsive**: `MdEditor` owns it
+through `:preview="true"` plus the toolbar's own `preview` / `previewOnly`
+entries, so there is no panel-level mode group to make responsive. **The
+catalogue's per-row file count and licence are always shown**; the row wraps its
+actions onto their own line below `sm` rather than dropping the meta.
+
+## The scope root carries no utility classes
+
+`tailwind.config.ts` sets `important: '#spora-plugin-custom-skills'`, which
+compiles to a **descendant** selector — `#spora-plugin-custom-skills .flex`. That
+cannot match the element carrying the id, so a utility class on the panel root is
+dead CSS that still reads correctly in the source, and the root falls back to a
+content-sized block. That in turn leaves the desk's `h-full` resolving against an
+auto-height parent, which is the whole reason the page once grew to five viewports.
+
+The root's frame (`display: flex`, `min-height: 100vh`, the background token) is
+therefore hand-written in `src/style.css`, which is emitted verbatim rather than
+through the prefix. `tests/buildAssets.spec.ts` asserts both halves of this: the
+prefix stays a descendant selector, and the root carries no class. If the prefix
+ever changes to something that matches the scope element, those tests are what
+should make you notice.
 
 ## Host globals contract
 
@@ -182,13 +204,20 @@ npm run clean          # removes frontend/main.js + frontend/style.css
   read-modify-write, agents, principals.
 - `tests/stores/skills.spec.ts` — the loading triple, in-place updates,
   validation capture, allowlist cache, the read-then-write delete confirmation,
-  per-principal counts, the shipped fork.
+  per-principal counts, and that no duplicate helper survived on the store (the
+  Duplicate buttons navigate instead).
 - `tests/components/PrincipalScopeBar.spec.ts` — the scope dropdown, its per-entry
   counts, and that a scope change lands on home.
 - `tests/components/SkillRow.spec.ts` — what a row claims at rest, and the menu's
-  allowlist read.
-- `tests/components/SkillDesk.spec.ts` — `SKILL.md` unremovable, the gutter, the
-  write/split/preview modes, the save payload, inline errors vs. banner warnings.
+  allowlist read including that it claims nothing until that read lands.
+- `tests/components/FileDialog.spec.ts` — the conventional-folder hint renders as
+  text, not as markup.
+- `tests/components/SkillDesk.spec.ts` — `SKILL.md` unremovable, the pane's
+  nesting (not just its class names), the desk root carrying no direction variant,
+  the save payload, inline errors vs. banner warnings.
+- `tests/buildAssets.spec.ts` — the built stylesheet: every hand-written selector
+  inside the plugin boundary, the scope prefix still a descendant selector, and
+  the scope root carrying no utility class.
 - `tests/components/SkillViewer.spec.ts` — the read-only inspector, and that
   reading cannot mutate.
 - `tests/lib/skillFormat.spec.ts` — the pure derivations, including the local

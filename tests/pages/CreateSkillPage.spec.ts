@@ -259,10 +259,11 @@ describe('CreateSkillPage → the page around the form', () => {
         expect(wrapper.text()).toContain('owner or an admin')
     })
 
-    it('offers a blank SKILL.md as the default and a route into the catalogue', () => {
+    it('defaults to the starter outline and offers a route into the catalogue', () => {
         const wrapper = mountPage(CreateSkillPage, pinia)
-        const blank = wrapper.get('[data-test="start-blank"]')
-        expect((blank.element as HTMLInputElement).checked).toBe(true)
+        const starter = wrapper.get('[data-test="start-blank"]')
+        expect((starter.element as HTMLInputElement).checked).toBe(true)
+        expect(wrapper.text()).toContain('A short starter outline.')
         expect(wrapper.get('[data-test="start-shipped"]').attributes('href')).toBe('/library')
     })
 

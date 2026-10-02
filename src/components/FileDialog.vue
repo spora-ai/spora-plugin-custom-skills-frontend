@@ -175,9 +175,9 @@ function submit(): void {
                             />
                         </datalist>
                     </div>
-                    <p class="mt-1 text-[11px] text-muted-foreground">
+                    <p class="mt-1 text-[11px] text-muted-foreground" data-test="folder-hint">
                         Leave empty for the skill root.
-                        <span class="font-mono">{{ CONVENTIONAL_SKILL_FOLDERS.join('/</span>, <span class="font-mono">') }}</span>
+                        <span class="font-mono">{{ CONVENTIONAL_SKILL_FOLDERS.join('/') }}</span>, <span class="font-mono">{{ CONVENTIONAL_SKILL_FOLDERS.join(' ') }}</span>
                         are the spec's own names for the three usual cases; anything else is
                         allowed.
                     </p>

@@ -153,8 +153,20 @@ function submitDelete(): void {
                     Agents using this skill
                 </p>
 
+                <!-- Gated on the read having landed, not on the array being empty:
+                     `toggleMenu` fires `loadAllowlist` on open, so an empty array
+                     first paint is indistinguishable from "not read yet" — and this
+                     component's own docblock rules out a claim that is wrong for
+                     every row whose read has not arrived. -->
                 <p
-                    v-if="allowlist.length === 0"
+                    v-if="!allowlistLoaded"
+                    class="px-3 py-2 text-[11px] leading-snug text-muted-foreground"
+                    data-test="allowlist-loading"
+                >
+                    Reading the agents that use this skill…
+                </p>
+                <p
+                    v-else-if="allowlist.length === 0"
                     class="px-3 py-2 text-[11px] leading-snug text-muted-foreground"
                     data-test="allowlist-empty"
                 >

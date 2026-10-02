@@ -589,11 +589,43 @@ describe('SkillDesk → write / split / preview', () => {
         expect(editorColumn.contains(pane('file-rail'))).toBe(false)
     })
 
+    it('every flex container in the desk states its base direction', () => {
+        // Three defects in this file were the same mistake, and the first two
+        // checks were too narrow to catch the third:
+        //
+        //   1. a leftover `md:flex-row` on the desk root beat `flex-col`, so the
+        //      whole desk became a row and the page grew to five viewports;
+        //   2. the open-file bar was never closed, so it swallowed the editor;
+        //   3. the split carried `md:flex-row` with *no* base direction, so it was
+        //      a row at every width and the rail's `md:max-h-none`, `md:border-b-0`
+        //      and `md:border-r` were all dead.
+        //
+        // A direction variant with no matching base resolves to the CSS initial
+        // `row`, and reads as intentional in the source. So: a flex container that
+        // switches direction across a breakpoint must say what it is at the base.
+        const wrapper = mountDesk()
+        const flexContainers = wrapper.findAll('[class*="flex"]')
+
+        expect(flexContainers.length).toBeGreaterThan(0)
+
+        for (const el of flexContainers) {
+            const classes = (el.attributes('class') ?? '').split(/\s+/).filter(Boolean)
+            const breakpointVariants = classes.filter((c) => /^(sm|md|lg|xl):flex-(row|col)$/.test(c))
+            if (breakpointVariants.length === 0) continue
+
+            const hasBase = classes.includes('flex-col') || classes.includes('flex-row')
+            expect(
+                hasBase,
+                `${el.attributes('data-test') ?? el.element.tagName} switches direction at a `
+                + `breakpoint (${breakpointVariants.join(', ')}) but has no base flex-row/flex-col, `
+                + 'so it is a row at every width and its `md:` sizing is dead',
+            ).toBe(true)
+        }
+    })
+
     it('the desk is a column, with no variant that turns it back into a row', () => {
-        // A leftover `md:flex-row` here beat `flex-col` at desktop widths, so the
-        // whole desk laid out as a row — headline beside the file list beside the
-        // editor — and the page grew to five times the viewport. The class is
-        // invisible in a rendered screenshot; this is the only place it shows up.
+        // Kept as its own check: a *conflicting* pair is worse than a missing base,
+        // because the later rule silently wins and the result looks designed.
         const root = mountDesk().get('[data-test="skill-desk"]')
         const classes = (root.attributes('class') ?? '').split(/\s+/)
         expect(classes).toContain('flex-col')

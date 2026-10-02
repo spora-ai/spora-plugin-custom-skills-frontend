@@ -18,6 +18,25 @@
 }
 
 /*
+ * The panel root's frame, and the only place a rule is written against the scope
+ * element itself rather than a descendant of it.
+ *
+ * `important: '#spora-plugin-custom-skills'` compiles to a *descendant* selector,
+ * so `#spora-plugin-custom-skills .flex` cannot match the element carrying the id.
+ * Utility classes on that element are therefore unreachable, and the root falls
+ * back to a content-sized block — which is what let the desk's `h-full` resolve
+ * against an auto-height parent. Written by hand, this rule is emitted verbatim
+ * and does reach the element. `tests/buildAssets.spec.ts` asserts both halves: the
+ * prefix stays a descendant selector, and the root carries no utility class.
+ */
+#spora-plugin-custom-skills {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: hsl(var(--background));
+}
+
+/*
  * Typography for rendered prose. `md-editor-v3`'s own stylesheet styles the editor
  * and its preview pane, but the host's tokens do not reach inside it — so the prose
  * scale is set here, scoped to this plugin's root.
@@ -60,6 +79,15 @@
 #spora-plugin-custom-skills .md-editor-preview * {
     word-break: normal;
     overflow-wrap: anywhere;
+}
+/* The rule above is for prose, where a long token must not overflow. Inside a
+   fenced block the library's own `overflow-x: auto` is the right answer, and the
+   blanket rule defeats it by hard-wrapping a long line mid-token. Restored after
+   the rule above, so it wins on source order at equal specificity. */
+#spora-plugin-custom-skills .md-editor-preview pre,
+#spora-plugin-custom-skills .md-editor-preview pre * {
+    word-break: normal;
+    overflow-wrap: normal;
 }
 #spora-plugin-custom-skills .md-editor-preview h1,
 #spora-plugin-custom-skills .md-preview h1 {

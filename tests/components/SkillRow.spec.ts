@@ -84,11 +84,22 @@ describe('SkillRow → the menu', () => {
     })
 
     it('states the agent-side failure verbatim when nothing allowlists the skill', async () => {
-        const wrapper = mountRow()
+        const wrapper = mountRow({ allowlistLoaded: true })
         await wrapper.get('[data-test="row-actions"]').trigger('click')
         expect(wrapper.get('[data-test="allowlist-empty"]').text()).toBe(
             'Not enabled for any agent yet — add it to an agent\'s Skill tool settings before the agent can use it.',
         )
+    })
+
+    it('claims nothing until the allowlist read has landed', async () => {
+        // The read fires on open, so an empty array on first paint is
+        // indistinguishable from "not read yet" — and this component's own
+        // docblock rules out a claim that is wrong for every unread row.
+        const wrapper = mountRow({ allowlist: [], allowlistLoaded: false })
+        await wrapper.get('[data-test="row-actions"]').trigger('click')
+
+        expect(wrapper.find('[data-test="allowlist-empty"]').exists()).toBe(false)
+        expect(wrapper.get('[data-test="allowlist-loading"]').text()).toContain('Reading')
     })
 
     it('names the agents that resolve it, with the scope each entry means', async () => {

@@ -639,7 +639,13 @@ function handleSubmit(): void {
             </div>
         </div>
 
-        <div class="flex min-h-0 min-w-0 flex-1 overflow-hidden md:flex-row">
+        <!-- The base direction is `flex-col`, and the rail's `max-h-[38vh]` plus its
+             `border-b` → `md:border-r` are written for that: a column stacks the rail
+             above the editor, so the cap is what keeps a dozen sidecars from pushing the
+             editor off the window. Without the base, `flex` alone resolves to the CSS
+             initial `row`, the rail sits beside the editor at every width, and all three
+             `md:` variants on it are dead. -->
+        <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row">
             <aside
                 class="flex max-h-[38vh] w-56 shrink-0 flex-col border-b border-border bg-muted/30 md:max-h-none md:border-b-0 md:border-r"
                 data-test="file-rail"
@@ -955,7 +961,7 @@ function handleSubmit(): void {
                 formatting buttons that affect what it renders.
             -->
                 <div class="min-h-0 min-w-0 flex-1 overflow-hidden">
-                    <div :aria-label="`${activePath} source`" data-test="desk-source">
+                    <div :aria-label="`${activePath} source`" class="h-full" data-test="desk-source">
                         <MdEditor
                             v-if="activeIsMarkdown"
                             :id="idFor('editor')"
@@ -1013,8 +1019,10 @@ function handleSubmit(): void {
                             / {{ MAX_FILE_BYTES / 1000 }} KB per file
                         </span>
                     </span>
-                    <!-- The rail is hidden below `md`; without this a narrow window would
-                     have no way to reach a sidecar at all. -->
+                    <!-- Below `md` the rail stacks above the editor rather than beside it,
+                     so a 224px column is a poor way to name the open file; this select is
+                     the one that reads properly in a narrow window. The rail is not
+                     hidden at any width. -->
                     <select
                         v-model="activePath"
                         aria-label="File"

@@ -70,7 +70,12 @@ watch(
 </script>
 
 <template>
-    <div id="spora-plugin-custom-skills" class="flex min-h-screen flex-col bg-background">
+    <!-- The id is the CSS scope anchor. Its frame comes from `style.css`, not from
+         utility classes: Tailwind's `important` prefix compiles to a *descendant*
+         selector (`#spora-plugin-custom-skills .flex`), which cannot match the
+         element carrying the id, so a class here would be dead CSS.
+         `tests/buildAssets.spec.ts` pins both halves of that. -->
+    <div id="spora-plugin-custom-skills">
         <PrincipalScopeBar />
 
         <AlertBanner v-if="store.error" type="error" :message="store.error" />
