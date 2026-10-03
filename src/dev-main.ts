@@ -11,7 +11,11 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import App from './App.vue'
-import SkillsPage from './pages/SkillsPage.vue'
+import HomePage from './pages/HomePage.vue'
+import CreateSkillPage from './pages/CreateSkillPage.vue'
+import SkillDeskPage from './pages/SkillDeskPage.vue'
+import CataloguePage from './pages/CataloguePage.vue'
+import SkillViewerPage from './pages/SkillViewerPage.vue'
 import { HOST_CONTEXT_KEY, type PluginHostContext } from './shims'
 import { setApi } from './api/client'
 import { createMockApi } from './dev-mock'
@@ -34,13 +38,16 @@ const hostContext: PluginHostContext = {
     },
 }
 
-// Without `app.use(router)` the `useRoute()` inject keys are missing and
-// `SkillsPage` warns. Same route names as `main.ts` so both surfaces behave alike.
+// Without `app.use(router)` the `useRoute()` inject keys are missing and the pages
+// warn. Same route map as `main.ts` so both surfaces behave alike.
 const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-        { path: '/', name: 'skills', component: SkillsPage },
-        { path: '/:name', name: 'skill', component: SkillsPage },
+        { path: '/', name: 'home', component: HomePage },
+        { path: '/new', name: 'create', component: CreateSkillPage },
+        { path: '/skills/:name', name: 'desk', component: SkillDeskPage },
+        { path: '/library', name: 'catalogue', component: CataloguePage },
+        { path: '/library/:name', name: 'library', component: SkillViewerPage },
     ],
 })
 

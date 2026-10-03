@@ -14,8 +14,11 @@ function makeHostContext(): PluginHostContext {
     // `SkillsPage` fetches these four envelopes on mount; empty ones resolve
     // instead of blowing up with "Cannot read properties of undefined".
     const get = vi.fn().mockImplementation((path: string) => {
-        if (path === '/principals/me') return Promise.resolve({ principals: [] })
-        if (path === '/custom-skills') return Promise.resolve({ skills: [] })
+        // A principal, so the scope bar and the home heading have something to name.
+        if (path === '/principals/me') {
+            return Promise.resolve({ principals: [{ id: 7, type: 'user', name: 'Maya Fischer', user_id: 3, group_id: null }] })
+        }
+        if (path === '/custom-skills' || path.startsWith('/custom-skills?')) return Promise.resolve({ skills: [] })
         if (path === '/skills') return Promise.resolve({ skills: [] })
         if (path === '/agents') return Promise.resolve({ agents: [] })
         return Promise.resolve(undefined)
@@ -40,6 +43,37 @@ function makeTarget(): HTMLElement {
     target.id = 'app-mount-target'
     document.body.appendChild(target)
     return target
+}
+
+/**
+ * The slice of the host's Vue Router this app touches.
+ *
+ * `afterEach` is a real Vue Router method the host exposes, so the fake fires the
+ * same imperative callback the code registers rather than pretending to be
+ * reactive — a `watch` on `currentRoute` would also "work" here and fail in the
+ * host, which is the whole reason the code uses `afterEach`.
+ */
+function fakeHostRouter(initial: { path: string; query?: Record<string, unknown> }) {
+    let guard: ((to: { path: string; query?: Record<string, unknown> }) => void) | null = null
+
+    return {
+        currentRoute: { value: { ...initial } as { path: string; query?: Record<string, unknown> } },
+        push: vi.fn().mockResolvedValue(undefined),
+        /** How many guards are currently registered — 1 while mounted, 0 after. */
+        get registered(): number {
+            return guard === null ? 0 : 1
+        },
+        afterEach(cb: (to: { path: string; query?: Record<string, unknown> }) => void): () => void {
+            guard = cb
+            return () => {
+                if (guard === cb) guard = null
+            }
+        },
+        navigate(to: { path: string; query?: Record<string, unknown> }): void {
+            this.currentRoute.value = { ...to }
+            guard?.(to)
+        },
+    }
 }
 
 beforeEach(() => {
@@ -73,7 +107,46 @@ describe('SporaApp (main.ts mount contract)', () => {
         // `#spora-plugin-custom-skills` is the anchor every Tailwind utility nests
         // beneath; losing it unscopes the plugin CSS into the host.
         expect(target.querySelector('#spora-plugin-custom-skills')).not.toBeNull()
-        expect(target.querySelector('main')).not.toBeNull()
+        expect(target.querySelector('[data-test="home-page"]')).not.toBeNull()
+    })
+
+    it('mount() opens the skill a host URL names, so a search hit lands on it', async () => {
+        const main = await import('../src/main')
+        const target = makeTarget()
+        const hostContext = makeHostContext()
+        hostContext.router = fakeHostRouter({ path: '/apps/custom-skills/skill/invoice-drafting' })
+
+        await main.default.mount(target, hostContext)
+        await new Promise((r) => setTimeout(r, 0))
+
+        // Without this the palette's link opened the panel's home page and dropped
+        // the skill, because the host registers no child route for the path. The
+        // assertion is on what rendered: the host's own URL is unchanged, since the
+        // app routes on its local memory-history router.
+        expect(target.querySelector('[data-test="desk-page"]')).not.toBeNull()
+        expect(target.querySelector('[data-test="home-page"]')).toBeNull()
+    })
+
+    it('follows a later host navigation, and unregisters the listener on unmount', async () => {
+        const main = await import('../src/main')
+        const target = makeTarget()
+        const hostContext = makeHostContext()
+        const hostRouter = fakeHostRouter({ path: '/apps/custom-skills' })
+        hostContext.router = hostRouter
+
+        await main.default.mount(target, hostContext)
+        await new Promise((r) => setTimeout(r, 0))
+        expect(hostRouter.registered).toBe(1)
+
+        hostRouter.navigate({ path: '/apps/custom-skills/skill/report' })
+        await new Promise((r) => setTimeout(r, 0))
+        expect(target.querySelector('[data-test="desk-page"]')).not.toBeNull()
+        expect(target.querySelector('[data-test="home-page"]')).toBeNull()
+
+        main.default.unmount(target)
+        // The host router outlives the app, so a surviving listener would push into
+        // a router whose element is gone — and the host remounts this bundle.
+        expect(hostRouter.registered).toBe(0)
     })
 
     it('mount() wires hostContext.api into the plugin-local api/client bridge', async () => {
@@ -104,15 +177,17 @@ describe('SporaApp (main.ts mount contract)', () => {
         expect(injectionWarnings).toEqual([])
     })
 
-    it('mount() installs a local router so the page can read the selected skill', async () => {
+    it('mount() installs a local router so the scope bar can read the current route', async () => {
         const main = await import('../src/main')
         const target = makeTarget()
         await main.default.mount(target, makeHostContext())
         await new Promise((r) => setTimeout(r, 0))
-        // `SkillsPage` calls `useRoute()` / `useRouter()` unconditionally; an
-        // unbound router leaves the selected skill unaddressable and warns.
-        expect(target.querySelector('[data-test="pane-mine"]')).not.toBeNull()
-        expect(target.querySelector('[data-test="pane-preshipped"]')).not.toBeNull()
+        // The scope bar calls `useRoute()` / `useRouter()` unconditionally; an
+        // unbound router leaves it on `START_LOCATION` and warns, so every section
+        // would read as current at once.
+        const skills = target.querySelector('[data-test="section-skills"]')
+        expect(skills?.getAttribute('aria-current')).toBe('page')
+        expect(target.querySelector('[data-test="section-catalogue"]')?.getAttribute('aria-current')).toBeNull()
     })
 
     it('unmount() removes the mounted Vue app from the DOM', async () => {
@@ -120,9 +195,9 @@ describe('SporaApp (main.ts mount contract)', () => {
         const target = makeTarget()
         await main.default.mount(target, makeHostContext())
         await new Promise((r) => setTimeout(r, 0))
-        expect(target.querySelector('main')).not.toBeNull()
+        expect(target.querySelector('#spora-plugin-custom-skills')).not.toBeNull()
         main.default.unmount(target)
-        expect(target.querySelector('main')).toBeNull()
+        expect(target.querySelector('#spora-plugin-custom-skills')).toBeNull()
     })
 
     it('unmount() is a no-op when no app is mounted on the target', async () => {
@@ -145,11 +220,11 @@ describe('SporaApp (main.ts mount contract)', () => {
         const hostContext = makeHostContext()
         await main.default.mount(target, hostContext)
         await new Promise((r) => setTimeout(r, 0))
-        const first = target.querySelector('main')
+        const first = target.querySelector('[data-test="home-page"]')
         expect(first).not.toBeNull()
         await main.default.mount(target, hostContext)
         await new Promise((r) => setTimeout(r, 0))
-        const second = target.querySelector('main')
+        const second = target.querySelector('[data-test="home-page"]')
         expect(second).not.toBeNull()
         expect(second).not.toBe(first)
     })

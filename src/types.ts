@@ -35,8 +35,6 @@ export interface CustomSkillResource {
     description: string
     license: string | null
     compatibility: string | null
-    /** The hyphenated `allowed-tools` frontmatter value, verbatim. */
-    allowed_tools: string | null
     /** Always an object; `{}` when unset. */
     metadata: Record<string, unknown>
     /** The SKILL.md body with the frontmatter fence stripped. */
@@ -51,6 +49,13 @@ export interface CustomSkillResource {
     files: CustomSkillFile[]
     /** `previous_snapshot` exists → "Restore previous version" is offered. */
     has_previous: boolean
+    /**
+     * When the rollback copy was taken, and who wrote it. Null on a row saved before
+     * the snapshot carried it — `has_previous` is still true in that case, which is
+     * why the two are separate rather than one nullable timestamp.
+     */
+    previous_at: string | null
+    previous_by: number | null
     warnings: SkillValidationEntry[]
     warning_count: number
 }
@@ -61,7 +66,6 @@ export interface CreateSkillDto {
     body: string
     license?: string | null
     compatibility?: string | null
-    allowed_tools?: string | null
     metadata?: Record<string, unknown>
     /** Path → content. Fully replaces the sidecar set. */
     files?: Record<string, string>
@@ -113,12 +117,25 @@ export interface PreShippedSkillSummary {
     has_warnings: boolean
 }
 
+/**
+ * Mirrors the host's `SkillDetail` key for key, so this panel's read shape and
+ * `spora-frontend/src/types/skill.ts` agree on field names — including
+ * `allowed_tools`, which the host still sends and still declares.
+ *
+ * A partial mirror was the earlier state, on the reasoning that declaring a field
+ * nobody reads is an obligation with no reader. That was the wrong trade: the
+ * omission *was* the divergence, and it was invisible. Declared, unread, and
+ * honest beats undeclared and wrong. The field is retired from the *editor*
+ * (`SKILL_FIELDS` does not carry it) and is never read from this shape; it is
+ * here because the wire sends it.
+ */
 export interface PreShippedSkillDetail {
     name: string
     description: string
     license: string | null
     compatibility: string | null
     metadata: Record<string, string>
+    /** Retired from the editor and never read here; the host still sends it. */
     allowed_tools: string | null
     body: string
     body_bytes: number

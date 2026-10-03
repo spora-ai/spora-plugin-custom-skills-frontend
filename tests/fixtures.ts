@@ -10,6 +10,12 @@ import type {
     SkillAllowlistEntry,
     SkillValidationEntry,
 } from '../src/types'
+import type { Principal } from '../src/api/principals'
+
+/** `GET /api/v1/principals/me` — the caller's own principal first, then their groups. */
+export function makePrincipal(overrides: Partial<Principal> = {}): Principal {
+    return { id: 7, type: 'user', name: 'Maya Fischer', user_id: 3, group_id: null, ...overrides }
+}
 
 export function makeSkill(overrides: Partial<CustomSkillResource> = {}): CustomSkillResource {
     return {
@@ -20,7 +26,6 @@ export function makeSkill(overrides: Partial<CustomSkillResource> = {}): CustomS
         description: 'How to draft an invoice from a purchase order.',
         license: 'MIT',
         compatibility: 'spora>=0.28',
-        allowed_tools: 'read_email, send_email',
         metadata: { tier: 'pro' },
         body: '# Steps\n\n1. Read the PO.\n',
         body_bytes: 812,
@@ -34,6 +39,8 @@ export function makeSkill(overrides: Partial<CustomSkillResource> = {}): CustomS
             { path: 'examples/invoice.md', bytes: 1204 },
         ],
         has_previous: true,
+        previous_at: '2026-09-30 15:00:00',
+        previous_by: null,
         warnings: [],
         warning_count: 0,
         ...overrides,
@@ -63,6 +70,8 @@ export function makePreShippedDetail(
         license: 'MIT',
         compatibility: null,
         metadata: {},
+        // The host sends this key on every detail response; a shipped skill that
+        // declares no tools has it null. Declared on the type, never read.
         allowed_tools: null,
         body: '# Review\n',
         body_bytes: 10,

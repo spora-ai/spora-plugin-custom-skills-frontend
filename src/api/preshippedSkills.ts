@@ -4,6 +4,12 @@
  * (deliberately)": re-serving it here would produce a second, drifting copy.
  * Read-only; the only mutation is Duplicate, which POSTs a *copy* onto the
  * principal.
+ *
+ * The response is NOT a shipped-only list. Without `?principal_id=`, core
+ * returns the union over every principal the caller can see, so this plugin's
+ * own principal-scoped skills arrive in it too. Callers wanting the host
+ * catalogue must drop `CUSTOM_SKILLS_SOURCE` — the store does it once, in
+ * `loadPreShippedSkills`, which is the only place that reads this list.
  */
 import { getApi } from './client'
 import type { PreShippedSkillDetail, PreShippedSkillSummary } from '../types'

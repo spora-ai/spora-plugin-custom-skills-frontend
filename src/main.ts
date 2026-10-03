@@ -2,8 +2,13 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import App from './App.vue'
-import SkillsPage from './pages/SkillsPage.vue'
+import HomePage from './pages/HomePage.vue'
+import CreateSkillPage from './pages/CreateSkillPage.vue'
+import SkillDeskPage from './pages/SkillDeskPage.vue'
+import CataloguePage from './pages/CataloguePage.vue'
+import SkillViewerPage from './pages/SkillViewerPage.vue'
 import { setApi } from './api/client'
+import { localRouteForHostRoute } from './lib/hostRoute'
 import { HOST_CONTEXT_KEY, type PluginHostContext } from './shims'
 
 /**
@@ -15,6 +20,11 @@ import { HOST_CONTEXT_KEY, type PluginHostContext } from './shims'
  * The plugin uses a *local* Pinia and a *local* router (`createMemoryHistory`,
  * since the host owns the address bar) so plugin-only state never pollutes host
  * stores; host services are reached through the passed-in `hostContext.api`.
+ *
+ * The routes are page-per-destination: home, create, the desk, the catalogue and
+ * the shipped-skill viewer. The principal is deliberately *not* in the URL — it
+ * lives in the Pinia store, and a scope change navigates to home rather than
+ * re-pointing a detail route at another principal's identically-named skill.
  */
 
 interface MountContract {
@@ -28,6 +38,13 @@ interface MountTarget extends HTMLElement {
 
 const SporaApp: MountContract = {
     mount(target: HTMLElement, hostContext: PluginHostContext): void {
+        // The host mounts and unmounts this bundle repeatedly, and a target can
+        // still hold a previous app. Vue's `mount()` on a non-empty container
+        // tries to reconcile against an app it knows nothing about and throws
+        // while tearing the old tree down, so the prior app is released first —
+        // through its own `unmount()`, which also drops the host-route listener.
+        (target as MountTarget).__sporaApp?.unmount()
+
         // Bridge the host's typed REST client into the plugin-local `getApi()`
         // container.
         setApi(hostContext.api)
@@ -40,18 +57,55 @@ const SporaApp: MountContract = {
 
         app.use(createPinia())
 
-        // The selected skill is a *location*, not local state: it has to survive a
-        // pane re-render, be linkable from the host's breadcrumbs and let the
-        // operator go "back" after opening an editor. Memory history keeps the URL
-        // out of the address bar — the host renders `/apps/custom-skills`.
+        // One page per destination, each with a subject of its own. Two of the
+        // paths are deliberately not nested: `/new` is top-level because
+        // `/skills/new` would shadow a skill literally named `new` (a legal slug),
+        // and `/library/:name` is separate from `/skills/:name` because a shipped
+        // skill is global and read-only while a custom one is principal-scoped and
+        // writable.
         const router = createRouter({
             history: createMemoryHistory(),
             routes: [
-                { path: '/', name: 'skills', component: SkillsPage },
-                { path: '/:name', name: 'skill', component: SkillsPage },
+                { path: '/', name: 'home', component: HomePage },
+                { path: '/new', name: 'create', component: CreateSkillPage },
+                { path: '/skills/:name', name: 'desk', component: SkillDeskPage },
+                { path: '/library', name: 'catalogue', component: CataloguePage },
+                { path: '/library/:name', name: 'library', component: SkillViewerPage },
             ],
         })
         app.use(router)
+
+        // Follow the host's URL into a skill. Core's `SkillSearchProvider` links a
+        // skill as `/apps/custom-skills/skill/{name}`, and the host router registers
+        // no child route for that, so the panel reads the path itself — the same
+        // arrangement as `spora-plugin-media-archive`'s `lib/route-detection.ts`.
+        //
+        // Host navigation is listened for imperatively via `afterEach` rather than by
+        // watching `hostContext.router.currentRoute`: the plugin and the host ship
+        // separate `vue` copies, so when Vue wraps `hostContext` in `reactive()` for
+        // the plugin's props the host's `shallowRef` ends up behind a proxy whose
+        // `.value` getter does not subscribe to the ref's own deps, and a `watch` on
+        // it never fires. `afterEach` is fired from the host router's navigation
+        // pipeline, so it sidesteps that entirely.
+        const hostRouter = hostContext.router
+        let unregisterHostRoute: (() => void) | undefined
+        if (hostRouter !== null) {
+            // Read once at mount for the initial value, which is what a palette hit
+            // or a pasted link looks like: the app may be mounted onto a URL that
+            // already names a skill.
+            const initial = localRouteForHostRoute(hostRouter.currentRoute?.value ?? null)
+            if (initial !== null) {
+                void router.replace(initial)
+            }
+            unregisterHostRoute = hostRouter.afterEach?.((to) => {
+                const target = localRouteForHostRoute(to)
+                // Guarded on the current local path, so a host navigation that did
+                // not concern this app — or a navigation this app caused — is a
+                // no-op rather than a redirect loop.
+                if (target === null || router.currentRoute.value.path === target) return
+                void router.push(target)
+            })
+        }
 
         // Reachable as `this.$host`, without a provide/inject key the host uses.
         app.config.globalProperties.$host = hostContext
@@ -63,6 +117,10 @@ const SporaApp: MountContract = {
         typedTarget.__sporaApp = {
             app,
             unmount: () => {
+                // The host router outlives this app, so a listener left behind would
+                // push into a router whose element is gone — and the host does mount
+                // and unmount this bundle repeatedly.
+                unregisterHostRoute?.()
                 app.unmount()
             },
         }

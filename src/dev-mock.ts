@@ -23,7 +23,6 @@ function makeSkill(overrides: Partial<CustomSkillResource> & { name: string }): 
         description: '',
         license: null,
         compatibility: null,
-        allowed_tools: null,
         metadata: {},
         body: '',
         body_bytes: 0,
@@ -34,6 +33,8 @@ function makeSkill(overrides: Partial<CustomSkillResource> & { name: string }): 
         updated_at: '2026-09-30 14:02:00',
         files: [{ path: SKILL_ENTRY_FILE, bytes: 0 }],
         has_previous: false,
+        previous_at: null,
+        previous_by: null,
         warnings: [],
         warning_count: 0,
         ...overrides,
@@ -117,6 +118,10 @@ export function createMockApi(): MockApi {
                         license: summary?.license ?? null,
                         compatibility: null,
                         metadata: {},
+                        // Host sends this on every detail response; null when the
+                        // skill declares no tools. Never read by this panel, but a
+                        // mock that omits it hides the very drift this type exists
+                        // to prevent.
                         allowed_tools: null,
                         body: `# ${name}\n\nShipped body.\n`,
                         body_bytes: 24,
@@ -157,7 +162,13 @@ export function createMockApi(): MockApi {
             if (path.includes('/restore')) {
                 const name = decodeURIComponent(path.split('?')[0]?.split('/')[2] ?? '')
                 const current = skills.find((s) => s.name === name) ?? makeSkill({ name })
-                const restored = { ...current, has_previous: true, updated_at: '2026-09-30 15:00:00' }
+                const restored = {
+                    ...current,
+                    has_previous: true,
+                    previous_at: current.updated_at,
+                    previous_by: null,
+                    updated_at: '2026-09-30 15:00:00',
+                }
                 upsert(restored)
                 return { skill: restored } as unknown as T
             }

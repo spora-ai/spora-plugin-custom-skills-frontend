@@ -6,3 +6,169 @@
  */
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Hand-written, and therefore scoped by hand: `important` rewrites *generated
+ * utilities*, so a bare `.scroll-quiet` here would publish a class name into the
+ * host document. `scripts/smoke.js` fails the build on any unscoped utility.
+ */
+#spora-plugin-custom-skills .scroll-quiet {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+}
+
+/*
+ * The panel root's frame, and the only place a rule is written against the scope
+ * element itself rather than a descendant of it.
+ *
+ * `important: '#spora-plugin-custom-skills'` compiles to a *descendant* selector,
+ * so `#spora-plugin-custom-skills .flex` cannot match the element carrying the id.
+ * Utility classes on that element are therefore unreachable, and the root falls
+ * back to a content-sized block — which is what let the desk's `h-full` resolve
+ * against an auto-height parent. Written by hand, this rule is emitted verbatim
+ * and does reach the element. `tests/buildAssets.spec.ts` asserts both halves: the
+ * prefix stays a descendant selector, and the root carries no utility class.
+ */
+#spora-plugin-custom-skills {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: hsl(var(--background));
+}
+
+/*
+ * Typography for rendered prose. `md-editor-v3`'s own stylesheet styles the editor
+ * and its preview pane, but the host's tokens do not reach inside it — so the prose
+ * scale is set here, scoped to this plugin's root.
+ *
+ * Two classes, because the rendered prose now comes from two places. The desk lets
+ * `<MdEditor>` own its preview pane, which renders `.md-editor-preview`; the viewer
+ * renders `<MdPreview>` standalone, which this repo marks with `.md-preview`. Same
+ * prose, so the same rules — otherwise a skill reads one way while being written
+ * and another way while being read.
+ *
+ * No `max-width`: it was capped at 65ch, which is a sensible reading measure for
+ * prose but left the viewer with a narrow column in a wide pane, and the operator
+ * asked for the full width. The containing column sets the measure now.
+ */
+#spora-plugin-custom-skills .md-preview,
+#spora-plugin-custom-skills .md-editor-preview {
+    font-size: 0.875rem;
+    width: 100%;
+    max-width: none;
+}
+
+/*
+ * `md-editor-v3` sets `word-break: break-all` on `.md-editor-preview` and on every
+ * heading, which splits words mid-character even when the line has room — a
+ * heading like "Configuration" broke across two lines. `overflow-wrap: anywhere`
+ * is the rule that was wanted: break a token only when it cannot fit, and at any
+ * point when it cannot.
+ *
+ * The `#spora-plugin-custom-skills` prefix is what makes this stick, not the
+ * position in the bundle: the library's rules are a single class
+ * (`.md-editor-preview`, and `.md-editor-preview h1`), and an id plus a class
+ * outranks both whichever stylesheet is written first. That also keeps the
+ * override out of the host's document, which `scripts/smoke.js` checks.
+ *
+ * `word-break: normal` is not optional. Leaving the library's value in place
+ * would keep the eager break, because `overflow-wrap` only applies once the word
+ * cannot fit — the two are independent.
+ */
+#spora-plugin-custom-skills .md-editor-preview,
+#spora-plugin-custom-skills .md-editor-preview * {
+    word-break: normal;
+    overflow-wrap: anywhere;
+}
+/* The rule above is for prose, where a long token must not overflow. Inside a
+   fenced block the library's own `overflow-x: auto` is the right answer, and the
+   blanket rule defeats it by hard-wrapping a long line mid-token. Restored after
+   the rule above, so it wins on source order at equal specificity. */
+#spora-plugin-custom-skills .md-editor-preview pre,
+#spora-plugin-custom-skills .md-editor-preview pre * {
+    word-break: normal;
+    overflow-wrap: normal;
+}
+#spora-plugin-custom-skills .md-editor-preview h1,
+#spora-plugin-custom-skills .md-preview h1 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin: 0 0 0.7rem;
+}
+#spora-plugin-custom-skills .md-editor-preview h2,
+#spora-plugin-custom-skills .md-preview h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 1.1rem 0 0.45rem;
+}
+#spora-plugin-custom-skills .md-editor-preview h3,
+#spora-plugin-custom-skills .md-preview h3 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin: 0.9rem 0 0.4rem;
+}
+#spora-plugin-custom-skills .md-editor-preview p,
+#spora-plugin-custom-skills .md-preview p {
+    margin: 0 0 0.7rem;
+    line-height: 1.6;
+}
+#spora-plugin-custom-skills .md-preview ul,
+#spora-plugin-custom-skills .md-editor-preview ol,
+#spora-plugin-custom-skills .md-preview ol {
+    margin: 0 0 0.7rem 1.1rem;
+    list-style: disc;
+}
+#spora-plugin-custom-skills .md-editor-preview ol,
+#spora-plugin-custom-skills .md-preview ol {
+    list-style: decimal;
+}
+#spora-plugin-custom-skills .md-editor-preview li,
+#spora-plugin-custom-skills .md-preview li {
+    margin: 0.2rem 0;
+    line-height: 1.55;
+}
+#spora-plugin-custom-skills .md-editor-preview a,
+#spora-plugin-custom-skills .md-preview a {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+#spora-plugin-custom-skills .md-editor-preview code,
+#spora-plugin-custom-skills .md-preview code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8em;
+    background: hsl(var(--muted));
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+}
+#spora-plugin-custom-skills .md-editor-preview pre,
+#spora-plugin-custom-skills .md-preview pre {
+    background: hsl(var(--muted));
+    padding: 0.75rem;
+    border-radius: 0.375rem;
+    overflow-x: auto;
+    margin: 0 0 0.7rem;
+}
+#spora-plugin-custom-skills .md-editor-preview pre code,
+#spora-plugin-custom-skills .md-preview pre code {
+    background: none;
+    padding: 0;
+}
+#spora-plugin-custom-skills .md-editor-preview blockquote,
+#spora-plugin-custom-skills .md-preview blockquote {
+    border-left: 3px solid hsl(var(--border));
+    padding-left: 0.75rem;
+    margin: 0 0 0.7rem;
+    color: hsl(var(--muted-foreground));
+}
+#spora-plugin-custom-skills .md-editor-preview table,
+#spora-plugin-custom-skills .md-preview table {
+    border-collapse: collapse;
+    margin: 0 0 0.7rem;
+}
+#spora-plugin-custom-skills .md-preview th,
+#spora-plugin-custom-skills .md-editor-preview td,
+#spora-plugin-custom-skills .md-preview td {
+    border: 1px solid hsl(var(--border));
+    padding: 0.35rem 0.6rem;
+    text-align: left;
+}

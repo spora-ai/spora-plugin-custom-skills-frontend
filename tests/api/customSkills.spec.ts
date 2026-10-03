@@ -101,7 +101,6 @@ describe('api/customSkills → writes', () => {
         body: '# Steps',
         license: 'MIT',
         compatibility: null,
-        allowed_tools: null,
         metadata: { tier: 'pro' },
         files: { 'examples/invoice.md': 'x' },
     }

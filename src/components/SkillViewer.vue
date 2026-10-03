@@ -7,6 +7,12 @@
  * Read-only by construction: every input is a `<dd>` or a preview, and nothing
  * here can emit a write.
  *
+ * No close affordance, in the header or the footer. This is a page body, not a
+ * dialog: the page above it carries a back-link, and both of these buttons emitted
+ * `close` for that same link's destination. Leaving a second way to leave a page is
+ * the kind of redundancy that reads as an extra step, and an ✕ in the corner of a
+ * page says "dismiss" when what it does is "go back".
+ *
  * Shipped skills need a separate component because the host's
  * `SkillController::detail()` returns `files` as `{path, bytes}` metadata with no
  * per-file read endpoint, so their sidecar *contents* are unavailable. Where
@@ -16,8 +22,17 @@
 import { computed, ref, watch } from 'vue'
 import { MdPreview } from 'md-editor-v3'
 import DOMPurify from 'dompurify'
-import { FileText, X, Pencil, Copy, TriangleAlert } from 'lucide-vue-next'
-import { formatBytes, sidecarFiles } from '../lib/skillFormat'
+import { ChevronRight, Copy, FileText, Folder, Pencil, TriangleAlert } from 'lucide-vue-next'
+import SourceEditor from './SourceEditor.vue'
+import {
+    fileTree,
+    flattenTree,
+    formatBytes,
+    formatJsonForPreview,
+    previewModeFor,
+    sidecarFiles,
+} from '../lib/skillFormat'
+import { MARKDOWN_LOCALE } from '../lib/markdownLocale'
 import type { CustomSkillResource, PreShippedSkillDetail, SkillValidationEntry } from '../types'
 
 // Local const, not a shared export: `sidecarFiles()` already filters on this
@@ -36,7 +51,6 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-    close: []
     edit: [name: string]
     duplicate: [name: string]
 }>()
@@ -69,7 +83,6 @@ const facts = computed(() => {
     const licence = 'license' in d ? d.license : null
     if (licence) out.push({ label: 'License', value: licence })
     if (d.compatibility) out.push({ label: 'Compatibility', value: d.compatibility })
-    if (d.allowed_tools) out.push({ label: 'Allowed tools', value: d.allowed_tools })
     const meta = Object.entries(d.metadata ?? {})
     if (meta.length > 0) {
         out.push({ label: 'Metadata', value: meta.map(([k, v]) => `${k}: ${v}`).join('  ·  ') })
@@ -80,6 +93,52 @@ const facts = computed(() => {
 const warnings = computed<SkillValidationEntry[]>(() => detail.value?.warnings ?? [])
 
 /**
+ * The rail, on the desk's model: `SKILL.md` is a fixed first row and folders are
+ * derived from the paths rather than stored, because the contract's `files` is a
+ * flat `path => content` map and a directory exists exactly as long as a file
+ * inside it does. Reusing `fileTree`/`flattenTree` rather than re-deriving is what
+ * keeps the two surfaces' ordering and indentation identical.
+ */
+const tree = computed(() => fileTree(sidecars.value.map((file) => file.path)))
+const collapsed = ref<string[]>([])
+const rows = computed(() => flattenTree(tree.value, collapsed.value))
+
+const isCollapsed = (path: string): boolean => collapsed.value.includes(path)
+
+function toggleFolder(path: string): void {
+    collapsed.value = isCollapsed(path)
+        ? collapsed.value.filter((p) => p !== path)
+        : [...collapsed.value, path]
+}
+
+/** The size a rail row shows: the entry's body, a sidecar's stored length. */
+function fileSize(path: string): number {
+    if (path === SKILL_ENTRY_FILE) return detail.value?.body_bytes ?? 0
+    return sidecars.value.find((file) => file.path === path)?.bytes ?? 0
+}
+
+/**
+ * How the open file is rendered, and the text to render it from.
+ *
+ * The mode comes from the contents as well as the extension, because a `.txt` that
+ * is really a binary is the case an extension-only rule gets wrong — and this panel
+ * is where an operator goes to find out what a skill actually contains.
+ */
+const previewMode = computed(() =>
+    activeContent.value === undefined ? null : previewModeFor(activePath.value, activeContent.value),
+)
+
+/** Pretty-printed JSON, or the file as written when it does not parse. */
+const formattedContents = computed(() => {
+    if (previewMode.value !== 'formatted' || activeContent.value === undefined) return null
+    return formatJsonForPreview(activeContent.value)
+})
+
+const jsonDidNotParse = computed(
+    () => previewMode.value === 'formatted' && formattedContents.value === null,
+)
+
+/**
  * Without this, a sidecar open on one skill leaves an empty pane when the next
  * skill inspected happens to lack that file.
  */
@@ -87,6 +146,9 @@ watch(
     () => title.value,
     () => {
         activePath.value = SKILL_ENTRY_FILE
+        // A folder that was open may not exist on the next skill, and a rail that
+        // silently keeps a stale expansion looks like data loss.
+        collapsed.value = []
     },
 )
 </script>
@@ -97,7 +159,7 @@ watch(
         class="rounded-xl border border-border bg-card p-5"
         data-test="viewer-pane"
     >
-        <header class="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
+        <header class="mb-4 border-b border-border pb-3">
             <div class="min-w-0">
                 <div class="flex items-center gap-2">
                     <h2 class="truncate font-mono text-sm font-semibold" data-test="viewer-title">
@@ -115,15 +177,6 @@ watch(
                     {{ detail.description }}
                 </p>
             </div>
-            <button
-                type="button"
-                class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted"
-                aria-label="Close inspector"
-                data-test="viewer-close"
-                @click="emit('close')"
-            >
-                <X class="h-4 w-4" />
-            </button>
         </header>
 
         <dl
@@ -150,57 +203,137 @@ watch(
             </ul>
         </div>
 
-        <!-- The entry body is always first; sidecars follow in server order. -->
-        <div class="mb-2 flex flex-wrap items-center gap-1 border-b border-border" data-test="viewer-tabs">
-            <button
-                type="button"
-                class="-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-xs font-medium transition-colors"
-                :class="activePath === SKILL_ENTRY_FILE
-                    ? 'border-primary text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'"
-                data-test="viewer-tab-entry"
-                @click="activePath = SKILL_ENTRY_FILE"
+        <!--
+            The desk's rail, read-only: a skill is a folder of files, and a flat tab
+            strip both lost the structure and ran out of room for a skill with a
+            handful of sidecars. No add, rename or remove affordances — nothing here
+            can write.
+        -->
+        <div class="flex min-h-0 flex-col gap-4 md:flex-row">
+            <aside
+                class="flex max-h-64 w-56 shrink-0 flex-col rounded-lg border border-border bg-muted/30 md:max-h-96"
+                data-test="viewer-rail"
             >
-                <FileText class="h-3.5 w-3.5" />
-                SKILL.md
-                <span class="text-[10px] text-muted-foreground">{{ formatBytes(detail.body_bytes) }}</span>
-            </button>
-            <button
-                v-for="file in sidecars"
-                :key="file.path"
-                type="button"
-                class="-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-1.5 font-mono text-xs font-medium transition-colors"
-                :class="activePath === file.path
-                    ? 'border-primary text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'"
-                :data-test="'viewer-tab-file'"
-                @click="activePath = file.path"
-            >
-                {{ file.path }}
-                <span class="text-[10px] text-muted-foreground">{{ formatBytes(file.bytes) }}</span>
-            </button>
-        </div>
+                <h3
+                    class="border-b border-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+                >
+                    Files
+                </h3>
+                <nav class="scroll-quiet overflow-auto p-1.5 text-sm" data-test="viewer-rail-nav">
+                    <button
+                        type="button"
+                        class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[13px] transition-colors hover:bg-background"
+                        :class="activePath === SKILL_ENTRY_FILE ? 'bg-background shadow-sm ring-1 ring-border' : ''"
+                        data-test="viewer-tab-entry"
+                        @click="activePath = SKILL_ENTRY_FILE"
+                    >
+                        <FileText class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span class="truncate">{{ SKILL_ENTRY_FILE }}</span>
+                        <span class="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                            {{ formatBytes(detail.body_bytes) }}
+                        </span>
+                    </button>
 
-        <div
-            v-if="activeContent === undefined && contentsUnavailable"
-            class="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground"
-            data-test="viewer-contents-unavailable"
-        >
-            The host exposes no per-file read for shipped skills, so
-            <span class="font-mono">{{ activePath }}</span> cannot be shown here.
-            Its size is listed above. Duplicate the skill to get an editable copy.
-        </div>
-        <div
-            v-else
-            class="skill-viewer-body overflow-auto rounded-lg border border-border"
-            data-test="viewer-content"
-        >
-            <MdPreview
-                :id="`viewer-preview-${title}`"
-                :model-value="activeContent ?? ''"
-                :theme="theme ?? 'light'"
-                :sanitize="DOMPurify.sanitize"
-            />
+                    <template v-for="row in rows" :key="row.path">
+                        <button
+                            v-if="row.kind === 'folder'"
+                            type="button"
+                            class="flex w-full items-center gap-1.5 rounded-md py-1.5 pr-2 text-left font-mono text-[13px] text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                            :style="{ paddingLeft: `${0.5 + row.depth * 0.75}rem` }"
+                            :aria-expanded="!isCollapsed(row.path)"
+                            :data-test="`viewer-rail-folder-${row.path}`"
+                            @click="toggleFolder(row.path)"
+                        >
+                            <ChevronRight
+                                class="h-3 w-3 shrink-0 transition-transform"
+                                :class="isCollapsed(row.path) ? '' : 'rotate-90'"
+                            />
+                            <Folder class="h-3.5 w-3.5 shrink-0" />
+                            <span class="truncate">{{ row.name }}</span>
+                        </button>
+
+                        <button
+                            v-else
+                            type="button"
+                            class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[13px] transition-colors hover:bg-background"
+                            :class="activePath === row.path ? 'bg-background shadow-sm ring-1 ring-border' : ''"
+                            :style="row.depth > 0 ? { paddingLeft: `${1.25 + (row.depth - 1) * 0.75}rem` } : undefined"
+                            :data-test="`viewer-rail-file-${row.path}`"
+                            @click="activePath = row.path"
+                        >
+                            <FileText class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <span class="min-w-0 flex-1 truncate">{{ row.name }}</span>
+                            <span class="shrink-0 text-[10px] text-muted-foreground">
+                                {{ formatBytes(fileSize(row.path)) }}
+                            </span>
+                        </button>
+                    </template>
+                </nav>
+            </aside>
+
+            <div class="min-w-0 flex-1">
+                <div
+                    v-if="activeContent === undefined && contentsUnavailable"
+                    class="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground"
+                    data-test="viewer-contents-unavailable"
+                >
+                    The host exposes no per-file read for shipped skills, so
+                    <span class="font-mono">{{ activePath }}</span> cannot be shown here.
+                    Its size is listed in the rail. Duplicate the skill to get an
+                    editable copy.
+                </div>
+                <div
+                    v-else
+                    class="scroll-quiet overflow-auto rounded-lg border border-border p-5"
+                    data-test="viewer-content"
+                >
+                    <div
+                        v-if="previewMode === 'binary'"
+                        class="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground"
+                        data-test="viewer-binary"
+                    >
+                        <span class="font-mono">{{ activePath }}</span>
+                        is not a text format, so it cannot be shown here. Its size is
+                        listed in the rail.
+                    </div>
+
+                    <template v-else>
+                        <p
+                            v-if="jsonDidNotParse"
+                            class="mb-3 text-xs text-amber-700"
+                            data-test="viewer-json-invalid"
+                        >
+                            This file is not valid JSON, so it is shown as written.
+                        </p>
+                        <MdPreview
+                            v-if="previewMode === 'markdown'"
+                            :id="`viewer-preview-${title}`"
+                            class="md-preview"
+                            :model-value="activeContent ?? ''"
+                            :theme="theme ?? 'light'"
+                            :language="MARKDOWN_LOCALE"
+                            :sanitize="DOMPurify.sanitize"
+                        />
+                        <!--
+                            JSON gets reindented; anything else is shown as source,
+                            highlighted when there is a mode for it. Both are
+                            read-only, and the editor is the same one the desk uses, so
+                            a file looks the same in both places.
+                        -->
+                        <pre
+                            v-else-if="previewMode === 'formatted' && formattedContents !== null"
+                            class="scroll-quiet overflow-auto whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed"
+                            data-test="viewer-formatted"
+                        >{{ formattedContents }}</pre>
+                        <SourceEditor
+                            v-else
+                            :model-value="activeContent ?? ''"
+                            :path="activePath"
+                            read-only
+                        />
+                    </template>
+                </div>
+            </div>
         </div>
 
         <footer class="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
@@ -223,14 +356,6 @@ watch(
             >
                 <Copy class="h-3.5 w-3.5" />
                 Duplicate to make it mine
-            </button>
-            <button
-                type="button"
-                class="inline-flex h-9 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium transition-colors hover:bg-muted"
-                data-test="viewer-dismiss"
-                @click="emit('close')"
-            >
-                Close
             </button>
         </footer>
     </section>
