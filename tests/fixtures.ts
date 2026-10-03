@@ -70,6 +70,9 @@ export function makePreShippedDetail(
         license: 'MIT',
         compatibility: null,
         metadata: {},
+        // The host sends this key on every detail response; a shipped skill that
+        // declares no tools has it null. Declared on the type, never read.
+        allowed_tools: null,
         body: '# Review\n',
         body_bytes: 10,
         files: [{ path: 'SKILL.md', bytes: 10 }],

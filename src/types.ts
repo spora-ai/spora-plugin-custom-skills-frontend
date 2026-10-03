@@ -118,10 +118,16 @@ export interface PreShippedSkillSummary {
 }
 
 /**
- * Deliberately a partial mirror: `allowed_tools` is not declared here even though
- * the host still sends it (and `spora-frontend/src/types/skill.ts` still declares
- * it). The field is retired from this panel and never read from this shape, so
- * declaring it here would be an obligation with no reader.
+ * Mirrors the host's `SkillDetail` key for key, so this panel's read shape and
+ * `spora-frontend/src/types/skill.ts` agree on field names — including
+ * `allowed_tools`, which the host still sends and still declares.
+ *
+ * A partial mirror was the earlier state, on the reasoning that declaring a field
+ * nobody reads is an obligation with no reader. That was the wrong trade: the
+ * omission *was* the divergence, and it was invisible. Declared, unread, and
+ * honest beats undeclared and wrong. The field is retired from the *editor*
+ * (`SKILL_FIELDS` does not carry it) and is never read from this shape; it is
+ * here because the wire sends it.
  */
 export interface PreShippedSkillDetail {
     name: string
@@ -129,6 +135,8 @@ export interface PreShippedSkillDetail {
     license: string | null
     compatibility: string | null
     metadata: Record<string, string>
+    /** Retired from the editor and never read here; the host still sends it. */
+    allowed_tools: string | null
     body: string
     body_bytes: number
     files: CustomSkillFile[]

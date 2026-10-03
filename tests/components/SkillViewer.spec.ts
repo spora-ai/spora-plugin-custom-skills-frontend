@@ -46,6 +46,8 @@ function makeShipped(overrides: Partial<PreShippedSkillDetail> = {}): PreShipped
         license: 'Apache-2.0',
         compatibility: null,
         metadata: {},
+        // Always on the wire; never read by this panel.
+        allowed_tools: null,
         body: '# Typst\n\nRender with typst.',
         body_bytes: 28,
         files: [

@@ -118,6 +118,11 @@ export function createMockApi(): MockApi {
                         license: summary?.license ?? null,
                         compatibility: null,
                         metadata: {},
+                        // Host sends this on every detail response; null when the
+                        // skill declares no tools. Never read by this panel, but a
+                        // mock that omits it hides the very drift this type exists
+                        // to prevent.
+                        allowed_tools: null,
                         body: `# ${name}\n\nShipped body.\n`,
                         body_bytes: 24,
                         files: [{ path: SKILL_ENTRY_FILE, bytes: 24 }],
