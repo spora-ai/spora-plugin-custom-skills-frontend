@@ -148,7 +148,6 @@ describe('CreateSkillPage → what the create sends', () => {
             body: expect.stringContaining('# Invoice drafting'),
             license: null,
             compatibility: null,
-            allowed_tools: null,
             metadata: {},
             files: {},
         })

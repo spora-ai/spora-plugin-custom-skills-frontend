@@ -743,7 +743,6 @@ describe('SkillDesk → the frontmatter', () => {
     it('sends the edited frontmatter with the save', async () => {
         const wrapper = mountDesk()
         await wrapper.get('[data-test="field-description"]').setValue('Rewritten.')
-        await wrapper.get('[data-test="field-allowed-tools"]').setValue('read_email, send_email')
         await wrapper.get('[data-test="field-license"]').setValue('')
         await wrapper.get('[data-test="field-metadata"]').setValue('{"tier":"pro"}')
         wrapper.get('[data-test="desk-save"]').trigger('click')
@@ -753,7 +752,6 @@ describe('SkillDesk → the frontmatter', () => {
             body: '# Steps\n\n1. Read the PO.\n',
             license: null,
             compatibility: 'spora>=0.28',
-            allowed_tools: 'read_email, send_email',
             metadata: { tier: 'pro' },
             files: { 'examples/invoice.md': '' },
         })
@@ -792,11 +790,18 @@ describe('SkillDesk → validation feedback', () => {
         expect(wrapper.find('[data-test="validation-banner"]').exists()).toBe(false)
     })
 
-    it('maps the validator’s hyphenated `allowed-tools` path onto the Allowed tools field', () => {
+    it('banners a finding on the retired `allowed-tools` field instead of dropping it', () => {
+        // The field is gone from the editor, but core's `SkillValidator` still
+        // emits `ALLOWED_TOOLS_INVALID` against that path, so the finding has to
+        // land in the banner — it has no input to sit under, and it must not
+        // vanish along with the input.
         const wrapper = mountDesk({
-            validationErrors: [makeValidationEntry({ code: 'TOOL_UNKNOWN', message: 'unknown tool', path: 'allowed-tools' })],
+            validationErrors: [makeValidationEntry({ code: 'ALLOWED_TOOLS_INVALID', message: 'not a space-separated string', path: 'allowed-tools' })],
         })
-        expect(wrapper.get('[data-test="field-allowed-tools"]').attributes('aria-invalid')).toBe('true')
+        const banner = wrapper.get('[data-test="validation-banner"]')
+        expect(banner.text()).toContain('ALLOWED_TOOLS_INVALID')
+        expect(banner.text()).toContain('(allowed-tools)')
+        expect(wrapper.find('[data-test="field-allowed-tools"]').exists()).toBe(false)
     })
 
     it('banners a warning with its code and path', () => {

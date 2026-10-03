@@ -140,7 +140,6 @@ const body = ref('')
 const description = ref('')
 const license = ref('')
 const compatibility = ref('')
-const allowedTools = ref('')
 const metadataJson = ref('')
 const sidecars = ref<Array<{ path: string; content: string }>>([])
 const metadataError = ref<string | null>(null)
@@ -284,7 +283,6 @@ const draft = computed(() => JSON.stringify({
     description: description.value,
     license: license.value,
     compatibility: compatibility.value,
-    allowed_tools: allowedTools.value,
     metadata: metadataJson.value,
     body: body.value,
     files: sidecars.value,
@@ -304,7 +302,6 @@ const baseline = computed(() => JSON.stringify({
     description: props.skill.description,
     license: props.skill.license ?? '',
     compatibility: props.skill.compatibility ?? '',
-    allowed_tools: props.skill.allowed_tools ?? '',
     metadata: metadataText(props.skill.metadata),
     body: props.skill.body,
     files: serverSidecars.value,
@@ -341,7 +338,6 @@ function loadFrom(skill: CustomSkillResource, keepOpenFile: boolean): void {
     description.value = skill.description
     license.value = skill.license ?? ''
     compatibility.value = skill.compatibility ?? ''
-    allowedTools.value = skill.allowed_tools ?? ''
     metadataJson.value = metadataText(skill.metadata)
     body.value = skill.body
     sidecars.value = skill.files
@@ -511,7 +507,6 @@ function handleSubmit(): void {
         body: body.value,
         license: empty(license.value),
         compatibility: empty(compatibility.value),
-        allowed_tools: empty(allowedTools.value),
         metadata: metadata.value,
         files,
     })
@@ -897,22 +892,6 @@ function handleSubmit(): void {
                                     data-test="field-compatibility"
                                 />
                             </div>
-                        </div>
-
-                        <div>
-                            <label :for="idFor('allowed-tools')" class="mb-1.5 block text-xs font-medium">
-                                Allowed tools <span class="text-muted-foreground">(comma separated)</span>
-                            </label>
-                            <input
-                                :id="idFor('allowed-tools')"
-                                v-model="allowedTools"
-                                type="text"
-                                placeholder="read_email, send_email"
-                                :readonly="readOnly"
-                                class="h-9 w-full rounded-lg border border-input bg-background px-3 font-mono text-sm"
-                                :aria-invalid="fieldErrors('allowed_tools').length > 0"
-                                data-test="field-allowed-tools"
-                            />
                         </div>
 
                         <div>

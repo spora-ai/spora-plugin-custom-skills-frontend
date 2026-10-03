@@ -18,7 +18,6 @@ function makeSkill(overrides: Partial<CustomSkillResource> = {}): CustomSkillRes
         description: 'How to draft an invoice.',
         license: 'MIT',
         compatibility: 'spora>=0.29',
-        allowed_tools: 'read_email, send_email',
         metadata: { tier: 'pro' },
         body: '# Steps\n\n1. Look up the customer.',
         body_bytes: 40,
@@ -47,7 +46,6 @@ function makeShipped(overrides: Partial<PreShippedSkillDetail> = {}): PreShipped
         license: 'Apache-2.0',
         compatibility: null,
         metadata: {},
-        allowed_tools: 'typst_compile',
         body: '# Typst\n\nRender with typst.',
         body_bytes: 28,
         files: [
@@ -71,13 +69,12 @@ describe('SkillViewer', () => {
         const facts = wrapper.get('[data-test="viewer-facts"]').text()
         expect(facts).toContain('MIT')
         expect(facts).toContain('spora>=0.29')
-        expect(facts).toContain('read_email')
         expect(facts).toContain('tier: pro')
     })
 
     it('omits absent facts rather than rendering blank rows', () => {
         const wrapper = mountViewer({
-            skill: makeSkill({ license: null, compatibility: null, allowed_tools: null, metadata: {} }),
+            skill: makeSkill({ license: null, compatibility: null, metadata: {} }),
         })
         expect(wrapper.find('[data-test="viewer-facts"]').exists()).toBe(false)
     })

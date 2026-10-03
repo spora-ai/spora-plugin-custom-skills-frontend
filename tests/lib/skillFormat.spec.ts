@@ -27,14 +27,15 @@ import {
 import { makePrincipal, makeSkill, makeValidationEntry } from '../fixtures'
 
 describe('fieldForPath', () => {
-    it('normalises the validator’s hyphenated frontmatter keys', () => {
-        expect(fieldForPath('allowed-tools')).toBe('allowed_tools')
-        expect(fieldForPath('allowed_tools')).toBe('allowed_tools')
+    it('normalises the validator’s free-text paths', () => {
         expect(fieldForPath('NAME')).toBe('name')
+        expect(fieldForPath('  license  ')).toBe('license')
     })
 
     it('returns null for a path no field claims, so it routes to the banner', () => {
         expect(fieldForPath('metadata')).toBeNull()
+        // The retired field: no input claims it, so its findings go to the banner.
+        expect(fieldForPath('allowed-tools')).toBeNull()
         expect(fieldForPath('')).toBeNull()
         expect(fieldForPath(undefined)).toBeNull()
         expect(fieldForPath(null)).toBeNull()
@@ -51,7 +52,7 @@ describe('errorsForField / unattachedErrors', () => {
 
     it('returns only errors for the requested field', () => {
         expect(errorsForField(entries, 'name')).toHaveLength(1)
-        expect(errorsForField(entries, 'allowed_tools')[0]?.code).toBe('B')
+        expect(errorsForField(entries, 'description')).toHaveLength(0)
     })
 
     it('never returns a warning as a field error', () => {
@@ -59,7 +60,7 @@ describe('errorsForField / unattachedErrors', () => {
     })
 
     it('collects the errors no field claims', () => {
-        expect(unattachedErrors(entries).map((e) => e.code)).toEqual(['D'])
+        expect(unattachedErrors(entries).map((e) => e.code)).toEqual(['B', 'D'])
     })
 })
 

@@ -35,8 +35,6 @@ export interface CustomSkillResource {
     description: string
     license: string | null
     compatibility: string | null
-    /** The hyphenated `allowed-tools` frontmatter value, verbatim. */
-    allowed_tools: string | null
     /** Always an object; `{}` when unset. */
     metadata: Record<string, unknown>
     /** The SKILL.md body with the frontmatter fence stripped. */
@@ -68,7 +66,6 @@ export interface CreateSkillDto {
     body: string
     license?: string | null
     compatibility?: string | null
-    allowed_tools?: string | null
     metadata?: Record<string, unknown>
     /** Path → content. Fully replaces the sidecar set. */
     files?: Record<string, string>
@@ -120,13 +117,18 @@ export interface PreShippedSkillSummary {
     has_warnings: boolean
 }
 
+/**
+ * Deliberately a partial mirror: `allowed_tools` is not declared here even though
+ * the host still sends it (and `spora-frontend/src/types/skill.ts` still declares
+ * it). The field is retired from this panel and never read from this shape, so
+ * declaring it here would be an obligation with no reader.
+ */
 export interface PreShippedSkillDetail {
     name: string
     description: string
     license: string | null
     compatibility: string | null
     metadata: Record<string, string>
-    allowed_tools: string | null
     body: string
     body_bytes: number
     files: CustomSkillFile[]

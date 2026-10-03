@@ -83,7 +83,6 @@ const facts = computed(() => {
     const licence = 'license' in d ? d.license : null
     if (licence) out.push({ label: 'License', value: licence })
     if (d.compatibility) out.push({ label: 'Compatibility', value: d.compatibility })
-    if (d.allowed_tools) out.push({ label: 'Allowed tools', value: d.allowed_tools })
     const meta = Object.entries(d.metadata ?? {})
     if (meta.length > 0) {
         out.push({ label: 'Metadata', value: meta.map(([k, v]) => `${k}: ${v}`).join('  ·  ') })

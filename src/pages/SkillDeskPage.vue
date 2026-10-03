@@ -56,7 +56,6 @@ function deskShape(detail: PreShippedSkillDetail): CustomSkillResource {
         description: detail.description,
         license: detail.license,
         compatibility: detail.compatibility,
-        allowed_tools: detail.allowed_tools,
         metadata: detail.metadata,
         body: detail.body,
         body_bytes: detail.body_bytes,

@@ -12,7 +12,6 @@ export const SKILL_FIELDS = [
     'description',
     'license',
     'compatibility',
-    'allowed_tools',
     'body',
 ] as const
 
@@ -201,13 +200,17 @@ export type SkillField = (typeof SKILL_FIELDS)[number]
 const FIELD_SET: ReadonlySet<string> = new Set(SKILL_FIELDS)
 
 /**
- * The validator reads raw frontmatter, where the key is `allowed-tools`, while the
- * API field is `allowed_tools`. Anything unrecognised (e.g. a `metadata` finding)
- * returns `null` so the caller routes it to the banner instead of guessing.
+ * Which input a validator finding belongs under, or `null` for one that has none.
+ *
+ * Anything unrecognised returns `null` so the caller routes it to the banner rather
+ * than guessing, which is where a finding on a retired field ends up. Case and
+ * whitespace are normalised because `path` is free text. The hyphen-to-underscore
+ * rewrite went with the only field that had one: no remaining name has a hyphen, so
+ * re-adding it would be a branch nothing can take.
  */
 export function fieldForPath(path: string | undefined | null): SkillField | null {
     if (typeof path !== 'string' || path === '') return null
-    const normalized = path.trim().toLowerCase().replace(/-/g, '_')
+    const normalized = path.trim().toLowerCase()
     return FIELD_SET.has(normalized) ? (normalized as SkillField) : null
 }
 

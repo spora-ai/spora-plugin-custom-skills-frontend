@@ -385,7 +385,6 @@ describe('skills store → creating from a shipped skill', () => {
             body: '# Review\n',
             license: 'MIT',
             compatibility: null,
-            allowed_tools: null,
             metadata: { tier: 'core' },
             files: {},
         })
@@ -395,7 +394,6 @@ describe('skills store → creating from a shipped skill', () => {
             body: '# Review\n',
             license: 'MIT',
             compatibility: null,
-            allowed_tools: null,
             metadata: { tier: 'core' },
             files: {},
         })

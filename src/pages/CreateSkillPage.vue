@@ -146,7 +146,6 @@ async function submit(): Promise<void> {
             body: seedBody.value,
             license: from?.license ?? null,
             compatibility: from?.compatibility ?? null,
-            allowed_tools: from?.allowed_tools ?? null,
             metadata: from?.metadata ?? {},
             // Empty: the sidecar contents are not served, and an empty file the
             // operator did not write is worse than an absent one they are told about.
