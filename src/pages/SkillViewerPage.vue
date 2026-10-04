@@ -28,31 +28,44 @@ const loading = ref(false)
 const failed = ref(false)
 
 /**
- * Sidecar contents, fetched one at a time as they are opened.
- *
- * The detail endpoint lists `files` as `{path, bytes}` and inlines only the
- * `SKILL.md` body, so nothing else was fetchable and the preview could only ever
- * show markdown. That was not a rendering limit — it was a missing endpoint, and
- * `GET /api/v1/skills/{slug}/files/{path}` now exists.
- *
- * Per file rather than all at once, for the same reason the desk does it: a skill
- * with a dozen sidecars should not transfer a dozen files to show one, and a file
- * over the 50 KB cap should fail on its own rather than take the read with it.
+ * Sidecar contents, fetched one at a time as they are opened: a skill with a
+ * dozen sidecars should not transfer a dozen files to show one, and an oversized
+ * file should fail on its own rather than take the read with it.
  */
 const fileContents = ref<Record<string, string>>({})
-/** Paths the host answered no for — missing, or over the cap. */
 const unavailablePaths = ref<string[]>([])
 
+/**
+ * Bumped by every `resolve()`.
+ *
+ * `resolve()` clears the caches and then awaits the new detail, so a read still
+ * in flight for the previous skill would otherwise land in the next one's map.
+ * Two skills sharing a sidecar path — `templates/report.typ` is not an unusual
+ * name — would then render the old skill's bytes under the new skill's heading,
+ * and the viewer's already-loaded guard would make it stick.
+ */
+let epoch = 0
+
 async function loadFile(skillName: string, path: string): Promise<void> {
+    const mine = epoch
     try {
         const file = await preshippedApi.getPreShippedSkillFile(skillName, path)
+        if (mine !== epoch) return
+        // A 200 with no usable body must not read as "still loading": the viewer
+        // would wait on a path it has already asked for and never retry.
+        if (typeof file?.content !== 'string') {
+            unavailablePaths.value = [...unavailablePaths.value, path]
+            return
+        }
         fileContents.value = { ...fileContents.value, [path]: file.content }
     } catch {
+        if (mine !== epoch) return
         unavailablePaths.value = [...unavailablePaths.value, path]
     }
 }
 
 async function resolve(): Promise<void> {
+    epoch += 1
     detail.value = null
     failed.value = false
     fileContents.value = {}

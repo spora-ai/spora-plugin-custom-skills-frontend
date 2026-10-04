@@ -13,11 +13,9 @@
  * the kind of redundancy that reads as an extra step, and an ✕ in the corner of a
  * page says "dismiss" when what it does is "go back".
  *
- * Shipped skills need a separate component because the host's
- * `SkillController::detail()` returns `files` as `{path, bytes}` metadata with no
- * per-file read endpoint, so their sidecar *contents* are unavailable. Where
- * contents are missing the panel says so rather than rendering an empty editor
- * that looks like a bug.
+ * Shipped skills need a separate component: the host lists a sidecar's path and
+ * size on the detail response, and serves its contents from a separate
+ * per-file read that this component asks for as each file is opened.
  */
 import { computed, ref, watch } from 'vue'
 import { MdPreview } from 'md-editor-v3'
@@ -45,15 +43,7 @@ const props = defineProps<{
     /** …or a shipped one. */
     shipped?: PreShippedSkillDetail | null
     fileContents?: Record<string, string>
-    /**
-     * Paths the host declined to serve, so the panel can say so per file.
-     *
-     * Was a single `contentsUnavailable` boolean meaning "this host has no
-     * per-file read at all". That is no longer true — `GET
-     * /api/v1/skills/{slug}/files/{path}` exists — so a blanket flag would
-     * report every sidecar as unreadable, or none. Which paths actually failed
-     * is the caller's to know, since it is the caller that made the requests.
-     */
+    /** Paths the host declined to serve. Which failed is the caller's to know: it made the requests. */
     unavailablePaths?: string[]
     theme?: 'light' | 'dark'
 }>()
@@ -61,7 +51,6 @@ const props = defineProps<{
 const emit = defineEmits<{
     edit: [name: string]
     duplicate: [name: string]
-    /** A sidecar was opened whose contents are not loaded yet. */
     loadFile: [name: string, path: string]
 }>()
 
@@ -79,26 +68,20 @@ const detail = computed(() => props.skill ?? props.shipped ?? null)
 
 const sidecars = computed(() => (detail.value ? sidecarFiles(detail.value as CustomSkillResource) : []))
 
-/** `undefined` when the content could not be read, which the template states. */
+/** `undefined` when not loaded: never asked, in flight, or refused. */
 const activeContent = computed<string | undefined>(() => {
     if (!detail.value) return undefined
     if (activePath.value === SKILL_ENTRY_FILE) return detail.value.body
     return props.fileContents?.[activePath.value]
 })
 
-/**
- * Sidecars this panel has already asked for.
- *
- * Without it the request fires on every re-render of an unresolved path, and a
- * read that legitimately 404s — a file over the size cap, say — becomes a loop.
- * Reset per skill alongside the active path.
- */
+// A read that legitimately 404s would otherwise re-request on every re-render, so
+// a refused file becomes a request loop. Cleared with the active path on skill change.
 const requested = ref<string[]>([])
 
-/** The host answered no for this path, so there is nothing to wait for. */
 const isUnavailable = computed(() => (props.unavailablePaths ?? []).includes(activePath.value))
 
-/** Asked for, and no answer yet. Distinct from unavailable, which is an answer. */
+/** Distinct from `isUnavailable`, which is an answer rather than a wait. */
 const isPending = computed(
     () => activePath.value !== SKILL_ENTRY_FILE && requested.value.includes(activePath.value),
 )
@@ -188,8 +171,6 @@ watch(
         // A folder that was open may not exist on the next skill, and a rail that
         // silently keeps a stale expansion looks like data loss.
         collapsed.value = []
-        // Same reasoning for the read requests: they were for the previous skill's
-        // paths, and a path the next skill also has has not been asked about yet.
         requested.value = []
     },
 )
@@ -314,11 +295,7 @@ watch(
             </aside>
 
             <div class="min-w-0 flex-1">
-                <!--
-                    Three states, and the middle one used to be missing: a request in
-                    flight rendered as an empty editor, which reads as a broken file
-                    rather than a pending one.
-                -->
+                <!-- A blank editor during a pending read reads as a broken file. -->
                 <p
                     v-if="activeContent === undefined && isUnavailable"
                     class="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground"

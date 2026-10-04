@@ -1,16 +1,6 @@
-/**
- * `SkillViewerPage` — `/library/:name`, the read-only view of a shipped skill.
- *
- * The page had no test at all until it grew the one thing it now owns: fetching a
- * sidecar. `show` inlines only the `SKILL.md` body and lists every other file as
- * `{path, bytes}`, so before the per-file endpoint existed there was nothing to
- * fetch and nothing to test — the panel could only ever show markdown, and that
- * read as a rendering limit rather than a missing route.
- *
- * What is pinned here: the read is per file and on demand, a failed read becomes a
- * stated outcome rather than a blank pane, and a request in flight says so instead
- * of rendering an empty editor.
- */
+/** `SkillViewerPage` — `/library/:name`. Pins that a sidecar is fetched when
+ * opened, that a failed read is stated rather than blank, and that a read cannot
+ * leak across a skill change. */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
@@ -89,27 +79,57 @@ describe('SkillViewerPage → sidecar contents', () => {
         const unavailable = wrapper.get('[data-test="viewer-contents-unavailable"]')
         expect(unavailable.text()).toContain(SIDECAR)
         expect(unavailable.text()).toContain('could not be read')
-        // The reason is no longer "the host has no such endpoint" — that is fixed.
         expect(unavailable.text()).not.toContain('no per-file read')
         expect(wrapper.find('[data-test="source-editor"]').exists()).toBe(false)
     })
 
-    it('does not carry a pending read across to the next skill', async () => {
-        // A read that never answers must not leave the panel saying "Reading
-        // <old path>" once a different skill is on screen.
-        mocked.getPreShippedSkillFile.mockImplementation(() => new Promise(() => {}))
+    it('discards a read that lands after the route changed', async () => {
+        // Both skills carry the same sidecar path, so a stale write would render
+        // the first skill's bytes under the second skill's heading. The read
+        // RESOLVES late on purpose: a mock that never settles never reaches the
+        // write, so it would pass with the guard absent.
+        let release: (v: { path: string; content: string; bytes: number }) => void = () => {}
+        mocked.getPreShippedSkillFile
+            .mockImplementationOnce(() => new Promise((resolve) => { release = resolve }))
+            .mockResolvedValue({ path: SIDECAR, content: 'FRESH FROM OTHER', bytes: 15 })
+
         const wrapper = await mountOn('code-review')
         await flushPromises()
-
         await wrapper.get(`[data-test="viewer-rail-file-${SIDECAR}"]`).trigger('click')
         await flushPromises()
-        expect(wrapper.find('[data-test="viewer-contents-loading"]').exists()).toBe(true)
 
         mocked.getPreShippedSkill.mockResolvedValue(shippedWithSidecar('other'))
         await router.push('/library/other')
         await flushPromises()
 
-        expect(wrapper.get('[data-test="viewer-title"]').text()).toBe('other')
+        release({ path: SIDECAR, content: 'STALE FROM THE PREVIOUS SKILL', bytes: 30 })
+        await flushPromises()
+
+        // The route change remounts the viewer on SKILL.md, so the stale bytes are
+        // not on screen yet — the damage only shows when the path is opened here.
+        await wrapper.get(`[data-test="viewer-rail-file-${SIDECAR}"]`).trigger('click')
+        await flushPromises()
+
+        // Without the guard the map already holds the stale contents, the viewer's
+        // already-loaded check skips the request, and the old skill is rendered.
+        expect(mocked.getPreShippedSkillFile).toHaveBeenCalledTimes(2)
+        expect(wrapper.text()).toContain('FRESH FROM OTHER')
+        expect(wrapper.text()).not.toContain('STALE FROM THE PREVIOUS SKILL')
+    })
+
+    it('treats a 200 with no body as refused, not as still loading', async () => {
+        // Storing `{path: undefined}` would leave the viewer waiting on a path it
+        // has already asked for, so it would say "Reading…" for ever.
+        mocked.getPreShippedSkillFile.mockResolvedValue(
+            undefined as unknown as { path: string; content: string; bytes: number },
+        )
+        const wrapper = await mountOn()
+        await flushPromises()
+
+        await wrapper.get(`[data-test="viewer-rail-file-${SIDECAR}"]`).trigger('click')
+        await flushPromises()
+
+        expect(wrapper.get('[data-test="viewer-contents-unavailable"]').text()).toContain('could not be read')
         expect(wrapper.find('[data-test="viewer-contents-loading"]').exists()).toBe(false)
     })
 })
