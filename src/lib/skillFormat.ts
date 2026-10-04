@@ -673,3 +673,34 @@ export function formatBytes(bytes: number): string {
 export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
     return `${count} ${count === 1 ? singular : pluralForm}`
 }
+
+/**
+ * What "Restore" is about to do, since the label alone was misleading.
+ *
+ * `CustomSkillWriter::restore()` snapshots the live state before writing the
+ * previous one back, so the two versions swap and a second restore returns you
+ * where you started. That makes it a toggle over two versions, not a history, and
+ * a bare "Restore previous version" reads as though there were a stack behind it —
+ * the reading that makes a restore look destructive. It is not: the version you
+ * are on becomes the rollback copy.
+ *
+ * The snapshot carries the sidecars too, so this restores added, edited and
+ * deleted files alike, and the time is when it was *captured*, not when it was
+ * last edited.
+ *
+ * A row saved before the snapshot carried a timestamp has `previous_at === null`
+ * while `has_previous` is still true, so the bare label is the honest fallback
+ * rather than a cosmetic one.
+ */
+export function restoreLabel(skill: Pick<CustomSkillResource, 'previous_at'>): string {
+    const when = skill.previous_at ? updatedLabel(skill.previous_at) : ''
+    return when === '' ? 'Restore previous version' : `Restore the version from ${when}`
+}
+
+/**
+ * The same sentence as a title, for the surfaces that only have the hover.
+ */
+export function restoreExplanation(skill: Pick<CustomSkillResource, 'previous_at'>): string {
+    return `${restoreLabel(skill)}. This is the only earlier version kept, and restoring swaps the two — `
+    + 'restore again to come back to what you have now. Sidecar files are restored with it.'
+}

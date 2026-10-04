@@ -16,7 +16,7 @@
  */
 import { computed, ref } from 'vue'
 import { AlertTriangle, MoreHorizontal, Sparkles, Trash2, Users } from 'lucide-vue-next'
-import { updatedLabel } from '../lib/skillFormat'
+import { restoreExplanation, restoreLabel, updatedLabel } from '../lib/skillFormat'
 import type { AgentSummary, CustomSkillResource, SkillAllowlistEntry } from '../types'
 
 const props = withDefaults(
@@ -223,16 +223,25 @@ function submitDelete(): void {
                     </div>
                 </div>
 
+                <!-- Says which version it is putting back, and says the swap, for
+                     the reason the desk already does: `restore()` snapshots the live
+                     state before writing the previous one back, so this is a toggle
+                     over two versions and not a step back through a history. A bare
+                     "Restore previous version" reads as the latter, which makes a
+                     restore look destructive when it is the safest thing in this
+                     menu. -->
                 <button
                     v-if="skill.has_previous"
                     type="button"
                     :disabled="busy"
+                    :title="restoreExplanation(skill)"
+                    :aria-label="restoreExplanation(skill)"
                     class="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm transition-colors hover:bg-muted disabled:opacity-50"
                     data-test="row-restore"
                     @click="closeMenu(); emit('restore', skill.name)"
                 >
                     <Sparkles class="h-3.5 w-3.5" />
-                    Restore previous version
+                    {{ restoreLabel(skill) }}
                 </button>
 
                 <button
