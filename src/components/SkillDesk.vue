@@ -36,7 +36,8 @@ import {
     SKILL_ENTRY_FILE,
     suggestFileName,
     unattachedErrors,
-    updatedLabel,
+    restoreLabel,
+    restoreExplanation,
     byteSize,
     lineCount,
     MAX_FILE_BYTES,
@@ -220,28 +221,6 @@ const totalBytes = computed(() => byteSize(activeContent.value))
 const activeIsMarkdown = computed(() => isMarkdownPath(activePath.value))
 const showRestore = computed(() => props.skill.has_previous)
 
-/**
- * What "Restore" is about to do, since the label alone was misleading.
- *
- * `CustomSkillWriter::restore()` snapshots the live state before writing the
- * previous one back, so the two versions swap and a second restore returns you
- * where you started. That makes it a toggle over two versions, not a history, and
- * the button said "Restore previous version" as though there were a stack behind
- * it — which is the reading that makes a restore look destructive. It is not: the
- * version you are on is the one that becomes the rollback copy.
- *
- * The snapshot carries the sidecars too, so this restores added, edited and deleted
- * files alike, and the time is what it was captured at, not when it was last edited.
- */
-const restoreLabel = computed(() => {
-    const when = props.skill.previous_at ? updatedLabel(props.skill.previous_at) : ''
-    return when === '' ? 'Restore previous version' : `Restore the version from ${when}`
-})
-
-const restoreExplanation = computed(() =>
-    `${restoreLabel.value}. This is the only earlier version kept, and restoring swaps the two — `
-    + 'restore again to come back to what you have now. Sidecar files are restored with it.',
-)
 
 /**
  * Why a shipped sidecar is blank.
@@ -568,13 +547,13 @@ function handleSubmit(): void {
                         v-if="showRestore"
                         type="button"
                         :disabled="saving"
-                        :title="restoreExplanation"
-                        :aria-label="restoreExplanation"
+                        :title="restoreExplanation(skill)"
+                        :aria-label="restoreExplanation(skill)"
                         class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
                         data-test="desk-restore"
                         @click="emit('restore', skill.name)"
                     >
-                        {{ restoreLabel }}
+                        {{ restoreLabel(skill) }}
                     </button>
                     <button
                         type="button"

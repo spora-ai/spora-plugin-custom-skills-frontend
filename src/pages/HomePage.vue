@@ -144,9 +144,20 @@ function restore(name: string): void {
                 </div>
             </div>
 
+            <!--
+                No `overflow-hidden` on this list. Each row's menu is absolutely
+                positioned inside it, so a clipping ancestor crops the panel to the
+                list box and the menu is simply not there — no error, and nothing in
+                jsdom can catch it, since the tests can only assert that the panel is
+                in the DOM.
+
+                The rounded corners the clip was providing are stated on the edge rows
+                instead, which is what it was actually for: without them a hovered
+                first or last row paints a square background over the corner.
+            -->
             <ul
                 v-else
-                class="mt-3 overflow-hidden rounded-xl border border-border [&>li]:border-b [&>li]:last:border-b-0"
+                class="mt-3 rounded-xl border border-border [&>li]:border-b [&>li:first-child]:rounded-t-xl [&>li:last-child]:rounded-b-xl [&>li:last-child]:border-b-0"
                 data-test="skill-list"
             >
                 <SkillRow

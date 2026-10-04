@@ -159,6 +159,31 @@ describe('SkillRow → the menu', () => {
         expect(withoutPrevious.find('[data-test="row-restore"]').exists()).toBe(false)
     })
 
+    it('names the version it is putting back, and explains the swap', async () => {
+        // A bare "Restore previous version" reads as a step back through a
+        // history. There is no history: `restore()` re-snapshots the live state
+        // first, so this toggles between two versions.
+        const wrapper = mountRow({
+            skill: makeSkill({ has_previous: true, previous_at: '2026-10-01 14:32:00' }),
+        })
+        await wrapper.get('[data-test="row-actions"]').trigger('click')
+        const restore = wrapper.get('[data-test="row-restore"]')
+        expect(restore.text()).toContain('Restore the version from')
+        expect(restore.text()).not.toContain('Restore previous version')
+        expect(restore.attributes('title')).toContain('only earlier version kept')
+        expect(restore.attributes('aria-label')).toContain('swaps the two')
+    })
+
+    it('falls back to the plain label when the snapshot carries no timestamp', async () => {
+        // A row saved before the snapshot carried `captured_at` still has
+        // `has_previous === true`, so the fallback is honesty, not cosmetics.
+        const wrapper = mountRow({
+            skill: makeSkill({ has_previous: true, previous_at: null }),
+        })
+        await wrapper.get('[data-test="row-actions"]').trigger('click')
+        expect(wrapper.get('[data-test="row-restore"]').text()).toContain('Restore previous version')
+    })
+
     it('emits the name for restore and for delete', async () => {
         const wrapper = mountRow()
         await wrapper.get('[data-test="row-actions"]').trigger('click')

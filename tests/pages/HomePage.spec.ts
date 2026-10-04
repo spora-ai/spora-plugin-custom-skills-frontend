@@ -133,6 +133,22 @@ describe('HomePage → the empty state', () => {
         expect(wrapper.find('[data-test="skill-list"]').exists()).toBe(false)
     })
 
+    it('does not clip the list, so a row menu is not cropped away', async () => {
+        // A row's menu is absolutely positioned inside this list, so an
+        // `overflow-hidden` here crops the panel to the list box and the menu is
+        // simply not on screen. jsdom performs no layout, so the menu's own tests
+        // pass either way — the clip is only observable as a class, which is what
+        // this asserts.
+        seed([makeSkill(), makeSkill({ name: 'research' })])
+        const wrapper = mountPage(HomePage, pinia)
+        await flushPromises()
+        const classes = wrapper.get('[data-test="skill-list"]').classes().join(' ')
+        expect(classes).not.toContain('overflow-hidden')
+        // The corners the clip used to provide are now stated on the edge rows.
+        expect(classes).toContain('[&>li:first-child]:rounded-t-xl')
+        expect(classes).toContain('[&>li:last-child]:rounded-b-xl')
+    })
+
     it('shows a loading line rather than the empty state mid-read', async () => {
         useSkillsStore().loading = true
         const wrapper = mountPage(HomePage, pinia)
