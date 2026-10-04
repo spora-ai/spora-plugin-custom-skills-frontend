@@ -45,14 +45,24 @@ const props = defineProps<{
     /** …or a shipped one. */
     shipped?: PreShippedSkillDetail | null
     fileContents?: Record<string, string>
-    /** True when the host exposes no per-file read, so contents cannot load. */
-    contentsUnavailable?: boolean
+    /**
+     * Paths the host declined to serve, so the panel can say so per file.
+     *
+     * Was a single `contentsUnavailable` boolean meaning "this host has no
+     * per-file read at all". That is no longer true — `GET
+     * /api/v1/skills/{slug}/files/{path}` exists — so a blanket flag would
+     * report every sidecar as unreadable, or none. Which paths actually failed
+     * is the caller's to know, since it is the caller that made the requests.
+     */
+    unavailablePaths?: string[]
     theme?: 'light' | 'dark'
 }>()
 
 const emit = defineEmits<{
     edit: [name: string]
     duplicate: [name: string]
+    /** A sidecar was opened whose contents are not loaded yet. */
+    loadFile: [name: string, path: string]
 }>()
 
 const activePath = ref<string>(SKILL_ENTRY_FILE)
@@ -75,6 +85,35 @@ const activeContent = computed<string | undefined>(() => {
     if (activePath.value === SKILL_ENTRY_FILE) return detail.value.body
     return props.fileContents?.[activePath.value]
 })
+
+/**
+ * Sidecars this panel has already asked for.
+ *
+ * Without it the request fires on every re-render of an unresolved path, and a
+ * read that legitimately 404s — a file over the size cap, say — becomes a loop.
+ * Reset per skill alongside the active path.
+ */
+const requested = ref<string[]>([])
+
+/** The host answered no for this path, so there is nothing to wait for. */
+const isUnavailable = computed(() => (props.unavailablePaths ?? []).includes(activePath.value))
+
+/** Asked for, and no answer yet. Distinct from unavailable, which is an answer. */
+const isPending = computed(
+    () => activePath.value !== SKILL_ENTRY_FILE && requested.value.includes(activePath.value),
+)
+
+watch(
+    activePath,
+    (path) => {
+        if (path === SKILL_ENTRY_FILE) return
+        if ((props.fileContents ?? {})[path] !== undefined) return
+        if (requested.value.includes(path)) return
+        requested.value = [...requested.value, path]
+        emit('loadFile', title.value, path)
+    },
+    { immediate: true },
+)
 
 const facts = computed(() => {
     const d = detail.value
@@ -149,6 +188,9 @@ watch(
         // A folder that was open may not exist on the next skill, and a rail that
         // silently keeps a stale expansion looks like data loss.
         collapsed.value = []
+        // Same reasoning for the read requests: they were for the previous skill's
+        // paths, and a path the next skill also has has not been asked about yet.
+        requested.value = []
     },
 )
 </script>
@@ -272,16 +314,28 @@ watch(
             </aside>
 
             <div class="min-w-0 flex-1">
-                <div
-                    v-if="activeContent === undefined && contentsUnavailable"
+                <!--
+                    Three states, and the middle one used to be missing: a request in
+                    flight rendered as an empty editor, which reads as a broken file
+                    rather than a pending one.
+                -->
+                <p
+                    v-if="activeContent === undefined && isUnavailable"
                     class="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground"
                     data-test="viewer-contents-unavailable"
                 >
-                    The host exposes no per-file read for shipped skills, so
-                    <span class="font-mono">{{ activePath }}</span> cannot be shown here.
-                    Its size is listed in the rail. Duplicate the skill to get an
-                    editable copy.
-                </div>
+                    <span class="font-mono">{{ activePath }}</span> could not be read.
+                    Its size is listed in the rail. A file the host will not serve is
+                    either missing or over the 50 KB per-file limit. Duplicate the
+                    skill to get an editable copy.
+                </p>
+                <p
+                    v-else-if="activeContent === undefined && isPending"
+                    class="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground"
+                    data-test="viewer-contents-loading"
+                >
+                    Reading <span class="font-mono">{{ activePath }}</span>…
+                </p>
                 <div
                     v-else
                     class="scroll-quiet overflow-auto rounded-lg border border-border p-5"

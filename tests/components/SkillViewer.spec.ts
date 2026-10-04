@@ -203,14 +203,64 @@ describe('SkillViewer', () => {
         expect(wrapper.find('[data-test="viewer-duplicate"]').exists()).toBe(false)
     })
 
-    it('states that shipped sidecar contents are unavailable instead of showing a blank pane', async () => {
-        // The host returns files as {path, bytes} with no per-file read endpoint,
-        // so this state is real. An empty editor here would look like a bug.
-        const wrapper = mountViewer({ shipped: makeShipped(), contentsUnavailable: true })
+    it('says a file the host would not serve cannot be shown, instead of a blank pane', async () => {
+        // A read can legitimately fail: the file is missing, or over the 50 KB
+        // per-file cap. An empty editor here would read as a broken file rather
+        // than an unanswered request, so the state has to be explicit.
+        const wrapper = mountViewer({
+            shipped: makeShipped(),
+            unavailablePaths: ['templates/report.typ'],
+        })
         await wrapper.get('[data-test="viewer-rail-file-templates/report.typ"]').trigger('click')
         expect(wrapper.get('[data-test="viewer-contents-unavailable"]').text())
             .toContain('templates/report.typ')
         expect(wrapper.find('[data-test="viewer-content"]').exists()).toBe(false)
+    })
+
+    it('asks for a sidecar when it is opened, and shows it once loaded', async () => {
+        // The host has no bulk read: `show` inlines only the SKILL.md body, so a
+        // sidecar is one request per file, on demand.
+        const wrapper = mountViewer({ shipped: makeShipped() })
+        await wrapper.get('[data-test="viewer-rail-file-templates/report.typ"]').trigger('click')
+        expect(wrapper.emitted('loadFile')?.[0]).toEqual(['typst', 'templates/report.typ'])
+
+        await wrapper.setProps({ fileContents: { 'templates/report.typ': '#let x = 1' } })
+        expect(wrapper.find('[data-test="source-editor"]').exists()).toBe(true)
+        expect(wrapper.find('[data-test="viewer-contents-loading"]').exists()).toBe(false)
+    })
+
+    it('shows a pending line rather than an empty editor while a read is in flight', async () => {
+        const wrapper = mountViewer({ shipped: makeShipped() })
+        await wrapper.get('[data-test="viewer-rail-file-templates/report.typ"]').trigger('click')
+        const pending = wrapper.get('[data-test="viewer-contents-loading"]')
+        expect(pending.text()).toContain('templates/report.typ')
+        expect(pending.text()).toContain('Reading')
+        // The pane must not be rendered underneath: that was the blank-editor bug.
+        expect(wrapper.find('[data-test="viewer-content"]').exists()).toBe(false)
+    })
+
+    it('does not ask twice for the same path, so a failed read cannot loop', async () => {
+        const wrapper = mountViewer({
+            shipped: makeShipped(),
+            unavailablePaths: ['templates/report.typ'],
+        })
+        const tab = wrapper.get('[data-test="viewer-rail-file-templates/report.typ"]')
+        await tab.trigger('click')
+        await tab.trigger('click')
+        await wrapper.get('[data-test="viewer-tab-entry"]').trigger('click')
+        await tab.trigger('click')
+
+        const asked = (wrapper.emitted('loadFile') ?? []).map(([, path]) => path)
+        expect(asked.filter((p) => p === 'templates/report.typ')).toHaveLength(1)
+    })
+
+    it('does not ask for the entry file, whose contents came with the detail', async () => {
+        const wrapper = mountViewer({ shipped: makeShipped() })
+        await wrapper.get('[data-test="viewer-rail-file-templates/report.typ"]').trigger('click')
+        await wrapper.get('[data-test="viewer-tab-entry"]').trigger('click')
+
+        const asked = (wrapper.emitted('loadFile') ?? []).map(([, path]) => path)
+        expect(asked).not.toContain('SKILL.md')
     })
 
     it('surfaces validator warnings with their code', () => {

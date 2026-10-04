@@ -27,9 +27,36 @@ const detail = ref<PreShippedSkillDetail | null>(null)
 const loading = ref(false)
 const failed = ref(false)
 
+/**
+ * Sidecar contents, fetched one at a time as they are opened.
+ *
+ * The detail endpoint lists `files` as `{path, bytes}` and inlines only the
+ * `SKILL.md` body, so nothing else was fetchable and the preview could only ever
+ * show markdown. That was not a rendering limit — it was a missing endpoint, and
+ * `GET /api/v1/skills/{slug}/files/{path}` now exists.
+ *
+ * Per file rather than all at once, for the same reason the desk does it: a skill
+ * with a dozen sidecars should not transfer a dozen files to show one, and a file
+ * over the 50 KB cap should fail on its own rather than take the read with it.
+ */
+const fileContents = ref<Record<string, string>>({})
+/** Paths the host answered no for — missing, or over the cap. */
+const unavailablePaths = ref<string[]>([])
+
+async function loadFile(skillName: string, path: string): Promise<void> {
+    try {
+        const file = await preshippedApi.getPreShippedSkillFile(skillName, path)
+        fileContents.value = { ...fileContents.value, [path]: file.content }
+    } catch {
+        unavailablePaths.value = [...unavailablePaths.value, path]
+    }
+}
+
 async function resolve(): Promise<void> {
     detail.value = null
     failed.value = false
+    fileContents.value = {}
+    unavailablePaths.value = []
     if (name.value === '') return
     loading.value = true
     try {
@@ -88,8 +115,10 @@ function duplicate(): void {
         <SkillViewer
             v-else-if="detail"
             :shipped="detail"
-            contents-unavailable
+            :file-contents="fileContents"
+            :unavailable-paths="unavailablePaths"
             :theme="hostContext?.theme"
+            @load-file="loadFile"
             @duplicate="duplicate"
         />
     </div>

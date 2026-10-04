@@ -27,3 +27,22 @@ export async function getPreShippedSkill(name: string): Promise<PreShippedSkillD
     )
     return result.skill
 }
+
+/**
+ * One sidecar's contents, from `GET /api/v1/skills/{slug}/files/{path}`.
+ *
+ * The detail endpoint lists `files` as `{path, bytes}` and inlines only the
+ * `SKILL.md` body, so without this a shipped skill's sidecars were listed with
+ * their sizes and unopenable — and the preview could only show markdown, which is
+ * not a rendering limit but a missing endpoint. Matches the plugin's own
+ * `…/files/{path}` shape so a caller writes one path.
+ */
+export async function getPreShippedSkillFile(
+    name: string,
+    path: string,
+): Promise<{ path: string; content: string; bytes: number }> {
+    const api = getApi()
+    return api.get<{ path: string; content: string; bytes: number }>(
+        `/skills/${encodeURIComponent(name)}/files/${encodeURIComponent(path)}`,
+    )
+}
