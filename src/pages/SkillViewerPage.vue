@@ -27,23 +27,13 @@ const detail = ref<PreShippedSkillDetail | null>(null)
 const loading = ref(false)
 const failed = ref(false)
 
-/**
- * Sidecar contents, fetched one at a time as they are opened: a skill with a
- * dozen sidecars should not transfer a dozen files to show one, and an oversized
- * file should fail on its own rather than take the read with it.
- */
+/** Fetched one at a time as opened, so a dozen sidecars do not transfer to show one. */
 const fileContents = ref<Record<string, string>>({})
 const unavailablePaths = ref<string[]>([])
 
-/**
- * Bumped by every `resolve()`.
- *
- * `resolve()` clears the caches and then awaits the new detail, so a read still
- * in flight for the previous skill would otherwise land in the next one's map.
- * Two skills sharing a sidecar path — `templates/report.typ` is not an unusual
- * name — would then render the old skill's bytes under the new skill's heading,
- * and the viewer's already-loaded guard would make it stick.
- */
+// Bumped per resolve(), so a read still in flight for the previous skill cannot
+// land in the next one's map — two skills sharing a sidecar path would otherwise
+// render the old skill's bytes under the new skill's name, permanently.
 let epoch = 0
 
 async function loadFile(skillName: string, path: string): Promise<void> {
@@ -51,8 +41,7 @@ async function loadFile(skillName: string, path: string): Promise<void> {
     try {
         const file = await preshippedApi.getPreShippedSkillFile(skillName, path)
         if (mine !== epoch) return
-        // A 200 with no usable body must not read as "still loading": the viewer
-        // would wait on a path it has already asked for and never retry.
+        // Otherwise the viewer waits on a path it already asked for, for ever.
         if (typeof file?.content !== 'string') {
             unavailablePaths.value = [...unavailablePaths.value, path]
             return

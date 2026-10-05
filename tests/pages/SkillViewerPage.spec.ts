@@ -1,6 +1,4 @@
-/** `SkillViewerPage` — `/library/:name`. Pins that a sidecar is fetched when
- * opened, that a failed read is stated rather than blank, and that a read cannot
- * leak across a skill change. */
+/** `SkillViewerPage` — `/library/:name`. */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
@@ -84,9 +82,7 @@ describe('SkillViewerPage → sidecar contents', () => {
     })
 
     it('discards a read that lands after the route changed', async () => {
-        // Both skills carry the same sidecar path, so a stale write would render
-        // the first skill's bytes under the second skill's heading. The read
-        // RESOLVES late on purpose: a mock that never settles never reaches the
+        // Resolves late on purpose: a mock that never settles never reaches the
         // write, so it would pass with the guard absent.
         let release: (v: { path: string; content: string; bytes: number }) => void = () => {}
         mocked.getPreShippedSkillFile
@@ -105,21 +101,18 @@ describe('SkillViewerPage → sidecar contents', () => {
         release({ path: SIDECAR, content: 'STALE FROM THE PREVIOUS SKILL', bytes: 30 })
         await flushPromises()
 
-        // The route change remounts the viewer on SKILL.md, so the stale bytes are
-        // not on screen yet — the damage only shows when the path is opened here.
+        // The route change remounts on SKILL.md, so the damage only shows on reopen.
         await wrapper.get(`[data-test="viewer-rail-file-${SIDECAR}"]`).trigger('click')
         await flushPromises()
 
-        // Without the guard the map already holds the stale contents, the viewer's
-        // already-loaded check skips the request, and the old skill is rendered.
+        // Without the guard the stale contents are already in the map, so the
+        // already-loaded check skips the request and renders the old skill.
         expect(mocked.getPreShippedSkillFile).toHaveBeenCalledTimes(2)
         expect(wrapper.text()).toContain('FRESH FROM OTHER')
         expect(wrapper.text()).not.toContain('STALE FROM THE PREVIOUS SKILL')
     })
 
     it('treats a 200 with no body as refused, not as still loading', async () => {
-        // Storing `{path: undefined}` would leave the viewer waiting on a path it
-        // has already asked for, so it would say "Reading…" for ever.
         mocked.getPreShippedSkillFile.mockResolvedValue(
             undefined as unknown as { path: string; content: string; bytes: number },
         )

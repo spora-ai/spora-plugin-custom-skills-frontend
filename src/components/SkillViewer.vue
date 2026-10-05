@@ -13,9 +13,8 @@
  * the kind of redundancy that reads as an extra step, and an ✕ in the corner of a
  * page says "dismiss" when what it does is "go back".
  *
- * Shipped skills need a separate component: the host lists a sidecar's path and
- * size on the detail response, and serves its contents from a separate
- * per-file read that this component asks for as each file is opened.
+ * Shipped skills need a separate component: the host serves sidecar contents from a
+ * per-file read that this asks for as each file is opened.
  */
 import { computed, ref, watch } from 'vue'
 import { MdPreview } from 'md-editor-v3'
@@ -75,8 +74,7 @@ const activeContent = computed<string | undefined>(() => {
     return props.fileContents?.[activePath.value]
 })
 
-// A read that legitimately 404s would otherwise re-request on every re-render, so
-// a refused file becomes a request loop. Cleared with the active path on skill change.
+// Without this a refused file re-requests on every re-render, so a 404 becomes a loop.
 const requested = ref<string[]>([])
 
 const isUnavailable = computed(() => (props.unavailablePaths ?? []).includes(activePath.value))

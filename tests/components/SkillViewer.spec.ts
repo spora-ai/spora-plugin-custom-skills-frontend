@@ -204,7 +204,6 @@ describe('SkillViewer', () => {
     })
 
     it('says a file the host would not serve cannot be shown, instead of a blank pane', async () => {
-        // A read can legitimately fail: missing, or over the per-file cap.
         const wrapper = mountViewer({
             shipped: makeShipped(),
             unavailablePaths: ['templates/report.typ'],
