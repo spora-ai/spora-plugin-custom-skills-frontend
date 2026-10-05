@@ -283,12 +283,13 @@ function duplicate(): void {
             collapsed checkbox group, and a name this instance cannot resolve is
             only knowable against the registry.
 
-            `role="status"` because this is a confirmation, not an interruption —
-            it reports rather than asks, and the desk stays usable underneath.
+            `<output>` because this is a confirmation, not an interruption — it
+            reports rather than asks, and the desk stays usable underneath. The
+            element carries the status semantics on every device; a `role="status"`
+            div reaches only the subset of assistive tech that honours ARIA roles.
         -->
-            <div
+            <output
                 v-if="savedDeclaration !== undefined"
-                role="status"
                 class="shrink-0 border-b border-border bg-muted/30 px-4 py-2 text-[11px] text-muted-foreground"
                 data-test="declared-tools-summary"
             >
@@ -328,7 +329,7 @@ function duplicate(): void {
                     This is a declaration only: Spora grants no pre-approval from it and enforces
                     nothing. Whether an agent has any of these tools is set per agent, not here.
                 </p>
-            </div>
+            </output>
 
             <SkillDesk
                 :skill="loaded"

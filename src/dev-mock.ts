@@ -90,7 +90,7 @@ const MOCK_AGENTS = [
  */
 const MOCK_TOOLS: ToolSummary[] = [
     {
-        tool_class: 'Spora\\Tools\\AgentTool',
+        tool_class: String.raw`Spora\Tools\AgentTool`,
         tool_name: 'agent',
         display_name: 'Agent',
         description: 'Run another agent on this principal and return what it reports.',
@@ -101,7 +101,7 @@ const MOCK_TOOLS: ToolSummary[] = [
         recommends_skills: [],
     },
     {
-        tool_class: 'Spora\\Tools\\ReadUrlTool',
+        tool_class: String.raw`Spora\Tools\ReadUrlTool`,
         tool_name: 'read_url',
         display_name: 'Read URL',
         description: 'Fetch a URL and return its readable text.',
@@ -112,7 +112,7 @@ const MOCK_TOOLS: ToolSummary[] = [
         recommends_skills: [],
     },
     {
-        tool_class: 'Spora\\Tools\\CalendarTool',
+        tool_class: String.raw`Spora\Tools\CalendarTool`,
         tool_name: 'calendar',
         display_name: 'Calendar',
         description: '',

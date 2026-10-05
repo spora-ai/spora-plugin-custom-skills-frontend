@@ -288,9 +288,11 @@ describe('SkillDeskPage → the post-save declaration box', () => {
         await flushPromises()
 
         const box = wrapper.get('[data-test="declared-tools-summary"]')
-        // A status region, not a toast: a toast is gone before a declaration has
+        // A live region, not a toast: a toast is gone before a declaration has
         // been read, and the names live in a checkbox group the reader just closed.
-        expect(box.attributes('role')).toBe('status')
+        // The element itself carries the semantics, so this pins `output` rather
+        // than a `role` attribute that only some assistive tech honours.
+        expect(box.element.tagName).toBe('OUTPUT')
         expect(box.get('[data-test="declared-tools-count"]').text()).toBe('2 tools')
 
         // One resolvable, one not — and the marking has to land on the right one.
