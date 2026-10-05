@@ -2,6 +2,10 @@
  * Every field of `CustomSkillResource` is present (the frozen REST contract has no
  * optional members) so a test rendering a fixture exercises the same shape the PHP
  * serialiser emits — a partial fixture would let a typo'd field name pass.
+ *
+ * `makeSkill()`'s default `allowed_tools` deliberately names one tool the default
+ * registry carries (`agent`) and one it does not (`read_url`), so the declared-tools
+ * group is exercised in both states without a test arranging either.
  */
 import type {
     CustomSkillResource,
@@ -9,6 +13,7 @@ import type {
     PreShippedSkillSummary,
     SkillAllowlistEntry,
     SkillValidationEntry,
+    ToolSummary,
 } from '../src/types'
 import type { Principal } from '../src/api/principals'
 
@@ -26,6 +31,10 @@ export function makeSkill(overrides: Partial<CustomSkillResource> = {}): CustomS
         description: 'How to draft an invoice from a purchase order.',
         license: 'MIT',
         compatibility: 'spora>=0.28',
+        // Space-separated bare names, per core's `AllowedTools` grammar. `read_url`
+        // is deliberately absent from `makeTools()`'s default registry so a mounted
+        // desk shows the unavailable row without any test having to arrange it.
+        allowed_tools: 'agent read_url',
         metadata: { tier: 'pro' },
         body: '# Steps\n\n1. Read the PO.\n',
         body_bytes: 812,
@@ -71,8 +80,9 @@ export function makePreShippedDetail(
         compatibility: null,
         metadata: {},
         // The host sends this key on every detail response; a shipped skill that
-        // declares no tools has it null. Declared on the type, never read.
-        allowed_tools: null,
+        // declares no tools has it null. Read by the desk and the create form, so
+        // a copy of this skill carries the declaration.
+        allowed_tools: 'typst_compile',
         body: '# Review\n',
         body_bytes: 10,
         files: [{ path: 'SKILL.md', bytes: 10 }],
@@ -85,6 +95,46 @@ export function makeAllowlistEntry(
     overrides: Partial<SkillAllowlistEntry> = {},
 ): SkillAllowlistEntry {
     return { id: 5, name: 'Invoicer', scope: 'agent', ...overrides }
+}
+
+/**
+ * One row of the host's `GET /api/v1/tools`.
+ *
+ * Only the keys the desk reads carry values; the rest are the contract's shape,
+ * present so a fixture cannot drift from the wire by omitting them.
+ */
+export function makeTool(overrides: Partial<ToolSummary> = {}): ToolSummary {
+    return {
+        tool_class: 'Spora\\Tools\\ExampleTool',
+        tool_name: 'example_tool',
+        display_name: 'Example tool',
+        description: 'Does the example thing.',
+        category: 'general',
+        icon: null,
+        settings_schema: [],
+        operations: [],
+        recommends_skills: [],
+        ...overrides,
+    }
+}
+
+/**
+ * A registry the desk can act on: `agent` is in it, `read_url` is not, so the
+ * default `makeSkill()` declaration exercises both a resolvable and an
+ * unresolvable name without a test arranging either.
+ */
+export function makeTools(...overrides: ToolSummary[]): ToolSummary[] {
+    return [
+        makeTool({ tool_name: 'agent', display_name: 'Agent', description: 'Run another agent.' }),
+        makeTool({
+            tool_class: 'Spora\\Tools\\CalendarTool',
+            tool_name: 'calendar',
+            display_name: 'Calendar',
+            description: '',
+            category: 'productivity',
+        }),
+        ...overrides,
+    ]
 }
 
 export function makeValidationEntry(

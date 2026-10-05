@@ -7,6 +7,11 @@
  * because the row is gone, a name that is not on this principal says so
  * instead of rendering an empty desk, and a name that belongs to the host
  * catalogue renders the same desk read-only.
+ *
+ * Two of its jobs need a page rather than the desk: the tool registry is read once
+ * here and passed down, and the post-save declaration box needs the saved *response*
+ * to say anything true. The box's tests are mostly about what it must not claim —
+ * this page has no agent context, so a declaration is not an activation.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
@@ -15,6 +20,7 @@ import type { Router } from 'vue-router'
 import SkillDeskPage from '../../src/pages/SkillDeskPage.vue'
 import * as api from '../../src/api/customSkills'
 import * as preshippedApi from '../../src/api/preshippedSkills'
+import * as toolsApi from '../../src/api/tools'
 import { ApiError } from '../../src/api/client'
 import { useSkillsStore } from '../../src/stores/skills'
 import { usePrincipalsStore } from '../../src/stores/principals'
@@ -23,15 +29,18 @@ import {
     makePreShipped,
     makePreShippedDetail,
     makeSkill,
+    makeTools,
     makeValidationEntry,
 } from '../fixtures'
 import { mountPage, stubRoutes } from '../mountPage'
 
 vi.mock('../../src/api/customSkills')
 vi.mock('../../src/api/preshippedSkills')
+vi.mock('../../src/api/tools')
 
 const mockedApi = vi.mocked(api)
 const mockedPreShipped = vi.mocked(preshippedApi)
+const mockedTools = vi.mocked(toolsApi)
 
 let pinia: Pinia
 let router: Router
@@ -53,6 +62,7 @@ beforeEach(() => {
     mockedApi.restoreSkill.mockResolvedValue(makeSkill({ has_previous: false, body: '# Old' }))
     mockedPreShipped.listPreShippedSkills.mockResolvedValue([])
     mockedPreShipped.getPreShippedSkill.mockResolvedValue(makePreShippedDetail())
+    mockedTools.listTools.mockResolvedValue(makeTools())
 
     const principals = usePrincipalsStore()
     principals.principals = [makePrincipal()]
@@ -249,6 +259,200 @@ describe('SkillDeskPage → saving', () => {
         await flushPromises()
         expect(mockedApi.restoreSkill).toHaveBeenCalledWith('invoice-drafting', 7)
         expect(useSkillsStore().notice).toBe('Restored the previous version of invoice-drafting.')
+    })
+})
+
+/**
+ * The post-save declaration box.
+ *
+ * Declaration-only, and that boundary is the point. The page has no agent context,
+ * so it can report what the server now holds and which of those names this instance
+ * can resolve — and nothing about whether any agent has them. The activation gap
+ * belongs to the host's per-agent Tools page, which does have that context.
+ */
+describe('SkillDeskPage → the post-save declaration box', () => {
+    it('is absent before any save, since there is nothing to report yet', async () => {
+        const wrapper = await mountOn('invoice-drafting')
+        await flushPromises()
+        expect(wrapper.find('[data-test="declared-tools-summary"]').exists()).toBe(false)
+    })
+
+    it('names the tools the saved skill declares, and marks the unresolvable one', async () => {
+        mockedApi.updateSkill.mockResolvedValue(
+            makeSkill({ allowed_tools: 'agent legacy_erp_export', updated_at: '2026-09-30 15:00:00' }),
+        )
+        const wrapper = await mountOn('invoice-drafting')
+        await flushPromises()
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Changed')
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+        await flushPromises()
+
+        const box = wrapper.get('[data-test="declared-tools-summary"]')
+        // A status region, not a toast: a toast is gone before a declaration has
+        // been read, and the names live in a checkbox group the reader just closed.
+        expect(box.attributes('role')).toBe('status')
+        expect(box.get('[data-test="declared-tools-count"]').text()).toBe('2 tools')
+
+        // One resolvable, one not — and the marking has to land on the right one.
+        // A note on `agent` would be a false claim about this instance, which is the
+        // only thing the marking is for.
+        const available = box.findAll('[data-test="declared-tool"]')
+        expect(available).toHaveLength(1)
+        expect(available[0]?.text()).toContain('agent')
+        expect(available[0]?.text()).not.toContain('not available')
+        expect(available[0]?.find('[data-test="declared-tool-unavailable-note"]').exists()).toBe(false)
+
+        const unavailable = box.get('[data-test="declared-tool-unavailable"]')
+        expect(unavailable.text()).toContain('legacy_erp_export')
+        expect(unavailable.text()).toContain('not available on this instance')
+        // Named separately, so "one of these does not resolve" is not something the
+        // operator has to spot by reading the list.
+        expect(box.get('[data-test="declared-tools-unavailable-note"]').text()).toContain('1 name resolves to no tool')
+    })
+
+    it('says the skill declares no tools when the save cleared them', async () => {
+        mockedApi.updateSkill.mockResolvedValue(
+            makeSkill({ allowed_tools: null, updated_at: '2026-09-30 15:00:00' }),
+        )
+        const wrapper = await mountOn('invoice-drafting')
+        await flushPromises()
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Changed')
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+        await flushPromises()
+
+        expect(wrapper.get('[data-test="declared-tools-none"]').text()).toContain('declares no tools')
+    })
+
+    it('says nothing about activation, because this page cannot know it', async () => {
+        // The claim this surface must not make. A reader who has just saved a
+        // declaration is exactly the person who will assume it is live, so the box
+        // has to state the limit rather than leave it to be assumed.
+        mockedApi.updateSkill.mockResolvedValue(
+            makeSkill({ allowed_tools: 'agent', updated_at: '2026-09-30 15:00:00' }),
+        )
+        const wrapper = await mountOn('invoice-drafting')
+        await flushPromises()
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Changed')
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+        await flushPromises()
+
+        const box = wrapper.get('[data-test="declared-tools-summary"]')
+        const text = box.text().toLowerCase()
+        // No word here may assert that a tool is on, enabled, activated or approved
+        // for an agent — the page has no agent to have checked.
+        expect(text).not.toMatch(/\b(is|are|now) (active|enabled|activated|approved|granted|on)\b/)
+        expect(text).not.toMatch(/agents? (can|will|has|have) (now )?use/)
+        expect(text).not.toMatch(/in use|already enabled|is live/)
+        // The honest scope, stated rather than implied.
+        expect(box.get('[data-test="declared-tools-scope"]').text()).toContain('grants no pre-approval')
+        expect(box.get('[data-test="declared-tools-scope"]').text()).toContain('set per agent')
+    })
+
+    it('does not link to the host Tools page, because this plugin has no route there', async () => {
+        mockedApi.updateSkill.mockResolvedValue(
+            makeSkill({ allowed_tools: 'agent', updated_at: '2026-09-30 15:00:00' }),
+        )
+        const wrapper = await mountOn('invoice-drafting')
+        await flushPromises()
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Changed')
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+        await flushPromises()
+
+        // An activation-gap message the desk points at would be a dead link: the
+        // panel owns three routes and none of them is an agent's tools.
+        const box = wrapper.get('[data-test="declared-tools-summary"]')
+        expect(box.findAll('a')).toHaveLength(0)
+    })
+
+    it('reports the server’s stored value rather than the draft, so it cannot describe an unsaved edit', async () => {
+        // An author who unchecks a box and closes the tab has saved nothing; the box
+        // must not claim a declaration that was never written.
+        mockedApi.updateSkill.mockResolvedValue(
+            makeSkill({ allowed_tools: 'agent', updated_at: '2026-09-30 15:00:00' }),
+        )
+        const wrapper = await mountOn('invoice-drafting')
+        await flushPromises()
+        await wrapper.get('[data-test="tool-option-agent"] input').setValue(false)
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+        await flushPromises()
+
+        // The store row the page renders is the response, and the response still
+        // carries `agent` — the mock stands in for a server that kept the value.
+        expect(wrapper.get('[data-test="declared-tool"]').text()).toContain('agent')
+    })
+
+    it('shows nothing after a rejected save, because nothing was stored', async () => {
+        mockedApi.updateSkill.mockRejectedValue(new ApiError('Skill is invalid.', 'SKILL_INVALID', 422))
+        const wrapper = await mountOn('invoice-drafting')
+        await flushPromises()
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Changed')
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+        await flushPromises()
+
+        expect(wrapper.find('[data-test="declared-tools-summary"]').exists()).toBe(false)
+    })
+})
+
+describe('SkillDeskPage → the tool registry', () => {
+    it('reads the instance registry once and passes it to the desk', async () => {
+        mockedTools.listTools.mockResolvedValue(makeTools())
+        const wrapper = await mountOn('invoice-drafting')
+        await flushPromises()
+
+        expect(mockedTools.listTools).toHaveBeenCalledTimes(1)
+        expect(wrapper.findAll('[data-test^="tool-option-"]').length).toBeGreaterThan(0)
+    })
+
+    it('still shows the declaration when the registry read fails', async () => {
+        // An aid that will not load must not make the field uneditable or hide what
+        // the skill declares. A failed read is carried as "not read" rather than as
+        // an empty instance, so no name is falsely reported as absent.
+        mockedTools.listTools.mockRejectedValue(new Error('500'))
+        const wrapper = await mountOn('invoice-drafting')
+        await flushPromises()
+
+        // `makeSkill()` declares `agent read_url`.
+        expect(wrapper.findAll('[data-test^="tool-option-"]')).toHaveLength(2)
+        expect(wrapper.get('[data-test="tool-option-read_url"] input').attributes('disabled')).toBeUndefined()
+        expect(wrapper.find('[data-test="tool-unavailable-note"]').exists()).toBe(false)
+    })
+
+    it("carries a shipped skill's declaration onto the read-only desk", async () => {
+        // `deskShape` has no `updated_at` to give, and the reload guard used to read
+        // "never loaded" as the empty string — the same value it reads as "already
+        // loaded", because a shipped shape's timestamp is `''`. So the first load of
+        // a shipped skill was skipped and its frontmatter never reached the desk.
+        // The declaration is the most visible thing that was lost with it.
+        useSkillsStore().skills = []
+        mockedApi.getSkill.mockRejectedValue(new Error('404 SKILL_NOT_FOUND'))
+        mockedPreShipped.listPreShippedSkills.mockResolvedValue([makePreShipped()])
+        mockedPreShipped.getPreShippedSkill.mockResolvedValue(
+            makePreShippedDetail({ allowed_tools: 'typst_compile' }),
+        )
+
+        const wrapper = await mountOn('code-review')
+        await flushPromises()
+
+        // Otherwise the field would read empty on a shipped skill that declares
+        // tools, which is the one case where an author most needs to see it.
+        expect(wrapper.find('[data-test="tool-option-typst_compile"]').exists()).toBe(true)
+        expect(wrapper.get('[data-test="tool-option-typst_compile"] input').attributes('disabled')).toBeDefined()
+    })
+
+    it('loads a shipped skill’s frontmatter at all, which the empty timestamp used to suppress', async () => {
+        // The whole buffer, not just this field: a shipped skill opened on this route
+        // rendered its frontmatter empty, so "duplicate this and edit it" started
+        // from nothing.
+        useSkillsStore().skills = []
+        mockedApi.getSkill.mockRejectedValue(new Error('404 SKILL_NOT_FOUND'))
+        mockedPreShipped.listPreShippedSkills.mockResolvedValue([makePreShipped()])
+
+        const wrapper = await mountOn('code-review')
+        await flushPromises()
+
+        expect((wrapper.get('[data-test="field-description"]').element as HTMLTextAreaElement).value)
+            .toBe('House rules for reviewing a diff.')
+        expect((wrapper.get('[data-test="field-license"]').element as HTMLInputElement).value).toBe('MIT')
     })
 })
 

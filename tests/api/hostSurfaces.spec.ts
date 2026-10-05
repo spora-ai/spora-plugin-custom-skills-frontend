@@ -13,8 +13,9 @@ import * as preshipped from '../../src/api/preshippedSkills'
 import * as allowlist from '../../src/api/agentAllowlist'
 import * as agents from '../../src/api/agents'
 import * as principals from '../../src/api/principals'
+import * as tools from '../../src/api/tools'
 import type { PluginHostContext } from '../../src/shims'
-import { makePreShipped } from '../fixtures'
+import { makePreShipped, makeTool } from '../fixtures'
 
 function makeApi() {
     return { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() }
@@ -91,6 +92,23 @@ describe('api/agentAllowlist', () => {
         expect(api.put).toHaveBeenCalledWith('/agents/5/tools/skill/override', {
             settings: { allowed_skills: JSON.stringify(['a', 'c']) },
         })
+    })
+})
+
+describe('api/tools', () => {
+    it('reads the instance registry, never a plugin route', async () => {
+        api.get.mockResolvedValueOnce({ tools: [makeTool()] })
+        const result = await tools.listTools()
+        expect(api.get).toHaveBeenCalledWith('/tools')
+        expect(result.map((t) => t.tool_name)).toEqual(['example_tool'])
+    })
+
+    it('unwraps the { tools } envelope, because the host sends { data: { tools } }', async () => {
+        // The host's client has already taken the `data` layer off; the subfield
+        // envelope is the controller's, so this module opens it — exactly as the
+        // preshipped and allowlist readers do.
+        api.get.mockResolvedValueOnce({ tools: [makeTool({ tool_name: 'a' }), makeTool({ tool_name: 'b' })] })
+        expect(await tools.listTools()).toHaveLength(2)
     })
 })
 

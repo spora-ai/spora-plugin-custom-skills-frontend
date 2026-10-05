@@ -146,6 +146,11 @@ async function submit(): Promise<void> {
             body: seedBody.value,
             license: from?.license ?? null,
             compatibility: from?.compatibility ?? null,
+            // Carried from the template so a copy declares the tools the original
+            // declared. The shipped detail sends it verbatim, so this is not a
+            // judgement about the value — a declaration the grammar rejects is one
+            // the new skill inherits and then reports on its own save.
+            allowed_tools: from?.allowed_tools ?? null,
             metadata: from?.metadata ?? {},
             // Empty: the sidecar contents are not served, and an empty file the
             // operator did not write is worse than an absent one they are told about.

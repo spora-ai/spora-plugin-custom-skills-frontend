@@ -8,6 +8,8 @@ import { describe, it, expect } from 'vitest'
 import {
     byteSize,
     clockTime,
+    declaredToolNames,
+    declaredToolsSummary,
     errorsForField,
     fieldForPath,
     forkName,
@@ -16,15 +18,17 @@ import {
     lastEditedLabel,
     lineCount,
     principalScopeBlurb,
+    serializeToolNames,
     sidecarFiles,
     skillNameConflict,
     sortByName,
     sortSkills,
     starterBody,
+    toolOptions,
     unattachedErrors,
     updatedLabel,
 } from '../../src/lib/skillFormat'
-import { makePrincipal, makeSkill, makeValidationEntry } from '../fixtures'
+import { makePrincipal, makeSkill, makeTool, makeTools, makeValidationEntry } from '../fixtures'
 
 describe('fieldForPath', () => {
     it('normalises the validator’s free-text paths', () => {
@@ -32,10 +36,17 @@ describe('fieldForPath', () => {
         expect(fieldForPath('  license  ')).toBe('license')
     })
 
+    it('rewrites the hyphenated frontmatter key the validator reports', () => {
+        // `SkillValidator` reads raw frontmatter, so its `path` is `allowed-tools`;
+        // the editor's field is the underscored API name. Dropping this rewrite
+        // sends every `ALLOWED_TOOLS_INVALID` to the banner and leaves the field
+        // showing no error while the server refuses the save.
+        expect(fieldForPath('allowed-tools')).toBe('allowed_tools')
+        expect(fieldForPath('allowed_tools')).toBe('allowed_tools')
+    })
+
     it('returns null for a path no field claims, so it routes to the banner', () => {
         expect(fieldForPath('metadata')).toBeNull()
-        // The retired field: no input claims it, so its findings go to the banner.
-        expect(fieldForPath('allowed-tools')).toBeNull()
         expect(fieldForPath('')).toBeNull()
         expect(fieldForPath(undefined)).toBeNull()
         expect(fieldForPath(null)).toBeNull()
@@ -52,7 +63,7 @@ describe('errorsForField / unattachedErrors', () => {
 
     it('returns only errors for the requested field', () => {
         expect(errorsForField(entries, 'name')).toHaveLength(1)
-        expect(errorsForField(entries, 'description')).toHaveLength(0)
+        expect(errorsForField(entries, 'allowed_tools')[0]?.code).toBe('B')
     })
 
     it('never returns a warning as a field error', () => {
@@ -60,7 +71,98 @@ describe('errorsForField / unattachedErrors', () => {
     })
 
     it('collects the errors no field claims', () => {
-        expect(unattachedErrors(entries).map((e) => e.code)).toEqual(['B', 'D'])
+        expect(unattachedErrors(entries).map((e) => e.code)).toEqual(['D'])
+    })
+})
+
+describe('declaredToolNames / serializeToolNames', () => {
+    it('splits on any whitespace, because a folded scalar arrives with newlines', () => {
+        // Mirrors core's `AllowedTools::entries()`, which splits on `/\s+/` and not
+        // on a literal space for exactly this reason.
+        expect(declaredToolNames('agent\nread_url  calendar')).toEqual(['agent', 'read_url', 'calendar'])
+    })
+
+    it('returns nothing for an absent or blank value', () => {
+        expect(declaredToolNames(null)).toEqual([])
+        expect(declaredToolNames(undefined)).toEqual([])
+        expect(declaredToolNames('   ')).toEqual([])
+    })
+
+    it('does not judge an entry — a comma is still an entry core will report', () => {
+        expect(declaredToolNames('read_email, Spora\\Tools\\ReadEmailTool')).toEqual([
+            'read_email,',
+            'Spora\\Tools\\ReadEmailTool',
+        ])
+    })
+
+    it('joins with single spaces and keeps first-seen order', () => {
+        expect(serializeToolNames(['read_url', 'agent'])).toBe('read_url agent')
+        expect(serializeToolNames(['agent', 'agent'])).toBe('agent')
+        expect(serializeToolNames([])).toBe('')
+    })
+})
+
+describe('toolOptions', () => {
+    it('offers the registry, ticking the declared names', () => {
+        const rows = toolOptions(makeTools(), 'agent calendar')
+        expect(rows.map((r) => r.name)).toEqual(['agent', 'calendar'])
+        expect(rows.map((r) => r.selected)).toEqual([true, true])
+        expect(rows.map((r) => r.available)).toEqual([true, true])
+    })
+
+    it('unions the stored names in, so a name with no tool is not dropped', () => {
+        // The load-bearing property: without the union, a declared name this
+        // instance cannot resolve would disappear from the group and the next save
+        // would delete the declaration.
+        const rows = toolOptions(makeTools(), 'read_url')
+        expect(rows.map((r) => r.name)).toEqual(['agent', 'calendar', 'read_url'])
+        // Appended after the registry, marked, and still selected — it is declared.
+        expect(rows[2]).toMatchObject({ name: 'read_url', available: false, selected: true })
+    })
+
+    it('carries the display name and the description onto the row', () => {
+        const rows = toolOptions([makeTool({ tool_name: 'x', display_name: 'Ex', description: 'Does x.' })], null)
+        expect(rows[0]).toMatchObject({ label: 'Ex', description: 'Does x.' })
+    })
+
+    it('falls back to the wire name when a tool has no display name', () => {
+        const rows = toolOptions([makeTool({ tool_name: 'x', display_name: null })], null)
+        expect(rows[0]?.label).toBe('x')
+    })
+
+    it('marks nothing unavailable and disables nothing when the registry was not read', () => {
+        // The distinction from an empty registry: `[]` says "this instance has no
+        // tools", `null` says "we could not ask", and only the first may claim a
+        // declared name is absent.
+        const rows = toolOptions(null, 'agent read_url')
+        expect(rows.map((r) => r.name)).toEqual(['agent', 'read_url'])
+        expect(rows.every((r) => r.available)).toBe(true)
+        // Still editable: an aid that would not load is not a reason to freeze a
+        // field the author is allowed to change.
+        expect(rows.every((r) => r.selected)).toBe(true)
+    })
+})
+
+describe('declaredToolsSummary', () => {
+    it('reports each declared name and whether this instance can resolve it', () => {
+        expect(declaredToolsSummary(makeTools(), 'agent read_url')).toEqual([
+            { name: 'agent', available: true },
+            { name: 'read_url', available: false },
+        ])
+    })
+
+    it('reports nothing as unresolved when the registry was never read', () => {
+        // `null` is "could not ask", so calling a name unresolvable would be a claim
+        // the failed read cannot support — and it is the one claim this surface makes.
+        expect(declaredToolsSummary(null, 'agent read_url')).toEqual([
+            { name: 'agent', available: true },
+            { name: 'read_url', available: true },
+        ])
+    })
+
+    it('reports nothing for a skill that declares nothing', () => {
+        expect(declaredToolsSummary(makeTools(), null)).toEqual([])
+        expect(declaredToolsSummary(makeTools(), '  ')).toEqual([])
     })
 })
 

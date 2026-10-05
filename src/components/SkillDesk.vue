@@ -17,6 +17,13 @@
  * disclosure above the editor whatever was open, which put the description (the
  * field a skill is matched on, and the only one whose absence is silent) two
  * clicks deep behind a summary.
+ *
+ * `allowed-tools` is one of its fields, and it was here until `61296f4` took it out
+ * because nothing read it. It has a consumer now, so it is back — as a checkbox
+ * group over the instance's tool registry rather than the free-text box it used to
+ * be, because the grammar is a space-separated list of bare tool names and a text
+ * field invited the three forms core rejects. The stored string is still the buffer,
+ * byte for byte: the plugin is storage, core judges, and the editor shows.
  */
 import { computed, ref, useId, watch } from 'vue'
 import { MdEditor } from 'md-editor-v3'
@@ -38,12 +45,15 @@ import {
     unattachedErrors,
     restoreLabel,
     restoreExplanation,
+    declaredToolNames,
+    serializeToolNames,
+    toolOptions,
     byteSize,
     lineCount,
     MAX_FILE_BYTES,
 } from '../lib/skillFormat'
 import { MARKDOWN_LOCALE } from '../lib/markdownLocale'
-import type { CustomSkillResource, SkillValidationEntry, UpdateSkillDto } from '../types'
+import type { CustomSkillResource, SkillValidationEntry, ToolSummary, UpdateSkillDto } from '../types'
 
 const METADATA_PLACEHOLDER = '{"tier": "pro"}'
 
@@ -115,6 +125,19 @@ const props = withDefaults(
         readOnly?: boolean
         /** `core`, a plugin slug, or `project` — shown where the principal goes. */
         shippedSource?: string | null
+        /**
+         * The instance's tool registry, from the host's `GET /api/v1/tools`. The
+         * page reads it once and passes it down: a checkbox group whose options
+         * the desk cannot enumerate would be a free-text field with extra steps,
+         * and the set is per-instance, so the component cannot know it.
+         */
+        /**
+         * The instance's tool registry, or `null` when it has not been read.
+         *
+         * `null` is deliberately distinct from `[]`: an instance with no tools makes
+         * a claim about a declared name, and a registry that failed to load does not.
+         */
+        tools?: ToolSummary[] | null
     }>(),
     {
         saving: false,
@@ -124,6 +147,7 @@ const props = withDefaults(
         principalName: '',
         readOnly: false,
         shippedSource: null,
+        tools: null,
     },
 )
 
@@ -141,6 +165,13 @@ const body = ref('')
 const description = ref('')
 const license = ref('')
 const compatibility = ref('')
+/**
+ * The stored `allowed-tools` value, verbatim — not a parsed list. The buffer is the
+ * string the server holds so an unrelated save re-sends it unchanged, including the
+ * parts of a malformed value the author has not fixed yet; the checkbox group below
+ * is derived from it rather than being the source of truth.
+ */
+const allowedTools = ref('')
 const metadataJson = ref('')
 const sidecars = ref<Array<{ path: string; content: string }>>([])
 const metadataError = ref<string | null>(null)
@@ -221,6 +252,22 @@ const totalBytes = computed(() => byteSize(activeContent.value))
 const activeIsMarkdown = computed(() => isMarkdownPath(activePath.value))
 const showRestore = computed(() => props.skill.has_previous)
 
+/**
+ * The declared-tools group: this instance's registry unioned with whatever the
+ * stored value declares, so a name that no installed tool answers to is still on
+ * screen rather than silently dropped by the next save.
+ */
+const toolRows = computed(() => toolOptions(props.tools, allowedTools.value))
+
+/** Add or remove one name, leaving the rest of the stored value as written. */
+function toggleTool(name: string, checked: boolean): void {
+    const current = declaredToolNames(allowedTools.value)
+    const next = checked
+        ? serializeToolNames([...current, name])
+        : serializeToolNames(current.filter((entry) => entry !== name))
+    allowedTools.value = next
+}
+
 
 /**
  * Why a shipped sidecar is blank.
@@ -262,6 +309,7 @@ const draft = computed(() => JSON.stringify({
     description: description.value,
     license: license.value,
     compatibility: compatibility.value,
+    allowed_tools: allowedTools.value,
     metadata: metadataJson.value,
     body: body.value,
     files: sidecars.value,
@@ -281,6 +329,7 @@ const baseline = computed(() => JSON.stringify({
     description: props.skill.description,
     license: props.skill.license ?? '',
     compatibility: props.skill.compatibility ?? '',
+    allowed_tools: props.skill.allowed_tools ?? '',
     metadata: metadataText(props.skill.metadata),
     body: props.skill.body,
     files: serverSidecars.value,
@@ -317,6 +366,7 @@ function loadFrom(skill: CustomSkillResource, keepOpenFile: boolean): void {
     description.value = skill.description
     license.value = skill.license ?? ''
     compatibility.value = skill.compatibility ?? ''
+    allowedTools.value = skill.allowed_tools ?? ''
     metadataJson.value = metadataText(skill.metadata)
     body.value = skill.body
     sidecars.value = skill.files
@@ -328,11 +378,17 @@ function loadFrom(skill: CustomSkillResource, keepOpenFile: boolean): void {
 }
 
 /**
- * Declared beside the state it guards, not next to the watcher: `loadFrom` runs
- * from an `immediate` watcher, so a later declaration is a temporal-dead-zone
- * crash on the first render — invisible to a type-checker.
+ * The `updated_at` of the row the buffer currently holds, or `null` before the
+ * first load.
+ *
+ * `null` rather than `''` because a shipped skill opened on this route has no
+ * `updated_at` to give (`deskShape` fills the column with `''`), and the empty
+ * string as "never loaded" is the same value as "already loaded" for exactly that
+ * row — so the guard below skipped its first load and the whole frontmatter
+ * rendered empty. A shipped skill is read-only here, so nothing ever changes its
+ * timestamp; the sentinel is what keeps the guard from eating it.
  */
-let loadedAt = ''
+let loadedAt: string | null = null
 
 watch(
     () => props.skill,
@@ -340,11 +396,11 @@ watch(
         // An edit changes `updated_at`; a re-read of the same row does not. Without
         // the guard, a background list refresh would replace the buffer under a
         // half-typed body.
-        if (skill.updated_at === loadedAt) return
+        if (loadedAt !== null && skill.updated_at === loadedAt) return
         // The first load has nothing to keep open; every later one is a save or a
         // deliberate reload, and closing the file being worked on helps nobody.
-        const isReload = loadedAt !== ''
-        loadedAt = skill.updated_at
+        const isReload = loadedAt !== null
+        loadedAt = skill.updated_at ?? null
         loadFrom(skill, isReload)
         if (skill.files.some((f) => f.path !== SKILL_ENTRY_FILE)) {
             emit('loadFiles', skill.name)
@@ -486,6 +542,13 @@ function handleSubmit(): void {
         body: body.value,
         license: empty(license.value),
         compatibility: empty(compatibility.value),
+        // Deliberately not `empty()` and deliberately not re-serialised from the
+        // checkbox group: the buffer is the stored string, so it goes back byte for
+        // byte. Trimming or normalising here would rewrite a value core's
+        // `SkillValidator` is entitled to reject, and the plugin's contract is that
+        // it stores the column without judging it. Only a wholly blank value becomes
+        // `null`, which is how a revocation is spelled.
+        allowed_tools: allowedTools.value.trim() === '' ? null : allowedTools.value,
         metadata: metadata.value,
         files,
     })
@@ -872,6 +935,94 @@ function handleSubmit(): void {
                                 />
                             </div>
                         </div>
+
+                        <!--
+                        A checkbox group, not a text input, and not a `<select multiple>`.
+
+                        The grammar is a space-separated list of bare tool names, so
+                        a free-text box invites the three things core rejects — commas,
+                        FQCNs, `Bash(git:*)` — and offers nothing for the common case
+                        of ticking a tool you can see. There is no multi-select
+                        component reachable from a plugin: the host's UI library is not
+                        importable here, which is the same reason `AlertBanner.vue` is
+                        a verbatim copy. So this follows the *markup* of the host's
+                        `ToolSettingField.vue` multi-select — one plain checkbox per
+                        option, description under the label, and the `<template v-else>`
+                        wrapper because `v-else` and `v-for` on one element is a
+                        precedence trap.
+
+                        The options are the registry unioned with the stored names, so
+                        a declared tool this instance does not have stays on screen as
+                        a disabled row. Dropping it would make the declaration
+                        invisible and delete it on the next unrelated save — which is
+                        what core's `ALLOWED_TOOLS_UNKNOWN_TOOL` warning exists to stop
+                        from being an error.
+                    -->
+                        <fieldset
+                            class="min-w-0 border-0 p-0"
+                            :aria-invalid="fieldErrors('allowed_tools').length > 0"
+                            data-test="field-allowed-tools"
+                        >
+                            <legend class="mb-1.5 block text-xs font-medium">
+                                Tools this skill uses
+                            </legend>
+                            <div v-if="toolRows.length === 0" class="text-[11px] text-muted-foreground" data-test="allowed-tools-empty">
+                                No tools are registered on this instance.
+                            </div>
+                            <template v-else>
+                                <label
+                                    v-for="row in toolRows"
+                                    :key="row.name"
+                                    class="flex items-start gap-2 text-xs"
+                                    :class="row.available ? '' : 'text-muted-foreground'"
+                                    :data-test="`tool-option-${row.name}`"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        class="mt-0.5"
+                                        :value="row.name"
+                                        :checked="row.selected"
+                                        :disabled="!row.available || readOnly"
+                                        @change="toggleTool(row.name, ($event.target as HTMLInputElement).checked)"
+                                    >
+                                    <span class="flex min-w-0 flex-col">
+                                        <span class="font-medium">{{ row.label }}</span>
+                                        <span class="font-mono text-[10px] text-muted-foreground">{{ row.name }}</span>
+                                        <span v-if="row.description" class="text-[11px] text-muted-foreground">
+                                            {{ row.description }}
+                                        </span>
+                                        <!--
+                                        A name no installed tool answers to. Not a
+                                        claim about enforcement — nothing is enforced —
+                                        only that this instance cannot resolve it.
+                                        -->
+                                        <span v-if="!row.available" class="text-[11px] text-amber-700 dark:text-amber-300" data-test="tool-unavailable-note">
+                                            Not available on this instance. Kept as declared.
+                                        </span>
+                                    </span>
+                                </label>
+                            </template>
+                            <!--
+                            "Tools this skill uses", not "Required tools" and not
+                            "Pre-approved tools": the spec's wording for this field is
+                            "pre-approved tools", and Spora implements no pre-approval
+                            and enforces nothing. A label promising either would be a
+                            promise the system does not keep.
+                        -->
+                            <p class="mt-1 text-[11px] text-muted-foreground">
+                                A hint for whoever reads this skill. Spora grants no
+                                pre-approval from it and enforces nothing — an agent can
+                                still call a tool that is not on this list.
+                            </p>
+                            <ul
+                                v-for="entry in fieldErrors('allowed_tools')"
+                                :key="entry.code + entry.message"
+                                class="mt-1 text-xs text-destructive"
+                                data-test="field-error"
+                            >
+                                {{ entry.message }}
+                            </ul>
+                        </fieldset>
 
                         <div>
                             <label :for="idFor('metadata')" class="mb-1.5 block text-xs font-medium">

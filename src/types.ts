@@ -35,6 +35,13 @@ export interface CustomSkillResource {
     description: string
     license: string | null
     compatibility: string | null
+    /**
+     * The hyphenated `allowed-tools` frontmatter value, verbatim: a space-separated
+     * string of bare tool names. Storage, not judgement — the plugin never trims,
+     * splits or reformats it, because `SkillValidator` owns the grammar and a value
+     * it is entitled to reject has to reach it byte for byte.
+     */
+    allowed_tools: string | null
     /** Always an object; `{}` when unset. */
     metadata: Record<string, unknown>
     /** The SKILL.md body with the frontmatter fence stripped. */
@@ -66,6 +73,11 @@ export interface CreateSkillDto {
     body: string
     license?: string | null
     compatibility?: string | null
+    /**
+     * `allowed_tools: null` is a revocation and an absent key is "leave it alone" —
+     * the desk therefore always sends the key, so both readings have to be right.
+     */
+    allowed_tools?: string | null
     metadata?: Record<string, unknown>
     /** Path → content. Fully replaces the sidecar set. */
     files?: Record<string, string>
@@ -120,14 +132,12 @@ export interface PreShippedSkillSummary {
 /**
  * Mirrors the host's `SkillDetail` key for key, so this panel's read shape and
  * `spora-frontend/src/types/skill.ts` agree on field names — including
- * `allowed_tools`, which the host still sends and still declares.
+ * `allowed_tools`.
  *
  * A partial mirror was the earlier state, on the reasoning that declaring a field
  * nobody reads is an obligation with no reader. That was the wrong trade: the
  * omission *was* the divergence, and it was invisible. Declared, unread, and
- * honest beats undeclared and wrong. The field is retired from the *editor*
- * (`SKILL_FIELDS` does not carry it) and is never read from this shape; it is
- * here because the wire sends it.
+ * honest beats undeclared and wrong.
  */
 export interface PreShippedSkillDetail {
     name: string
@@ -135,12 +145,68 @@ export interface PreShippedSkillDetail {
     license: string | null
     compatibility: string | null
     metadata: Record<string, string>
-    /** Retired from the editor and never read here; the host still sends it. */
+    /** Read by the desk for a shipped skill opened here, so its declaration shows. */
     allowed_tools: string | null
     body: string
     body_bytes: number
     files: CustomSkillFile[]
     warnings: SkillValidationEntry[]
+}
+
+/**
+ * One row of the HOST's `GET /api/v1/tools` — the instance's tool registry.
+ *
+ * `tool_name` is the `#[Tool(name:)]` value and is the same name space a skill's
+ * `allowed-tools` declares into (`Tool::NAME_REGEX`), which is the only reason
+ * the desk can compare the two: a declared name is "a tool this instance has" or
+ * "a tool this instance does not have", and nothing else.
+ *
+ * Mirrored field for field like every other shape here, though the desk reads only
+ * `tool_name`, `display_name` and `description`. `display_name` is nullable in the
+ * host's own type and falls back to `tool_name` in `ToolSchemaPresenter`, so a row
+ * is never nameless.
+ */
+export interface ToolSummary {
+    tool_class: string
+    tool_name: string
+    display_name: string | null
+    /**
+     * The `#[Tool]` attribute's own description. Emptied by `ToolController` until
+     * core copied it onto the resource, so this was structurally always `''`; the
+     * editor reads it and degrades to the name alone when it is empty.
+     */
+    description: string
+    category: string
+    icon: string | null
+    settings_schema: ToolSettingSchema[]
+    operations: ToolOperationSchema[]
+    recommends_skills: string[]
+}
+
+/** `GET /api/v1/tools → settings_schema`; the form-side schema for one tool. */
+export interface ToolSettingSchema {
+    key: string
+    label: string
+    type: string
+    description: string
+    default: unknown
+    required: boolean
+    options: Record<string, string> | string[] | null
+    expose_to_llm: boolean
+    data_source?: string | null
+    /** `any` (default), `principal` or `agent` — where the setting is configurable. */
+    scope?: string
+}
+
+/** `GET /api/v1/tools → operations`; one `#[ToolOperation]` on a multi-operation tool. */
+export interface ToolOperationSchema {
+    name: string
+    description: string
+    /** Operator-facing; falls back to the first sentence of `description`. */
+    operator_description: string
+    enabledByDefault: boolean
+    requiresApprovalByDefault: boolean
+    discriminatorKey: string
 }
 
 export interface AgentSummary {

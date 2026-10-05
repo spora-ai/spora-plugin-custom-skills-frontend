@@ -11,6 +11,7 @@ import type {
     CustomSkillResource,
     PreShippedSkillSummary,
     SkillAllowlistEntry,
+    ToolSummary,
 } from './types'
 
 const SKILL_ENTRY_FILE = 'SKILL.md'
@@ -23,6 +24,7 @@ function makeSkill(overrides: Partial<CustomSkillResource> & { name: string }): 
         description: '',
         license: null,
         compatibility: null,
+        allowed_tools: null,
         metadata: {},
         body: '',
         body_bytes: 0,
@@ -44,6 +46,9 @@ function makeSkill(overrides: Partial<CustomSkillResource> & { name: string }): 
 const SEED_SKILL = makeSkill({
     name: 'invoice-drafting',
     description: 'How to draft an invoice from a purchase order.',
+    // One resolvable and one not, so the unavailable row is reachable in the dev
+    // sandbox and not only in a test that fabricates a registry.
+    allowed_tools: 'agent read_url legacy_erp_export',
     body: '# Steps\n\n1. Read the PO.\n2. Draft the invoice.\n',
     provenance: 'agent',
     has_previous: true,
@@ -77,6 +82,48 @@ const MOCK_AGENTS = [
     { id: 6, name: 'Researcher' },
 ]
 
+/**
+ * The host's `GET /api/v1/tools`, so the desk's checkbox group has something to
+ * render in the dev sandbox. Only the three keys the desk reads are filled — the
+ * rest are structural noise for this screen and a mock that invented settings rows
+ * would be testing fiction.
+ */
+const MOCK_TOOLS: ToolSummary[] = [
+    {
+        tool_class: 'Spora\\Tools\\AgentTool',
+        tool_name: 'agent',
+        display_name: 'Agent',
+        description: 'Run another agent on this principal and return what it reports.',
+        category: 'general',
+        icon: null,
+        settings_schema: [],
+        operations: [],
+        recommends_skills: [],
+    },
+    {
+        tool_class: 'Spora\\Tools\\ReadUrlTool',
+        tool_name: 'read_url',
+        display_name: 'Read URL',
+        description: 'Fetch a URL and return its readable text.',
+        category: 'web',
+        icon: null,
+        settings_schema: [],
+        operations: [],
+        recommends_skills: [],
+    },
+    {
+        tool_class: 'Spora\\Tools\\CalendarTool',
+        tool_name: 'calendar',
+        display_name: 'Calendar',
+        description: '',
+        category: 'productivity',
+        icon: null,
+        settings_schema: [],
+        operations: [],
+        recommends_skills: [],
+    },
+]
+
 const MOCK_PRINCIPALS = [
     { id: 7, type: 'user', name: 'User #7', user_id: 3, group_id: null },
     { id: 8, type: 'group', name: 'Ops', user_id: null, group_id: 2 },
@@ -107,6 +154,7 @@ export function createMockApi(): MockApi {
         async get<T = unknown>(path: string): Promise<T> {
             if (path === '/principals/me') return { principals: MOCK_PRINCIPALS } as unknown as T
             if (path === '/agents') return { agents: MOCK_AGENTS } as unknown as T
+            if (path === '/tools') return { tools: MOCK_TOOLS } as unknown as T
             if (path === '/skills') return { skills: SEED_PRE_SHIPPED } as unknown as T
             if (path.startsWith('/skills/')) {
                 const name = decodeURIComponent(path.slice('/skills/'.length).split('?')[0] ?? '')
@@ -119,9 +167,10 @@ export function createMockApi(): MockApi {
                         compatibility: null,
                         metadata: {},
                         // Host sends this on every detail response; null when the
-                        // skill declares no tools. Never read by this panel, but a
-                        // mock that omits it hides the very drift this type exists
-                        // to prevent.
+                        // skill declares no tools. Carried into the desk so a
+                        // shipped skill's declaration is on screen here, but a mock
+                        // that omits it hides the very drift this type exists to
+                        // prevent.
                         allowed_tools: null,
                         body: `# ${name}\n\nShipped body.\n`,
                         body_bytes: 24,

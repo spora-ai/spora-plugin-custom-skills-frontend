@@ -18,6 +18,7 @@ function makeSkill(overrides: Partial<CustomSkillResource> = {}): CustomSkillRes
         description: 'How to draft an invoice.',
         license: 'MIT',
         compatibility: 'spora>=0.29',
+        allowed_tools: 'agent read_url',
         metadata: { tier: 'pro' },
         body: '# Steps\n\n1. Look up the customer.',
         body_bytes: 40,
@@ -46,8 +47,9 @@ function makeShipped(overrides: Partial<PreShippedSkillDetail> = {}): PreShipped
         license: 'Apache-2.0',
         compatibility: null,
         metadata: {},
-        // Always on the wire; never read by this panel.
-        allowed_tools: null,
+        // Always on the wire, and a shipped skill's declaration is shown here as a
+        // fact: it is the only place a reader of a shipped skill can see it.
+        allowed_tools: 'typst_compile',
         body: '# Typst\n\nRender with typst.',
         body_bytes: 28,
         files: [
@@ -74,9 +76,19 @@ describe('SkillViewer', () => {
         expect(facts).toContain('tier: pro')
     })
 
+    it('shows the declared tools as a fact, and omits the row when none are declared', () => {
+        // A declaration with no row is a declaration the reader cannot see, and this
+        // is the only surface that shows one for a shipped skill.
+        expect(mountViewer({ skill: makeSkill() }).get('[data-test="viewer-facts"]').text())
+            .toContain('agent read_url')
+
+        const bare = makeSkill({ license: null, compatibility: null, allowed_tools: null, metadata: {} })
+        expect(mountViewer({ skill: bare }).find('[data-test="viewer-facts"]').exists()).toBe(false)
+    })
+
     it('omits absent facts rather than rendering blank rows', () => {
         const wrapper = mountViewer({
-            skill: makeSkill({ license: null, compatibility: null, metadata: {} }),
+            skill: makeSkill({ license: null, compatibility: null, allowed_tools: null, metadata: {} }),
         })
         expect(wrapper.find('[data-test="viewer-facts"]').exists()).toBe(false)
     })

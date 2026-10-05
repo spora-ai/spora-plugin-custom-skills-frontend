@@ -2,9 +2,15 @@
  * Pure display/derivation helpers, kept out of the store and components so the
  * awkward derivations (validator `path` → input, "last edited" after an agent
  * rewrite, fork naming) are tested against plain values.
+ *
+ * The `allowed-tools` helpers below read a declaration and never judge one. The
+ * grammar is core's `SkillValidator`'s to enforce, and `61296f4` retired this field
+ * from the editor for a year on the grounds that nothing read it; it is back with a
+ * reader, and the shape of the reader is the shape of that decision — show the
+ * declaration, keep every name in it, and let the server rule on it.
  */
 import type { Principal } from '../api/principals'
-import type { CustomSkillResource, SkillValidationEntry } from '../types'
+import type { CustomSkillResource, SkillValidationEntry, ToolSummary } from '../types'
 
 /** Also the set of frontmatter keys a `SkillValidator` finding can anchor to. */
 export const SKILL_FIELDS = [
@@ -12,6 +18,7 @@ export const SKILL_FIELDS = [
     'description',
     'license',
     'compatibility',
+    'allowed_tools',
     'body',
 ] as const
 
@@ -203,14 +210,15 @@ const FIELD_SET: ReadonlySet<string> = new Set(SKILL_FIELDS)
  * Which input a validator finding belongs under, or `null` for one that has none.
  *
  * Anything unrecognised returns `null` so the caller routes it to the banner rather
- * than guessing, which is where a finding on a retired field ends up. Case and
- * whitespace are normalised because `path` is free text. The hyphen-to-underscore
- * rewrite went with the only field that had one: no remaining name has a hyphen, so
- * re-adding it would be a branch nothing can take.
+ * than guessing. Case and whitespace are normalised because `path` is free text.
+ * The hyphen-to-underscore rewrite is load-bearing for exactly one field:
+ * `SkillValidator` reports `allowed-tools`, the frontmatter spelling, while the API
+ * field is `allowed_tools`. Without it every `ALLOWED_TOOLS_INVALID` falls through
+ * to the banner and the field shows no error while the server refuses the save.
  */
 export function fieldForPath(path: string | undefined | null): SkillField | null {
     if (typeof path !== 'string' || path === '') return null
-    const normalized = path.trim().toLowerCase()
+    const normalized = path.trim().toLowerCase().replace(/-/g, '_')
     return FIELD_SET.has(normalized) ? (normalized as SkillField) : null
 }
 
@@ -224,6 +232,131 @@ export function errorsForField(
 /** Errors no field claims still have to reach the operator, so the banner shows them. */
 export function unattachedErrors(entries: SkillValidationEntry[]): SkillValidationEntry[] {
     return entries.filter((e) => e.severity === 'error' && fieldForPath(e.path) === null)
+}
+
+/**
+ * The entries a stored `allowed-tools` value declares, in the order written.
+ *
+ * Split on `/\s+/`, mirroring core's `AllowedTools::entries()` rather than
+ * splitting on a literal space: a YAML folded scalar arrives with embedded
+ * newlines, and a newline is not a tool name.
+ *
+ * No grammar is applied here. Core's `SkillValidator` judges whether an entry is a
+ * tool name and reports the ones that are not, so the editor's job is to show what
+ * is stored — a comma, an FQCN or `Bash(git:*)` is an entry the author has to see
+ * to fix, and an entry dropped here would be deleted by the next unrelated save.
+ */
+export function declaredToolNames(stored: string | null | undefined): string[] {
+    if (stored === null || stored === undefined) return []
+    return stored.trim().split(/\s+/).filter((entry) => entry !== '')
+}
+
+/** The value a checkbox group would submit for the given selection. */
+export function serializeToolNames(names: readonly string[]): string {
+    const unique: string[] = []
+    for (const name of names) {
+        if (!unique.includes(name)) unique.push(name)
+    }
+    return unique.join(' ')
+}
+
+/**
+ * The checkbox group's options: this instance's registry unioned with whatever the
+ * stored value declares.
+ *
+ * The union is the load-bearing part. The control is a set of checkboxes, so a
+ * declared name the registry does not have has nowhere to render — and a row that
+ * simply did not appear would be a declaration the author cannot see, which the
+ * next save of an unrelated field would then delete. So an unmatched name is shown
+ * as its own disabled row and kept in the submitted value, which is also what core
+ * does: an unresolvable name is `ALLOWED_TOOLS_UNKNOWN_TOOL`, a warning, because a
+ * skill may legitimately name a tool a partial install does not have.
+ *
+ * A `null` registry is "not read", not "empty": the rows then come only from the
+ * stored value, and they are neither marked unavailable nor disabled. Calling a tool
+ * absent is a claim about this instance, and a failed read cannot support one — while
+ * a field the author cannot edit because an aid would not load is a worse failure
+ * than a missing suggestion.
+ *
+ * Registry order first, stored-only names after, so a group that is entirely in the
+ * registry reads in the order the instance registers its tools.
+ */
+export interface ToolOption {
+    name: string
+    label: string
+    description: string
+    /**
+     * False for a stored name the registry does not carry — but only when the
+     * registry was actually read. Such a row is disabled: it is kept and shown, and
+     * the author cannot add it back, but unchecking it would be the one way to drop
+     * a declaration the server may still be serving.
+     */
+    available: boolean
+    selected: boolean
+}
+
+export function toolOptions(
+    registry: readonly ToolSummary[] | null,
+    stored: string | null | undefined,
+): ToolOption[] {
+    const declared = declaredToolNames(stored)
+    if (registry === null) {
+        return declared.map((name) => ({
+            name,
+            label: name,
+            description: '',
+            available: true,
+            selected: true,
+        }))
+    }
+
+    const known = new Set(registry.map((tool) => tool.tool_name))
+    const options: ToolOption[] = registry.map((tool) => ({
+        name: tool.tool_name,
+        // A tool whose `display_name` is null falls back to its own name rather than
+        // rendering an empty row.
+        label: tool.display_name ?? tool.tool_name,
+        description: tool.description,
+        available: true,
+        selected: declared.includes(tool.tool_name),
+    }))
+
+    for (const name of declared) {
+        if (known.has(name)) continue
+        options.push({ name, label: name, description: '', available: false, selected: true })
+    }
+
+    return options
+}
+
+/** One row of the post-save readout: what is declared, and whether it resolves here. */
+export interface DeclaredToolSummary {
+    name: string
+    available: boolean
+}
+
+/**
+ * The declared tools, for reporting after a save.
+ *
+ * Reads the *stored* value rather than the draft, so the box answers "what does the
+ * server hold" and cannot describe an edit that was never saved. A name the registry
+ * does not have is reported as unresolved, which is knowable here — whether an agent
+ * can actually reach a declared tool is not, and is deliberately not claimed: the
+ * desk has no agent context.
+ *
+ * A `null` registry means nothing is reported as unresolved, for the same reason
+ * {@link toolOptions} does not mark anything: the read that would settle it did not
+ * come back, and "we could not ask" is not "no".
+ */
+export function declaredToolsSummary(
+    registry: readonly ToolSummary[] | null,
+    stored: string | null | undefined,
+): DeclaredToolSummary[] {
+    if (registry === null) {
+        return declaredToolNames(stored).map((name) => ({ name, available: true }))
+    }
+    const known = new Set(registry.map((tool) => tool.tool_name))
+    return declaredToolNames(stored).map((name) => ({ name, available: known.has(name) }))
 }
 
 /**

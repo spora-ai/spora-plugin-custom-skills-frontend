@@ -10,13 +10,18 @@
  * contract's per-file cap, and a rejection (422 `SKILL_INVALID`) puts an error
  * under the field its `path` names, with warnings and unattached errors in a
  * banner so nothing the validator said is dropped.
+ *
+ * The `allowed-tools` group gets its own block below, covering the one property
+ * that is not obvious: its options are the tool registry *unioned with* whatever the
+ * stored value declares, so a name this instance cannot resolve is shown rather than
+ * dropped. Dropping it would delete a declaration on the next unrelated save.
  */
 import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import SkillDesk from '../../src/components/SkillDesk.vue'
 import SourceEditor from '../../src/components/SourceEditor.vue'
-import { makeSkill, makeValidationEntry } from '../fixtures'
+import { makeSkill, makeTools, makeValidationEntry } from '../fixtures'
 import { CONVENTIONAL_SKILL_FOLDERS } from '../../src/lib/skillFormat'
 
 function mountDesk(props: Record<string, unknown> = {}) {
@@ -752,6 +757,8 @@ describe('SkillDesk → the frontmatter', () => {
             body: '# Steps\n\n1. Read the PO.\n',
             license: null,
             compatibility: 'spora>=0.28',
+            // Untouched, so the save re-sends it exactly as the server holds it.
+            allowed_tools: 'agent read_url',
             metadata: { tier: 'pro' },
             files: { 'examples/invoice.md': '' },
         })
@@ -780,6 +787,186 @@ describe('SkillDesk → the frontmatter', () => {
     })
 })
 
+/**
+ * The declared-tools group.
+ *
+ * `allowed-tools` is a space-separated list of bare tool names — a grammar, not a
+ * free-text field — so this is a checkbox group over the instance's registry. Two
+ * properties are load-bearing and each is worth a test on its own:
+ *
+ * 1. **The options are the registry unioned with the stored names.** A declared name
+ *    no installed tool answers to is still shown, disabled, and still submitted. If
+ *    it were dropped, saving an unrelated field would silently delete a declaration
+ *    the author can see no trace of — which is why core calls it a warning
+ *    (`ALLOWED_TOOLS_UNKNOWN_TOOL`) rather than an error.
+ * 2. **The stored string is the buffer.** A malformed value the author has not fixed
+ *    is not tidied on the way through; core reports it, this shows it.
+ */
+describe('SkillDesk → the declared tools', () => {
+    const withTools = (props: Record<string, unknown> = {}) => mountDesk({ tools: makeTools(), ...props })
+
+    const boxes = (wrapper: ReturnType<typeof mountDesk>) =>
+        wrapper.findAll('[data-test="field-allowed-tools"] input[type="checkbox"]')
+
+    /** A skill declaring only names this instance cannot resolve. */
+    const unresolvable = () => makeSkill({ allowed_tools: 'read_url' })
+
+    it('offers every registered tool, with its display name and description', () => {
+        const wrapper = withTools({ skill: makeSkill({ allowed_tools: null }) })
+        const rows = wrapper.findAll('[data-test^="tool-option-"]')
+
+        // The registry in its own order, and nothing else, for a skill that
+        // declares nothing.
+        expect(rows.map((r) => r.attributes('data-test'))).toEqual([
+            'tool-option-agent',
+            'tool-option-calendar',
+        ])
+        // The display name, not the wire name, is the label a human reads.
+        expect(rows[0]?.text()).toContain('Agent')
+        expect(rows[0]?.text()).toContain('Run another agent.')
+        // A tool with no description degrades to the name alone rather than
+        // rendering an empty line where the description would be.
+        expect(rows[1]?.text()).not.toContain('Run another agent.')
+    })
+
+    it('checks the boxes for the names the skill already declares', () => {
+        const wrapper = withTools({ skill: makeSkill({ allowed_tools: 'agent read_url' }) })
+        const checked = boxes(wrapper)
+            .filter((box) => (box.element as HTMLInputElement).checked)
+            .map((box) => (box.element as HTMLInputElement).value)
+
+        // Both declared names are ticked, the registered one and the one that is
+        // not — a declaration is a declaration whichever way it resolves.
+        expect(checked).toEqual(['agent', 'read_url'])
+    })
+
+    it('keeps a declared name this instance does not have, as a disabled row', () => {
+        // The failure this prevents: a name that vanishes from the group is a
+        // declaration the next save of an unrelated field deletes silently.
+        const wrapper = withTools({ skill: unresolvable() })
+
+        // `get` throws when there is nothing to get, so reaching here is the claim.
+        const row = wrapper.get('[data-test="tool-option-read_url"]')
+        expect(row.text()).toContain('read_url')
+        expect(row.text()).toContain('Not available on this instance')
+        const input = row.get('input')
+        expect(input.attributes('disabled')).toBeDefined()
+        // Checked, so it is part of the declaration rather than a visible orphan.
+        expect((input.element as HTMLInputElement).checked).toBe(true)
+    })
+
+    it('labels the field as a hint, not as a grant or a requirement', () => {
+        const wrapper = withTools()
+        const field = wrapper.get('[data-test="field-allowed-tools"]')
+        expect(field.text()).toContain('Tools this skill uses')
+        // "Required tools" would promise enforcement Spora does not do.
+        expect(field.text()).not.toMatch(/required|pre-approved/i)
+        expect(field.text()).toContain('grants no pre-approval')
+    })
+
+    it('says so plainly when this instance has no tools at all', () => {
+        // `[]` — a read that came back and found nothing, which is different from a
+        // read that did not come back.
+        const wrapper = mountDesk({ tools: [], skill: makeSkill({ allowed_tools: null }) })
+        expect(wrapper.get('[data-test="allowed-tools-empty"]').text()).toContain('No tools are registered')
+    })
+
+    it('still shows the declaration when the registry could not be read', () => {
+        // `tools: null` is "not read", which is a different state from an instance
+        // with no tools. A failed read must not turn a declaration the author is
+        // allowed to change into a read-only one, and must not claim a tool is
+        // absent when the registry that would know has not answered.
+        const wrapper = mountDesk({ tools: null, skill: makeSkill({ allowed_tools: 'agent read_url' }) })
+        expect(wrapper.findAll('[data-test^="tool-option-"]')).toHaveLength(2)
+        expect(wrapper.get('[data-test="tool-option-agent"] input').attributes('disabled')).toBeUndefined()
+        expect(wrapper.get('[data-test="tool-option-read_url"] input').attributes('disabled')).toBeUndefined()
+        expect(wrapper.find('[data-test="tool-unavailable-note"]').exists()).toBe(false)
+    })
+
+    it('checking a tool appends its name to the submitted string', async () => {
+        const wrapper = withTools({ skill: unresolvable() })
+        await wrapper.get('[data-test="tool-option-agent"] input').setValue(true)
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+
+        // Space-separated bare names, appended to what was already stored: the
+        // author's own ordering is not reshuffled by a checkbox.
+        expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({
+            allowed_tools: 'read_url agent',
+        })
+    })
+
+    it('unchecking a tool removes exactly that name and keeps the rest', async () => {
+        const wrapper = withTools({ skill: makeSkill({ allowed_tools: 'agent calendar' }) })
+        await wrapper.get('[data-test="tool-option-agent"] input').setValue(false)
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+
+        // So the string is rebuilt from the selection rather than trimmed, and
+        // `calendar` is untouched by the removal of `agent`.
+        expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({ allowed_tools: 'calendar' })
+    })
+
+    it('sends null when every box is cleared, because that is a revocation', async () => {
+        // `agent` is the only declared name here, and it is registered, so its box
+        // is the one the author can clear.
+        const wrapper = withTools({ skill: makeSkill({ allowed_tools: 'agent' }) })
+        await wrapper.get('[data-test="tool-option-agent"] input').setValue(false)
+        expect(boxes(wrapper).some((b) => (b.element as HTMLInputElement).checked)).toBe(false)
+
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+        // Not `''`: the plugin treats an absent key as "leave it alone" and an
+        // explicit null as the revocation, so an emptied group has to be `null`.
+        expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({ allowed_tools: null })
+    })
+
+    it('sends null for a skill that declares nothing, even on an unrelated save', async () => {
+        const wrapper = mountDesk({ tools: makeTools(), skill: makeSkill({ allowed_tools: null }) })
+        await wrapper.get('[data-test="field-description"]').setValue('Rewritten.')
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+        expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({ allowed_tools: null })
+    })
+
+    it('re-sends a malformed value byte for byte, because the plugin does not judge it', async () => {
+        // A comma, an FQCN and a doubled space: outside the grammar, so core reports
+        // it, and the editor's job is to show it rather than tidy it. Trimming or
+        // re-serialising here would rewrite a value the server is entitled to reject.
+        const stored = 'read_email,  Spora\\Tools\\ReadEmailTool  '
+        const wrapper = mountDesk({ tools: makeTools(), skill: makeSkill({ allowed_tools: stored }) })
+        await wrapper.get('[data-test="field-description"]').setValue('Rewritten.')
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+
+        expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({ allowed_tools: stored })
+    })
+
+    it('marks the desk dirty when only this field changes', async () => {
+        // Without it in `draft`, checking a box would leave the pill reading
+        // "saved" and the Save button disabled, and the edit would be lost on
+        // navigate-away with no prompt.
+        const wrapper = withTools({ skill: makeSkill({ allowed_tools: 'read_url' }) })
+        expect(wrapper.get('[data-test="desk-state"]').text()).toBe('saved')
+
+        await wrapper.get('[data-test="tool-option-agent"] input').setValue(true)
+
+        expect(wrapper.get('[data-test="desk-state"]').text()).toBe('unsaved changes')
+        expect(wrapper.get('[data-test="desk-save"]').attributes('disabled')).toBeUndefined()
+    })
+
+    it('hides the group while a sidecar is open, like the rest of the frontmatter', async () => {
+        const wrapper = withTools({ fileContents: { 'examples/invoice.md': '# Invoice' } })
+        await flushPromises()
+        await wrapper.get('[data-test="rail-file-examples/invoice.md"]').trigger('click')
+
+        // It is SKILL.md's frontmatter, so it belongs to SKILL.md and nothing else.
+        expect(wrapper.find('[data-test="field-allowed-tools"]').exists()).toBe(false)
+    })
+
+    it('cannot be edited on a shipped skill, which has no write path', () => {
+        const wrapper = withTools({ readOnly: true })
+        for (const box of boxes(wrapper)) {
+            expect(box.attributes('disabled')).toBeDefined()
+        }
+    })
+})
+
 describe('SkillDesk → validation feedback', () => {
     it('puts a description error under the description field, not in a banner', () => {
         const wrapper = mountDesk({
@@ -790,18 +977,18 @@ describe('SkillDesk → validation feedback', () => {
         expect(wrapper.find('[data-test="validation-banner"]').exists()).toBe(false)
     })
 
-    it('banners a finding on the retired `allowed-tools` field instead of dropping it', () => {
-        // The field is gone from the editor, but core's `SkillValidator` still
-        // emits `ALLOWED_TOOLS_INVALID` against that path, so the finding has to
-        // land in the banner — it has no input to sit under, and it must not
-        // vanish along with the input.
+    it('routes a finding on the hyphenated `allowed-tools` path to the field, not the banner', () => {
+        // Core's validator reports the *frontmatter* key, `allowed-tools`, while the
+        // editor's field is the underscored API name. The rewrite in `fieldForPath`
+        // is what bridges the two; without it this finding falls through to the
+        // banner and the field shows no error while the server refuses the save.
         const wrapper = mountDesk({
             validationErrors: [makeValidationEntry({ code: 'ALLOWED_TOOLS_INVALID', message: 'not a space-separated string', path: 'allowed-tools' })],
         })
-        const banner = wrapper.get('[data-test="validation-banner"]')
-        expect(banner.text()).toContain('ALLOWED_TOOLS_INVALID')
-        expect(banner.text()).toContain('(allowed-tools)')
-        expect(wrapper.find('[data-test="field-allowed-tools"]').exists()).toBe(false)
+        const field = wrapper.get('[data-test="field-allowed-tools"]')
+        expect(field.attributes('aria-invalid')).toBe('true')
+        expect(field.findAll('[data-test="field-error"]')).toHaveLength(1)
+        expect(wrapper.find('[data-test="validation-banner"]').exists()).toBe(false)
     })
 
     it('banners a warning with its code and path', () => {
