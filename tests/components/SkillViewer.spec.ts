@@ -191,7 +191,7 @@ describe('SkillViewer', () => {
     })
 
     it('marks a shipped skill read-only and offers Duplicate, not Edit', () => {
-        const wrapper = mountViewer({ shipped: makeShipped(), contentsUnavailable: true })
+        const wrapper = mountViewer({ shipped: makeShipped() })
         expect(wrapper.get('[data-test="viewer-readonly-badge"]').text()).toContain('read-only')
         expect(wrapper.find('[data-test="viewer-edit"]').exists()).toBe(false)
         expect(wrapper.find('[data-test="viewer-duplicate"]').exists()).toBe(true)
@@ -203,14 +203,58 @@ describe('SkillViewer', () => {
         expect(wrapper.find('[data-test="viewer-duplicate"]').exists()).toBe(false)
     })
 
-    it('states that shipped sidecar contents are unavailable instead of showing a blank pane', async () => {
-        // The host returns files as {path, bytes} with no per-file read endpoint,
-        // so this state is real. An empty editor here would look like a bug.
-        const wrapper = mountViewer({ shipped: makeShipped(), contentsUnavailable: true })
+    it('says a file the host would not serve cannot be shown, instead of a blank pane', async () => {
+        const wrapper = mountViewer({
+            shipped: makeShipped(),
+            unavailablePaths: ['templates/report.typ'],
+        })
         await wrapper.get('[data-test="viewer-rail-file-templates/report.typ"]').trigger('click')
         expect(wrapper.get('[data-test="viewer-contents-unavailable"]').text())
             .toContain('templates/report.typ')
         expect(wrapper.find('[data-test="viewer-content"]').exists()).toBe(false)
+    })
+
+    it('asks for a sidecar when it is opened, and shows it once loaded', async () => {
+        const wrapper = mountViewer({ shipped: makeShipped() })
+        await wrapper.get('[data-test="viewer-rail-file-templates/report.typ"]').trigger('click')
+        expect(wrapper.emitted('loadFile')?.[0]).toEqual(['typst', 'templates/report.typ'])
+
+        await wrapper.setProps({ fileContents: { 'templates/report.typ': '#let x = 1' } })
+        expect(wrapper.find('[data-test="source-editor"]').exists()).toBe(true)
+        expect(wrapper.find('[data-test="viewer-contents-loading"]').exists()).toBe(false)
+    })
+
+    it('shows a pending line rather than an empty editor while a read is in flight', async () => {
+        const wrapper = mountViewer({ shipped: makeShipped() })
+        await wrapper.get('[data-test="viewer-rail-file-templates/report.typ"]').trigger('click')
+        const pending = wrapper.get('[data-test="viewer-contents-loading"]')
+        expect(pending.text()).toContain('templates/report.typ')
+        expect(pending.text()).toContain('Reading')
+        expect(wrapper.find('[data-test="viewer-content"]').exists()).toBe(false)
+    })
+
+    it('does not ask twice for the same path, so a failed read cannot loop', async () => {
+        const wrapper = mountViewer({
+            shipped: makeShipped(),
+            unavailablePaths: ['templates/report.typ'],
+        })
+        const tab = wrapper.get('[data-test="viewer-rail-file-templates/report.typ"]')
+        await tab.trigger('click')
+        await tab.trigger('click')
+        await wrapper.get('[data-test="viewer-tab-entry"]').trigger('click')
+        await tab.trigger('click')
+
+        const asked = (wrapper.emitted('loadFile') ?? []).map(([, path]) => path)
+        expect(asked.filter((p) => p === 'templates/report.typ')).toHaveLength(1)
+    })
+
+    it('does not ask for the entry file, whose contents came with the detail', async () => {
+        const wrapper = mountViewer({ shipped: makeShipped() })
+        await wrapper.get('[data-test="viewer-rail-file-templates/report.typ"]').trigger('click')
+        await wrapper.get('[data-test="viewer-tab-entry"]').trigger('click')
+
+        const asked = (wrapper.emitted('loadFile') ?? []).map(([, path]) => path)
+        expect(asked).not.toContain('SKILL.md')
     })
 
     it('surfaces validator warnings with their code', () => {
@@ -239,7 +283,7 @@ describe('SkillViewer', () => {
     })
 
     it('emits duplicate for a shipped skill', async () => {
-        const wrapper = mountViewer({ shipped: makeShipped(), contentsUnavailable: true })
+        const wrapper = mountViewer({ shipped: makeShipped() })
         await wrapper.get('[data-test="viewer-duplicate"]').trigger('click')
         expect(wrapper.emitted('duplicate')?.[0]).toEqual(['typst'])
     })

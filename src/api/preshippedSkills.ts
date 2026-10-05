@@ -27,3 +27,16 @@ export async function getPreShippedSkill(name: string): Promise<PreShippedSkillD
     )
     return result.skill
 }
+
+/** One sidecar's contents. `GET /api/v1/skills/{slug}/files/{path}`; same shape as
+ *  the plugin's own route. `{path}` must be whole-path encoded — the router
+ *  url-decodes the captured variable, so an unescaped slash would split it. */
+export async function getPreShippedSkillFile(
+    name: string,
+    path: string,
+): Promise<{ path: string; content: string; bytes: number }> {
+    const api = getApi()
+    return api.get<{ path: string; content: string; bytes: number }>(
+        `/skills/${encodeURIComponent(name)}/files/${encodeURIComponent(path)}`,
+    )
+}

@@ -27,9 +27,38 @@ const detail = ref<PreShippedSkillDetail | null>(null)
 const loading = ref(false)
 const failed = ref(false)
 
+/** Fetched one at a time as opened, so a dozen sidecars do not transfer to show one. */
+const fileContents = ref<Record<string, string>>({})
+const unavailablePaths = ref<string[]>([])
+
+// Bumped per resolve(), so a read still in flight for the previous skill cannot
+// land in the next one's map — two skills sharing a sidecar path would otherwise
+// render the old skill's bytes under the new skill's name, permanently.
+let epoch = 0
+
+async function loadFile(skillName: string, path: string): Promise<void> {
+    const mine = epoch
+    try {
+        const file = await preshippedApi.getPreShippedSkillFile(skillName, path)
+        if (mine !== epoch) return
+        // Otherwise the viewer waits on a path it already asked for, for ever.
+        if (typeof file?.content !== 'string') {
+            unavailablePaths.value = [...unavailablePaths.value, path]
+            return
+        }
+        fileContents.value = { ...fileContents.value, [path]: file.content }
+    } catch {
+        if (mine !== epoch) return
+        unavailablePaths.value = [...unavailablePaths.value, path]
+    }
+}
+
 async function resolve(): Promise<void> {
+    epoch += 1
     detail.value = null
     failed.value = false
+    fileContents.value = {}
+    unavailablePaths.value = []
     if (name.value === '') return
     loading.value = true
     try {
@@ -88,8 +117,10 @@ function duplicate(): void {
         <SkillViewer
             v-else-if="detail"
             :shipped="detail"
-            contents-unavailable
+            :file-contents="fileContents"
+            :unavailable-paths="unavailablePaths"
             :theme="hostContext?.theme"
+            @load-file="loadFile"
             @duplicate="duplicate"
         />
     </div>

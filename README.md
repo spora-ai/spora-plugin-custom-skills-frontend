@@ -22,7 +22,7 @@ while there is exactly one thing to do.
 | `/new` | Create — a name, then the desk | `POST /api/v1/custom-skills` | writes once |
 | `/skills/:name` | Desk — write | `GET`/`PUT`/`DELETE /api/v1/custom-skills/{name}` | full CRUD + restore |
 | `/library` | Catalogue — every shipped skill | `GET /api/v1/skills` (the **host**) | read-only + *Duplicate* |
-| `/library/:name` | Viewer — read a shipped skill | `GET /api/v1/skills/{name}` (the **host**) | read-only |
+| `/library/:name` | Viewer — read a shipped skill | `GET /api/v1/skills/{name}` + `…/files/{path}` per sidecar (the **host**) | read-only |
 
 Three routing decisions worth defending:
 
@@ -38,9 +38,11 @@ Three routing decisions worth defending:
   skill mid-edit is the worst outcome the routing enables.
 
 Pre-shipped skills are served by `spora-core`'s `SkillController`, which has
-exactly two routes (`index`, `show`). The frozen contract lists them under
+three routes (`index`, `show`, `file`). The frozen contract lists them under
 "Not endpoints (deliberately)": this plugin must never re-serve them, or the
-two copies drift.
+two copies drift. `file` is how a sidecar's contents are read — the detail route
+lists a sidecar's path and size but serves only the `SKILL.md` body, so a viewer
+cannot open anything else without it.
 
 ### The four affordances
 
@@ -94,7 +96,7 @@ src/
   api/
     client.ts        bridge to the host's typed REST client (setApi/getApi/ApiError)
     customSkills.ts  CRUD, restore, allowlist, sidecar read, fork
-    preshippedSkills.ts  the HOST catalogue (read-only)
+    preshippedSkills.ts  the HOST catalogue (read-only) + per-sidecar read
     agentAllowlist.ts    per-agent `allowed_skills` read-modify-write
     agents.ts / principals.ts
   stores/
@@ -218,8 +220,11 @@ npm run clean          # removes frontend/main.js + frontend/style.css
 - `tests/buildAssets.spec.ts` — the built stylesheet: every hand-written selector
   inside the plugin boundary, the scope prefix still a descendant selector, and
   the scope root carrying no utility class.
-- `tests/components/SkillViewer.spec.ts` — the read-only inspector, and that
-  reading cannot mutate.
+- `tests/components/SkillViewer.spec.ts` — the read-only inspector, that reading
+  cannot mutate, and the on-demand sidecar read (once per path, never in a loop).
+- `tests/pages/SkillViewerPage.spec.ts` — `/library/:name`: a sidecar is fetched when
+  opened, a failed read is stated rather than blank, and no read leaks across a skill
+  change.
 - `tests/lib/skillFormat.spec.ts` — the pure derivations, including the local
   mirror of the server's slug rule.
 - `tests/pages/*.spec.ts` — one per destination, plus the two bootstrap
