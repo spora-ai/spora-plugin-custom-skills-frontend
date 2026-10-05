@@ -347,6 +347,10 @@ export interface DeclaredToolSummary {
  * A `null` registry means nothing is reported as unresolved, for the same reason
  * {@link toolOptions} does not mark anything: the read that would settle it did not
  * come back, and "we could not ask" is not "no".
+ *
+ * The count here is the count of declared names. Core's `AllowedTools` caps the
+ * `required_tools` it projects at 32 entries, so on a very long declaration the
+ * server reports fewer names than this list does.
  */
 export function declaredToolsSummary(
     registry: readonly ToolSummary[] | null,

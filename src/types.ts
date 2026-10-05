@@ -36,10 +36,10 @@ export interface CustomSkillResource {
     license: string | null
     compatibility: string | null
     /**
-     * The hyphenated `allowed-tools` frontmatter value, verbatim: a space-separated
-     * string of bare tool names. Storage, not judgement — the plugin never trims,
-     * splits or reformats it, because `SkillValidator` owns the grammar and a value
-     * it is entitled to reject has to reach it byte for byte.
+     * The hyphenated `allowed-tools` frontmatter value: a space-separated string of
+     * bare tool names. The plugin stores it verbatim and never judges it, so an
+     * untouched value round-trips byte for byte; the editor parses it only to render
+     * checkboxes, and re-serialises the names when the author changes the selection.
      */
     allowed_tools: string | null
     /** Always an object; `{}` when unset. */
@@ -162,9 +162,9 @@ export interface PreShippedSkillDetail {
  * "a tool this instance does not have", and nothing else.
  *
  * Mirrored field for field like every other shape here, though the desk reads only
- * `tool_name`, `display_name` and `description`. `display_name` is nullable in the
- * host's own type and falls back to `tool_name` in `ToolSchemaPresenter`, so a row
- * is never nameless.
+ * `tool_name`, `display_name` and `description`. `ToolSchemaPresenter` documents
+ * `display_name` as non-nullable and defaults it to `''`; the `| null` here is this
+ * repo's own widening for a presenter that has not shipped it yet.
  */
 export interface ToolSummary {
     tool_class: string

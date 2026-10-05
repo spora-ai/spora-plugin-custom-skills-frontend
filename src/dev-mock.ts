@@ -46,7 +46,7 @@ function makeSkill(overrides: Partial<CustomSkillResource> & { name: string }): 
 const SEED_SKILL = makeSkill({
     name: 'invoice-drafting',
     description: 'How to draft an invoice from a purchase order.',
-    // One resolvable and one not, so the unavailable row is reachable in the dev
+    // Two resolvable and one not, so the unavailable row is reachable in the dev
     // sandbox and not only in a test that fabricates a registry.
     allowed_tools: 'agent read_url legacy_erp_export',
     body: '# Steps\n\n1. Read the PO.\n2. Draft the invoice.\n',

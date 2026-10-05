@@ -126,13 +126,9 @@ const props = withDefaults(
         /** `core`, a plugin slug, or `project` — shown where the principal goes. */
         shippedSource?: string | null
         /**
-         * The instance's tool registry, from the host's `GET /api/v1/tools`. The
-         * page reads it once and passes it down: a checkbox group whose options
-         * the desk cannot enumerate would be a free-text field with extra steps,
-         * and the set is per-instance, so the component cannot know it.
-         */
-        /**
-         * The instance's tool registry, or `null` when it has not been read.
+         * The instance's tool registry from the host's `GET /api/v1/tools`, or
+         * `null` when it has not been read. The page reads it once and passes it
+         * down; the set is per-instance, so the component cannot know it.
          *
          * `null` is deliberately distinct from `[]`: an instance with no tools makes
          * a claim about a declared name, and a registry that failed to load does not.
@@ -259,7 +255,13 @@ const showRestore = computed(() => props.skill.has_previous)
  */
 const toolRows = computed(() => toolOptions(props.tools, allowedTools.value))
 
-/** Add or remove one name, leaving the rest of the stored value as written. */
+/**
+ * Add or remove one name, leaving every other declared name in place.
+ *
+ * The value is re-serialised from the parsed names, so an edit collapses
+ * whitespace runs and drops duplicates: an untouched buffer is submitted byte for
+ * byte, an edited one is not.
+ */
 function toggleTool(name: string, checked: boolean): void {
     const current = declaredToolNames(allowedTools.value)
     const next = checked
@@ -267,7 +269,6 @@ function toggleTool(name: string, checked: boolean): void {
         : serializeToolNames(current.filter((entry) => entry !== name))
     allowedTools.value = next
 }
-
 
 /**
  * Why a shipped sidecar is blank.
@@ -960,14 +961,29 @@ function handleSubmit(): void {
                     -->
                         <fieldset
                             class="min-w-0 border-0 p-0"
-                            :aria-invalid="fieldErrors('allowed_tools').length > 0"
+                            :aria-describedby="fieldErrors('allowed_tools').length > 0 ? 'allowed-tools-errors' : undefined"
                             data-test="field-allowed-tools"
                         >
                             <legend class="mb-1.5 block text-xs font-medium">
                                 Tools this skill uses
                             </legend>
-                            <div v-if="toolRows.length === 0" class="text-[11px] text-muted-foreground" data-test="allowed-tools-empty">
+                            <!-- Only a registry that was actually read may claim the
+                            instance has no tools: `props.tools === null` means the read
+                            failed, and `[]` in place of it would make every declaration
+                            look unresolvable. -->
+                            <div
+                                v-if="toolRows.length === 0 && tools !== null"
+                                class="text-[11px] text-muted-foreground"
+                                data-test="allowed-tools-empty"
+                            >
                                 No tools are registered on this instance.
+                            </div>
+                            <div
+                                v-else-if="toolRows.length === 0"
+                                class="text-[11px] text-muted-foreground"
+                                data-test="allowed-tools-unavailable"
+                            >
+                                The tool registry could not be read. Declared tools are shown as stored.
                             </div>
                             <template v-else>
                                 <label
@@ -983,6 +999,7 @@ function handleSubmit(): void {
                                         :value="row.name"
                                         :checked="row.selected"
                                         :disabled="!row.available || readOnly"
+                                        :aria-invalid="fieldErrors('allowed_tools').length > 0"
                                         @change="toggleTool(row.name, ($event.target as HTMLInputElement).checked)"
                                     >
                                     <span class="flex min-w-0 flex-col">
@@ -1016,6 +1033,7 @@ function handleSubmit(): void {
                             </p>
                             <ul
                                 v-for="entry in fieldErrors('allowed_tools')"
+                                id="allowed-tools-errors"
                                 :key="entry.code + entry.message"
                                 class="mt-1 text-xs text-destructive"
                                 data-test="field-error"

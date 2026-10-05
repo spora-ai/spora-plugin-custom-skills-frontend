@@ -260,6 +260,28 @@ describe('SkillDeskPage → saving', () => {
         expect(mockedApi.restoreSkill).toHaveBeenCalledWith('invoice-drafting', 7)
         expect(useSkillsStore().notice).toBe('Restored the previous version of invoice-drafting.')
     })
+
+    it('updates the saved-declaration box on restore, so it cannot report a dropped declaration', async () => {
+        // The box reads the restored row, not the pre-restore one: the plugin's
+        // `snapshotAttributes()` leaves `allowed_tools` out, so a restore can drop a
+        // declaration, and a box still naming the dropped one would say the opposite
+        // of what the server holds.
+        mockedApi.updateSkill.mockResolvedValue(
+            makeSkill({ allowed_tools: 'agent read_url', updated_at: '2026-09-30 15:00:00' }),
+        )
+        mockedApi.restoreSkill.mockResolvedValue(makeSkill({ allowed_tools: null }))
+
+        const wrapper = await mountOn('invoice-drafting')
+        await flushPromises()
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# Changed')
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+        await flushPromises()
+        expect(wrapper.get('[data-test="declared-tools-summary"]').text()).toContain('agent')
+
+        await wrapper.get('[data-test="desk-restore"]').trigger('click')
+        await flushPromises()
+        expect(wrapper.get('[data-test="declared-tools-summary"]').text()).toContain('declares no tools')
+    })
 })
 
 /**

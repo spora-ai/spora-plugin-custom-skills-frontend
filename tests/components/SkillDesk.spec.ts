@@ -883,6 +883,16 @@ describe('SkillDesk → the declared tools', () => {
         expect(wrapper.find('[data-test="tool-unavailable-note"]').exists()).toBe(false)
     })
 
+    it('does not claim the instance has no tools when the registry read failed', () => {
+        // The empty state and the failed read both produce zero rows, so the sentence
+        // has to be chosen on `tools` rather than on the row count — otherwise a
+        // failed read asserts something about the deployment it cannot support. This
+        // is also the page's initial state, before `onMounted` resolves the registry.
+        const wrapper = mountDesk({ tools: null, skill: makeSkill({ allowed_tools: null }) })
+        expect(wrapper.find('[data-test="allowed-tools-empty"]').exists()).toBe(false)
+        expect(wrapper.get('[data-test="allowed-tools-unavailable"]').text()).toContain('could not be read')
+    })
+
     it('checking a tool appends its name to the submitted string', async () => {
         const wrapper = withTools({ skill: unresolvable() })
         await wrapper.get('[data-test="tool-option-agent"] input').setValue(true)
@@ -986,7 +996,11 @@ describe('SkillDesk → validation feedback', () => {
             validationErrors: [makeValidationEntry({ code: 'ALLOWED_TOOLS_INVALID', message: 'not a space-separated string', path: 'allowed-tools' })],
         })
         const field = wrapper.get('[data-test="field-allowed-tools"]')
-        expect(field.attributes('aria-invalid')).toBe('true')
+        // On the inputs, not the `<fieldset>`: the fieldset is not an ARIA widget, so
+        // an invalid state on it reaches no assistive technology.
+        for (const box of field.findAll('input[type="checkbox"]')) {
+            expect(box.attributes('aria-invalid')).toBe('true')
+        }
         expect(field.findAll('[data-test="field-error"]')).toHaveLength(1)
         expect(wrapper.find('[data-test="validation-banner"]').exists()).toBe(false)
     })

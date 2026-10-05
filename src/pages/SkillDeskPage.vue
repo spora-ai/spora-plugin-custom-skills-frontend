@@ -135,17 +135,28 @@ async function resolve(): Promise<void> {
     }
 }
 
-watch(name, () => {
-    fileContents.value = {}
-    void resolve()
-}, { immediate: true })
-
 watch(
     () => store.skillsByName[name.value],
     (skill) => {
         if (skill) loaded.value = skill
     },
 )
+
+// A name change has to clear the save report: it names what the *previous* skill
+// stores, and nothing else on the page survives a name change either.
+watch(name, () => {
+    fileContents.value = {}
+    savedDeclaration.value = undefined
+    void resolve()
+})
+
+// First load. Separate from the watcher above because `savedDeclaration` is declared
+// below, and an `immediate` watcher would touch the ref before it exists.
+onMounted(() => {
+    fileContents.value = {}
+    savedDeclaration.value = undefined
+    void resolve()
+})
 
 async function loadSidecarFiles(skillName: string): Promise<void> {
     const sidecars = (store.skillsByName[skillName]?.files ?? []).filter((f) => f.path !== 'SKILL.md')
@@ -236,6 +247,7 @@ function restore(): void {
     void store
         .restoreSkill(name.value)
         .then((skill) => {
+            savedDeclaration.value = skill.allowed_tools
             store.setNotice(`Restored the previous version of ${skill.name}.`)
         })
         .catch(() => {
