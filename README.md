@@ -24,7 +24,7 @@ while there is exactly one thing to do.
 | `/library` | Catalogue — every shipped skill | `GET /api/v1/skills` (the **host**) | read-only + *Duplicate* |
 | `/library/:name` | Viewer — read a shipped skill | `GET /api/v1/skills/{name}` + `…/files/{path}` per sidecar (the **host**) | read-only |
 
-Three routing decisions worth defending:
+Four routing decisions worth defending:
 
 - **`/skills/:name` and `/library/:name` are separate routes**, not one route with
   a `?view=` query. A shipped skill is a global, read-only resource; a custom one
@@ -32,6 +32,13 @@ Three routing decisions worth defending:
   visible instead of hiding it behind a query string.
 - **`/new` is top-level, not `/skills/new`**, which would shadow a skill literally
   named `new` — a legal slug under the contract.
+- **A host link follows the skill's kind.** The backend plugin's
+  `CustomSkillSearchProvider` emits `/apps/custom-skills/skill/{name}` for an own
+  skill and `/apps/custom-skills/library/{name}` for a shipped one, and the host
+  registers no child route for either — so `src/lib/hostRoute.ts` parses the path
+  itself and forwards it to the matching local route. The legacy `?skill=` form
+  still means the desk, because core only ever emitted an href for a skill whose
+  owning plugin had an app, which back then meant an own skill.
 - **The principal is not in the URL.** It lives in the Pinia store, and a scope
   change navigates to home: the desk's URL says `invoice-drafting` and nothing
   about whose it is, so re-pointing it at another principal's identically-named

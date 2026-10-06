@@ -75,10 +75,11 @@ const SporaApp: MountContract = {
         })
         app.use(router)
 
-        // Follow the host's URL into a skill. Core's `SkillSearchProvider` links a
-        // skill as `/apps/custom-skills/skill/{name}`, and the host router registers
-        // no child route for that, so the panel reads the path itself — the same
-        // arrangement as `spora-plugin-media-archive`'s `lib/route-detection.ts`.
+        // Follow the host's URL into a skill. This plugin's `CustomSkillSearchProvider`
+        // links a skill by kind — `/apps/custom-skills/skill/{name}` for an own one,
+        // `/apps/custom-skills/library/{name}` for a shipped one — and the host router
+        // registers no child route for either, so the panel reads the path itself, the
+        // same arrangement as `spora-plugin-media-archive`'s `lib/route-detection.ts`.
         //
         // Host navigation is listened for imperatively via `afterEach` rather than by
         // watching `hostContext.router.currentRoute`: the plugin and the host ship

@@ -127,6 +127,25 @@ describe('SporaApp (main.ts mount contract)', () => {
         expect(target.querySelector('[data-test="home-page"]')).toBeNull()
     })
 
+    it('mount() lands a /library/ host URL on the read-only viewer, not the desk', async () => {
+        const main = await import('../src/main')
+        const target = makeTarget()
+        const hostContext = makeHostContext()
+        hostContext.router = fakeHostRouter({ path: '/apps/custom-skills/library/time-arithmetic' })
+
+        await main.default.mount(target, hostContext)
+        await new Promise((r) => setTimeout(r, 0))
+
+        // A shipped skill is global and read-only, so the host links it under
+        // `/library/`. Collapsing both kinds onto the desk route would render the
+        // viewer page under the writable route, and the scope bar would announce the
+        // acting principal for a skill that has none.
+        expect(target.querySelector('[data-test="viewer-page"]')).not.toBeNull()
+        expect(target.querySelector('[data-test="desk-page"]')).toBeNull()
+        expect(target.querySelector('[data-test="section-catalogue"]')?.getAttribute('aria-current')).toBe('page')
+        expect(target.querySelector('[data-test="section-skills"]')?.getAttribute('aria-current')).toBeNull()
+    })
+
     it('follows a later host navigation, and unregisters the listener on unmount', async () => {
         const main = await import('../src/main')
         const target = makeTarget()
