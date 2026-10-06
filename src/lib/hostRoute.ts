@@ -1,14 +1,18 @@
 /**
  * Where a host URL for a skill points inside this app.
  *
- * Core's `SkillSearchProvider` links a skill the way its kind reads: an own
- * (custom) skill as `/apps/custom-skills/skill/{name}`, a shipped one as
- * `/apps/custom-skills/library/{name}` — the same detail-vs-catalog split
+ * This plugin's own `CustomSkillSearchProvider` links a skill the way its kind
+ * reads: an own (custom) skill as `/apps/custom-skills/skill/{name}`, a shipped one
+ * as `/apps/custom-skills/library/{name}` — the same detail-vs-catalog split
  * `spora-plugin-media-archive` uses for an asset (`/apps/media-archive/asset/{id}`
  * against its listing). The host router registers no child route for either, so the
  * app parses the path itself. That is what makes browser back/forward, a hard
  * refresh and a pasted link all land on the same skill: the path is the source of
  * truth, and nothing has to be remembered in memory for it to survive a reload.
+ *
+ * Core shipped a `SkillSearchProvider` until spora-core#292 and emitted neither
+ * prefix: it built `/apps/{source}/skill/{name}` from the skill's *owner*, or `null`
+ * when no app was registered under that source — which was every shipped skill.
  *
  * Following the kind rather than collapsing both onto one route is the point: a
  * shipped skill is global and read-only while a custom one is principal-scoped and

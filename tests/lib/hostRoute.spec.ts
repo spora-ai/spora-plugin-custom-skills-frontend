@@ -1,10 +1,10 @@
 /**
  * Where a host URL for a skill points inside the app.
  *
- * Core's `SkillSearchProvider` links a skill by kind: `/apps/custom-skills/skill/{name}`
- * for an own one, `/apps/custom-skills/library/{name}` for a shipped one. The host
- * router registers no child route for either, so the app parses the path itself, the
- * way `spora-plugin-media-archive` does for an asset.
+ * This plugin's `CustomSkillSearchProvider` links a skill by kind:
+ * `/apps/custom-skills/skill/{name}` for an own one, `/apps/custom-skills/library/{name}`
+ * for a shipped one. The host router registers no child route for either, so the app
+ * parses the path itself, the way `spora-plugin-media-archive` does for an asset.
  */
 import { describe, it, expect } from 'vitest'
 import { extractSkillRef, localRouteForHostRoute } from '../../src/lib/hostRoute'
@@ -61,8 +61,9 @@ describe('localRouteForHostRoute', () => {
     })
 
     it('sends a shipped skill to the read-only viewer, not the desk', () => {
-        // The desk route is where the bug lived: it renders the viewer page
-        // read-only under a scope bar announcing a principal the skill has none of.
+        // The desk route is where the bug lived: it renders the DESK read-only,
+        // with the principal's own skill substituted for placeholder fields, under
+        // a scope bar announcing a principal a shipped skill has none of.
         expect(localRouteForHostRoute({ path: '/apps/custom-skills/library/time-arithmetic' }))
             .toBe('/library/time-arithmetic')
     })
