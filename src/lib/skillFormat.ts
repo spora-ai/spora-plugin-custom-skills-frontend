@@ -218,7 +218,7 @@ const FIELD_SET: ReadonlySet<string> = new Set(SKILL_FIELDS)
  */
 export function fieldForPath(path: string | undefined | null): SkillField | null {
     if (typeof path !== 'string' || path === '') return null
-    const normalized = path.trim().toLowerCase().replaceAll(/-/g, '_')
+    const normalized = path.trim().toLowerCase().replaceAll('-', '_')
     return FIELD_SET.has(normalized) ? (normalized as SkillField) : null
 }
 
