@@ -32,6 +32,7 @@ import DOMPurify from 'dompurify'
 import { ChevronDown, ChevronRight, Copy, FileText, Folder, Lock, MoreHorizontal, Pencil, Plus, Save, Trash2 } from 'lucide-vue-next'
 import SourceEditor from './SourceEditor.vue'
 import FileDialog from './FileDialog.vue'
+import DeclaredToolsField from './DeclaredToolsField.vue'
 import {
     errorsForField,
     fileKind,
@@ -46,8 +47,6 @@ import {
     restoreLabel,
     restoreExplanation,
     declaredToolNames,
-    serializeToolNames,
-    toolOptions,
     byteSize,
     lineCount,
     MAX_FILE_BYTES,
@@ -249,26 +248,48 @@ const activeIsMarkdown = computed(() => isMarkdownPath(activePath.value))
 const showRestore = computed(() => props.skill.has_previous)
 
 /**
- * The declared-tools group: this instance's registry unioned with whatever the
- * stored value declares, so a name that no installed tool answers to is still on
- * screen rather than silently dropped by the next save.
+ * What the collapsed frontmatter is hiding, as a summary line.
+ *
+ * A closed disclosure that names its fields but not their state is the same
+ * invisibility the tools group was extracted to fix, one level up: the operator
+ * cannot tell "I set this" from "I never touched it" without expanding. So the
+ * line carries the set values — the declaration count in particular, because a
+ * skill that declares tools is exactly the one an operator forgets about.
  */
-const toolRows = computed(() => toolOptions(props.tools, allowedTools.value))
+const moreSummary = computed<string>(() => {
+    const parts: string[] = []
+    if (license.value.trim() !== '') parts.push(license.value.trim())
+    if (compatibility.value.trim() !== '') parts.push(compatibility.value.trim())
+
+    const tools = declaredToolNames(allowedTools.value)
+    if (tools.length > 0) parts.push(`${tools.length} ${tools.length === 1 ? 'tool' : 'tools'}`)
+
+    if (metadataJson.value.trim() !== '') parts.push('metadata')
+
+    return parts.length > 0
+        ? parts.join(' · ')
+        : 'license, compatibility, tools, metadata'
+})
 
 /**
- * Add or remove one name, leaving every other declared name in place.
+ * Whether anything behind the disclosure is wrong.
  *
- * The value is re-serialised from the parsed names, so an edit collapses
- * whitespace runs and drops duplicates: an untouched buffer is submitted byte for
- * byte, an edited one is not.
+ * Opens it on arrival when true. The alternative — leave it closed and let the
+ * operator find the error — is how a save gets refused by a field they cannot
+ * see, which is the dead end the banner exists to prevent.
  */
-function toggleTool(name: string, checked: boolean): void {
-    const current = declaredToolNames(allowedTools.value)
-    const next = checked
-        ? serializeToolNames([...current, name])
-        : serializeToolNames(current.filter((entry) => entry !== name))
-    allowedTools.value = next
-}
+const moreHasError = computed(() =>
+    fieldErrors('license').length > 0
+    || fieldErrors('compatibility').length > 0
+    || fieldErrors('allowed_tools').length > 0
+    || metadataError.value !== null,
+)
+
+const moreOpen = ref(false)
+
+watch(moreHasError, (hasError) => {
+    if (hasError) moreOpen.value = true
+}, { immediate: true })
 
 /**
  * Why a shipped sidecar is blank.
@@ -906,157 +927,108 @@ function handleSubmit(): void {
                             </ul>
                         </div>
 
-                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <div>
-                                <label :for="idFor('license')" class="mb-1.5 block text-xs font-medium">License</label>
-                                <input
-                                    :id="idFor('license')"
-                                    v-model="license"
-                                    type="text"
-                                    placeholder="MIT"
-                                    :readonly="readOnly"
-                                    class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                                    :aria-invalid="fieldErrors('license').length > 0"
-                                    data-test="field-license"
-                                />
-                            </div>
-                            <div>
-                                <label :for="idFor('compatibility')" class="mb-1.5 block text-xs font-medium">
-                                    Compatibility
-                                </label>
-                                <input
-                                    :id="idFor('compatibility')"
-                                    v-model="compatibility"
-                                    type="text"
-                                    placeholder="spora>=0.28"
-                                    :readonly="readOnly"
-                                    class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-                                    :aria-invalid="fieldErrors('compatibility').length > 0"
-                                    data-test="field-compatibility"
-                                />
-                            </div>
-                        </div>
-
                         <!--
-                        A checkbox group, not a text input, and not a `<select multiple>`.
+                        Everything except the description is folded away.
 
-                        The grammar is a space-separated list of bare tool names, so
-                        a free-text box invites the three things core rejects — commas,
-                        FQCNs, `Bash(git:*)` — and offers nothing for the common case
-                        of ticking a tool you can see. There is no multi-select
-                        component reachable from a plugin: the host's UI library is not
-                        importable here, which is the same reason `AlertBanner.vue` is
-                        a verbatim copy. So this follows the *markup* of the host's
-                        `ToolSettingField.vue` multi-select — one plain checkbox per
-                        option, description under the label, and the `<template v-else>`
-                        wrapper because `v-else` and `v-for` on one element is a
-                        precedence trap.
+                        The description is the field a skill is matched on and the
+                        only one whose absence is silent, so it stays on screen. The
+                        rest are set once and rarely: a real instance has dozens of
+                        tools, so the checkbox group alone was taller than the editor
+                        it sat above. A disclosure whose summary carries the set
+                        values — see `moreSummary` — keeps "did I set this" answerable
+                        without opening it.
 
-                        The options are the registry unioned with the stored names, so
-                        a declared tool this instance does not have stays on screen as
-                        a disabled row. Dropping it would make the declaration
-                        invisible and delete it on the next unrelated save — which is
-                        what core's `ALLOWED_TOOLS_UNKNOWN_TOOL` warning exists to stop
-                        from being an error.
+                        Controlled rather than native: `@click.prevent` stops the browser's
+                        own toggle, so `moreOpen` is the only copy and the element
+                        cannot disagree with it. `click` covers Enter and Space on
+                        a `<summary>`, so the keyboard still works.
                     -->
-                        <fieldset
-                            class="min-w-0 border-0 p-0"
-                            :aria-describedby="fieldErrors('allowed_tools').length > 0 ? 'allowed-tools-errors' : undefined"
-                            data-test="field-allowed-tools"
+                        <details
+                            :open="moreOpen"
+                            class="group overflow-hidden rounded-lg border border-border"
+                            data-test="frontmatter-more"
                         >
-                            <legend class="mb-1.5 block text-xs font-medium">
-                                Tools this skill uses
-                            </legend>
-                            <!-- Only a registry that was actually read may claim the
-                            instance has no tools: `props.tools === null` means the read
-                            failed, and `[]` in place of it would make every declaration
-                            look unresolvable. -->
-                            <div
-                                v-if="toolRows.length === 0 && tools !== null"
-                                class="text-[11px] text-muted-foreground"
-                                data-test="allowed-tools-empty"
+                            <summary
+                                class="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs font-medium transition-colors hover:bg-muted/40"
+                                data-test="frontmatter-more-toggle"
+                                @click.prevent="moreOpen = !moreOpen"
                             >
-                                No tools are registered on this instance.
-                            </div>
-                            <div
-                                v-else-if="toolRows.length === 0"
-                                class="text-[11px] text-muted-foreground"
-                                data-test="allowed-tools-unavailable"
-                            >
-                                The tool registry could not be read. Declared tools are shown as stored.
-                            </div>
-                            <template v-else>
-                                <label
-                                    v-for="row in toolRows"
-                                    :key="row.name"
-                                    class="flex items-start gap-2 text-xs"
-                                    :class="row.available ? '' : 'text-muted-foreground'"
-                                    :data-test="`tool-option-${row.name}`"
+                                <ChevronDown class="h-3.5 w-3.5 shrink-0 transition-transform" :class="moreOpen ? 'rotate-180' : ''" />
+                                More frontmatter
+                                <span
+                                    class="min-w-0 truncate font-mono text-[11px] font-normal text-muted-foreground"
+                                    data-test="frontmatter-more-summary"
                                 >
-                                    <input
-                                        type="checkbox"
-                                        class="mt-0.5"
-                                        :value="row.name"
-                                        :checked="row.selected"
-                                        :disabled="!row.available || readOnly"
-                                        :aria-invalid="fieldErrors('allowed_tools').length > 0"
-                                        @change="toggleTool(row.name, ($event.target as HTMLInputElement).checked)"
-                                    >
-                                    <span class="flex min-w-0 flex-col">
-                                        <span class="font-medium">{{ row.label }}</span>
-                                        <span class="font-mono text-[10px] text-muted-foreground">{{ row.name }}</span>
-                                        <span v-if="row.description" class="text-[11px] text-muted-foreground">
-                                            {{ row.description }}
-                                        </span>
-                                        <!--
-                                        A name no installed tool answers to. Not a
-                                        claim about enforcement — nothing is enforced —
-                                        only that this instance cannot resolve it.
-                                        -->
-                                        <span v-if="!row.available" class="text-[11px] text-amber-700 dark:text-amber-300" data-test="tool-unavailable-note">
-                                            Not available on this instance. Kept as declared.
-                                        </span>
-                                    </span>
-                                </label>
-                            </template>
-                            <!--
-                            "Tools this skill uses", not "Required tools" and not
-                            "Pre-approved tools": the spec's wording for this field is
-                            "pre-approved tools", and Spora implements no pre-approval
-                            and enforces nothing. A label promising either would be a
-                            promise the system does not keep.
-                        -->
-                            <p class="mt-1 text-[11px] text-muted-foreground">
-                                A hint for whoever reads this skill. Spora grants no
-                                pre-approval from it and enforces nothing — an agent can
-                                still call a tool that is not on this list.
-                            </p>
-                            <ul
-                                v-for="entry in fieldErrors('allowed_tools')"
-                                id="allowed-tools-errors"
-                                :key="entry.code + entry.message"
-                                class="mt-1 text-xs text-destructive"
-                                data-test="field-error"
-                            >
-                                {{ entry.message }}
-                            </ul>
-                        </fieldset>
+                                    {{ moreSummary }}
+                                </span>
+                                <!-- An error behind a closed disclosure would
+                                     otherwise be invisible until expanded, which is
+                                     the dead end this whole arrangement risks. -->
+                                <span
+                                    v-if="moreHasError"
+                                    class="ml-auto shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold text-destructive"
+                                    data-test="frontmatter-more-error"
+                                >
+                                    needs attention
+                                </span>
+                            </summary>
 
-                        <div>
-                            <label :for="idFor('metadata')" class="mb-1.5 block text-xs font-medium">
-                                Metadata <span class="text-muted-foreground">(JSON object)</span>
-                            </label>
-                            <textarea
-                                :id="idFor('metadata')"
-                                v-model="metadataJson"
-                                rows="2"
-                                :readonly="readOnly"
-                                :placeholder="METADATA_PLACEHOLDER"
-                                class="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs"
-                                :aria-invalid="metadataError !== null"
-                                data-test="field-metadata"
-                            />
-                        </div>
+                            <div class="space-y-3 border-t border-border bg-background px-3 py-3">
+                                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    <div>
+                                        <label :for="idFor('license')" class="mb-1.5 block text-xs font-medium">License</label>
+                                        <input
+                                            :id="idFor('license')"
+                                            v-model="license"
+                                            type="text"
+                                            placeholder="MIT"
+                                            :readonly="readOnly"
+                                            class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                                            :aria-invalid="fieldErrors('license').length > 0"
+                                            data-test="field-license"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label :for="idFor('compatibility')" class="mb-1.5 block text-xs font-medium">
+                                            Compatibility
+                                        </label>
+                                        <input
+                                            :id="idFor('compatibility')"
+                                            v-model="compatibility"
+                                            type="text"
+                                            placeholder="spora>=0.28"
+                                            :readonly="readOnly"
+                                            class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                                            :aria-invalid="fieldErrors('compatibility').length > 0"
+                                            data-test="field-compatibility"
+                                        />
+                                    </div>
+                                </div>
+
+                                <DeclaredToolsField
+                                    v-model="allowedTools"
+                                    :tools="tools"
+                                    :read-only="readOnly"
+                                    :errors="fieldErrors('allowed_tools')"
+                                />
+
+                                <div>
+                                    <label :for="idFor('metadata')" class="mb-1.5 block text-xs font-medium">
+                                        Metadata <span class="text-muted-foreground">(JSON object)</span>
+                                    </label>
+                                    <textarea
+                                        :id="idFor('metadata')"
+                                        v-model="metadataJson"
+                                        rows="2"
+                                        :readonly="readOnly"
+                                        :placeholder="METADATA_PLACEHOLDER"
+                                        class="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs"
+                                        :aria-invalid="metadataError !== null"
+                                        data-test="field-metadata"
+                                    />
+                                </div>
+                            </div>
+                        </details>
                     </div>
                 </details>
 

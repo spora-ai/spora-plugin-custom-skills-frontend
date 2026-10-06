@@ -21,7 +21,7 @@ import { describe, it, expect } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import SkillDesk from '../../src/components/SkillDesk.vue'
 import SourceEditor from '../../src/components/SourceEditor.vue'
-import { makeSkill, makeTools, makeValidationEntry } from '../fixtures'
+import { makeSkill, makeTool, makeTools, makeValidationEntry } from '../fixtures'
 import { CONVENTIONAL_SKILL_FOLDERS } from '../../src/lib/skillFormat'
 
 function mountDesk(props: Record<string, unknown> = {}) {
@@ -788,6 +788,151 @@ describe('SkillDesk → the frontmatter', () => {
 })
 
 /**
+ * The collapsed disclosure holding everything except the description.
+ *
+ * The description stays on screen because it is the field a skill is matched on
+ * and the only one whose absence is silent. The rest are set once and rarely,
+ * and the declared-tools group is one row per installed tool — on a real
+ * instance that is taller than the editor it sits above.
+ *
+ * Collapsing them raises the obvious hazard, and the whole design here is
+ * against it: **a closed disclosure that names its fields but not their state is
+ * the same invisibility the tools group was extracted to fix, one level up.** So
+ * the summary carries the set values, and an error behind the fold opens it
+ * rather than waiting to be discovered.
+ */
+describe('SkillDesk → the secondary frontmatter', () => {
+    const more = (w: ReturnType<typeof mountDesk>) => w.get('[data-test="frontmatter-more"]')
+
+    it('is folded on arrival, with only the description showing', () => {
+        const wrapper = mountDesk()
+
+        expect(more(wrapper).element.hasAttribute('open')).toBe(false)
+        expect(wrapper.find('[data-test="field-description"]').exists()).toBe(true)
+        // Present in the DOM, just not visible: a `<details>` hides its children
+        // rather than unmounting them, so the buffer survives a fold.
+        expect(wrapper.find('[data-test="field-license"]').exists()).toBe(true)
+    })
+
+    it('names the fields it is hiding when none of them is set', () => {
+        // The default fixture sets all four, so the "nothing set" summary needs a
+        // skill that genuinely has nothing — otherwise this test silently asserts
+        // the populated branch and never reaches its own.
+        const summary = mountDesk({
+            skill: makeSkill({
+                license: null,
+                compatibility: null,
+                allowed_tools: null,
+                metadata: {},
+            }),
+        }).get('[data-test="frontmatter-more-summary"]').text()
+
+        expect(summary).toContain('license')
+        expect(summary).toContain('compatibility')
+        expect(summary).toContain('metadata')
+        expect(summary).not.toContain('tools ·')
+    })
+
+    it('reports the set values, so "did I set this" is answerable without opening it', () => {
+        const summary = mountDesk().get('[data-test="frontmatter-more-summary"]').text()
+
+        expect(summary).toContain('MIT')
+        expect(summary).toContain('spora>=0.28')
+        expect(summary).toContain('2 tools')
+        expect(summary).toContain('metadata')
+    })
+
+    it('says "1 tool" for a single declaration', () => {
+        const summary = mountDesk({
+            skill: makeSkill({ allowed_tools: 'agent' }),
+        }).get('[data-test="frontmatter-more-summary"]').text()
+
+        expect(summary).toContain('1 tool')
+        expect(summary).not.toContain('1 tools')
+    })
+
+    it('opens and closes on the toggle', async () => {
+        const wrapper = mountDesk()
+        const toggle = wrapper.get('[data-test="frontmatter-more-toggle"]')
+
+        expect(toggle.text()).toContain('More frontmatter')
+        // The chevron, for the reason the outer disclosure has one: a toggle that
+        // looks like a static heading is not one.
+        expect(toggle.find('svg').exists()).toBe(true)
+
+        await toggle.trigger('click')
+        expect(more(wrapper).element.hasAttribute('open')).toBe(true)
+
+        await toggle.trigger('click')
+        expect(more(wrapper).element.hasAttribute('open')).toBe(false)
+    })
+
+    it('arrives open when a hidden field has an error, so a refused save is not a mystery', () => {
+        // An error behind a closed disclosure is the dead end this arrangement
+        // risks: the operator has a 422 and no visible cause.
+        const wrapper = mountDesk({
+            validationErrors: [makeValidationEntry({
+                code: 'ALLOWED_TOOLS_INVALID',
+                message: 'not a space-separated string',
+                path: 'allowed-tools',
+            })],
+        })
+
+        expect(more(wrapper).element.hasAttribute('open')).toBe(true)
+        expect(wrapper.get('[data-test="frontmatter-more-error"]').text()).toContain('needs attention')
+    })
+
+    it('opens when the metadata JSON is refused, which is a client-side rejection', async () => {
+        // The one hidden field whose error never comes from the server: invalid JSON
+        // is caught in `handleSubmit`, so there is no `validationErrors` entry and the
+        // badge would otherwise be the only signal — sitting inside a closed fold.
+        const wrapper = mountDesk()
+        expect(more(wrapper).element.hasAttribute('open')).toBe(false)
+
+        await wrapper.get('[data-test="field-metadata"]').setValue('{not json')
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+
+        expect(more(wrapper).element.hasAttribute('open')).toBe(true)
+        expect(wrapper.find('[data-test="frontmatter-more-error"]').exists()).toBe(true)
+    })
+
+    it('stays foldable after arriving open, so the operator is not trapped', async () => {
+        const wrapper = mountDesk({
+            validationErrors: [makeValidationEntry({
+                code: 'ALLOWED_TOOLS_INVALID',
+                message: 'not a space-separated string',
+                path: 'allowed-tools',
+            })],
+        })
+
+        await wrapper.get('[data-test="frontmatter-more-toggle"]').trigger('click')
+        expect(more(wrapper).element.hasAttribute('open')).toBe(false)
+        // The marker stays, so a collapsed error is still advertised.
+        expect(wrapper.find('[data-test="frontmatter-more-error"]').exists()).toBe(true)
+    })
+
+    it('says nothing about an error on the description, which is never hidden', () => {
+        const wrapper = mountDesk({
+            validationErrors: [makeValidationEntry({
+                code: 'DESCRIPTION_TOO_LONG',
+                message: 'too long',
+                path: 'description',
+            })],
+        })
+
+        expect(wrapper.find('[data-test="frontmatter-more-error"]').exists()).toBe(false)
+    })
+
+    it('scrolls the tool list rather than pushing the editor off the window', () => {
+        // A real instance has dozens of tools, so the group needs its own box.
+        const list = mountDesk({ tools: makeTools() }).get('[data-test="allowed-tools-list"]')
+
+        expect(list.classes()).toContain('overflow-y-auto')
+        expect(list.classes()).toContain('max-h-56')
+    })
+})
+
+/**
  * The declared-tools group.
  *
  * `allowed-tools` is a space-separated list of bare tool names — a grammar, not a
@@ -810,6 +955,70 @@ describe('SkillDesk → the declared tools', () => {
 
     /** A skill declaring only names this instance cannot resolve. */
     const unresolvable = () => makeSkill({ allowed_tools: 'read_url' })
+
+    it('lays the row out on one line', () => {
+        // Three lines per row × dozens of tools was a list taller than the editor,
+        // inside a group that already had to be collapsed and then scrolled. The
+        // description is what separates similarly-named tools, so it truncates
+        // rather than being dropped.
+        const row = mountDesk({ tools: makeTools() }).get('[data-test="tool-option-agent"]')
+
+        expect(row.classes()).toContain('items-center')
+        expect(row.classes()).not.toContain('items-start')
+        expect(row.get('[data-test="tool-description-agent"]').classes()).toContain('truncate')
+    })
+
+    it('omits the wire name when the display name already spells it', () => {
+        // `Time` over `time` was the second of three lines and said nothing the
+        // first did not — the name is the same word in another typeface.
+        const wrapper = mountDesk({
+            tools: makeTools(makeTool({ tool_name: 'time', display_name: 'Time' })),
+        })
+
+        expect(wrapper.get('[data-test="tool-option-time"]').text()).toContain('Time')
+        expect(wrapper.find('[data-test="tool-name-time"]').exists()).toBe(false)
+    })
+
+    it('normalises spaces and hyphens before deciding the name is redundant', () => {
+        // A human label is derived from a snake_case name by exactly this
+        // substitution, so `Serper Search` and `serper_search` are the same word.
+        const wrapper = mountDesk({
+            tools: makeTools(makeTool({ tool_name: 'serper_search', display_name: 'Serper Search' })),
+        })
+
+        expect(wrapper.find('[data-test="tool-name-serper_search"]').exists()).toBe(false)
+    })
+
+    it('keeps the wire name when the display name says something different', () => {
+        // The name is what lands in `allowed-tools`, so a label that does not
+        // reproduce it has to leave it on screen.
+        const wrapper = mountDesk({
+            tools: makeTools(makeTool({ tool_name: 'image_openai', display_name: 'Image (OpenAI)' })),
+        })
+
+        expect(wrapper.get('[data-test="tool-name-image_openai"]').text()).toBe('image_openai')
+    })
+
+    it('keeps the full text on the row even where the view truncates it', () => {
+        const description = 'x'.repeat(400)
+        const row = mountDesk({
+            tools: makeTools(makeTool({ tool_name: 'time', display_name: 'Time', description })),
+        }).get('[data-test="tool-option-time"]')
+
+        // The wire name is not rendered here, so the title is the only place it
+        // survives — and the description is truncated.
+        expect(row.attributes('title')).toBe(`time — ${description}`)
+    })
+
+    it('keeps the unresolvable note to one line, with the reassurance in the title', async () => {
+        const wrapper = withTools({ skill: unresolvable() })
+        const note = wrapper.get('[data-test="tool-unavailable-note"]')
+
+        // On the pill rather than a fourth line, and the half that reassures —
+        // that the next save will not drop the value — is in the title.
+        expect(note.text()).toBe('Not available on this instance')
+        expect(note.attributes('title')).toContain('Kept as declared')
+    })
 
     it('offers every registered tool, with its display name and description', () => {
         const wrapper = withTools({ skill: makeSkill({ allowed_tools: null }) })
