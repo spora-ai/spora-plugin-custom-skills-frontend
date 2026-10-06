@@ -148,6 +148,10 @@ describe('CreateSkillPage → what the create sends', () => {
             body: expect.stringContaining('# Invoice drafting'),
             license: null,
             compatibility: null,
+            // Always sent, and `null` with no template: the shipped bundle sends the
+            // key on every write, and absent-means-leave-alone would be a different
+            // reading from the explicit null that revokes.
+            allowed_tools: null,
             metadata: {},
             files: {},
         })
@@ -332,6 +336,9 @@ describe('CreateSkillPage → starting from a shipped skill', () => {
             body: '# Review\n\n1. Read the diff.\n',
             license: 'MIT',
             metadata: { tier: 'core' },
+            // Carried from the template, so a copy declares what the original
+            // declares rather than arriving silent about it.
+            allowed_tools: 'typst_compile',
             // Empty on purpose: the host serves no per-file read for a shipped
             // skill, and a blank file the operator did not write is worse than an
             // absent one they have been told about.

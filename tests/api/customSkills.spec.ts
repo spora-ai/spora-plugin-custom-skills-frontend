@@ -101,6 +101,10 @@ describe('api/customSkills → writes', () => {
         body: '# Steps',
         license: 'MIT',
         compatibility: null,
+        // Always on the payload, even when it declares nothing: the shipped v0.1.0
+        // bundle sends the key on every save, so omitting it here would null a
+        // declaration the author never touched.
+        allowed_tools: null,
         metadata: { tier: 'pro' },
         files: { 'examples/invoice.md': 'x' },
     }

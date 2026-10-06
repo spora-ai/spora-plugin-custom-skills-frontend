@@ -15,6 +15,12 @@
  *
  * Shipped skills need a separate component: the host serves sidecar contents from a
  * per-file read that this asks for as each file is opened.
+ *
+ * The `allowed-tools` fact row went in `61296f4` with the rest of the retired field
+ * and is back with it, because a shipped skill's declaration is readable here and
+ * nowhere else this panel owns: the desk is read-only for a shipped skill, so this
+ * is the only surface where an author can see what one declares before copying it.
+ * A fact, not a control — the route has no write path.
  */
 import { computed, ref, watch } from 'vue'
 import { MdPreview } from 'md-editor-v3'
@@ -103,6 +109,11 @@ const facts = computed(() => {
     const licence = 'license' in d ? d.license : null
     if (licence) out.push({ label: 'License', value: licence })
     if (d.compatibility) out.push({ label: 'Compatibility', value: d.compatibility })
+    // The declaration, as written. A shipped skill's tools are visible here but
+    // not editable — the viewer's route has no write path — so this is a fact row
+    // and nothing more; whether an agent has the tool is a per-agent question this
+    // surface has no context to answer.
+    if (d.allowed_tools) out.push({ label: 'Tools this skill uses', value: d.allowed_tools })
     const meta = Object.entries(d.metadata ?? {})
     if (meta.length > 0) {
         out.push({ label: 'Metadata', value: meta.map(([k, v]) => `${k}: ${v}`).join('  ·  ') })
