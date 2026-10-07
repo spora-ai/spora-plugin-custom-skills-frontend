@@ -17,6 +17,7 @@
 import { computed, ref } from 'vue'
 import { AlertTriangle, MoreHorizontal, Sparkles, Trash2, Users } from 'lucide-vue-next'
 import { restoreExplanation, restoreLabel, updatedLabel } from '../lib/skillFormat'
+import { deskPath } from '../lib/paths'
 import type { AgentSummary, CustomSkillResource, SkillAllowlistEntry } from '../types'
 
 const props = withDefaults(
@@ -40,6 +41,17 @@ const emit = defineEmits<{
 
 const menuOpen = ref(false)
 const selectedAgentId = ref<number | null>(null)
+
+/**
+ * Where this row's skill lives.
+ *
+ * Built from the row's own `principal_id` rather than the acting principal: a row is
+ * a skill of exactly one principal (`unique(principal_id, name)`), so the resource
+ * already carries the scope its link needs. Reading the store here would work only
+ * while the store and the list agree — and the whole point of this change is that the
+ * URL names the scope, so a link derived from ambient state can point at the wrong one.
+ */
+const desk = computed(() => deskPath(props.skill.principal_id, props.skill.name))
 
 const updated = computed(() => updatedLabel(props.skill.updated_at))
 const isAgentProvenance = computed(() => props.skill.provenance === 'agent')
@@ -84,7 +96,7 @@ function submitDelete(): void {
         <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-center gap-2">
                 <RouterLink
-                    :to="{ path: `/skills/${skill.name}` }"
+                    :to="{ path: desk }"
                     class="truncate font-mono text-sm font-medium hover:underline"
                     data-test="skill-name"
                 >

@@ -15,11 +15,14 @@ import { makeAllowlistEntry, makeSkill } from '../fixtures'
 
 const AGENTS = [{ id: 5, name: 'Invoicer' }, { id: 6, name: 'Researcher' }]
 
+// The desk paths this spec links to. Registered here rather than importing
+// `mountPage`'s table because a row is mounted on its own, with no page around it.
 const router = createRouter({
     history: createMemoryHistory(),
     routes: [
         { path: '/', name: 'home', component: { template: '<div />' } },
-        { path: '/skills/:name', name: 'desk', component: { template: '<div />' } },
+        { path: '/p/:principalId', name: 'home-scoped', component: { template: '<div />' } },
+        { path: '/p/:principalId/skill/:name', name: 'desk', component: { template: '<div />' } },
     ],
 })
 
@@ -33,7 +36,20 @@ function mountRow(props: Record<string, unknown> = {}) {
 describe('SkillRow → at rest', () => {
     it('links the name at the desk, not at a query-string viewer', () => {
         const wrapper = mountRow()
-        expect(wrapper.get('[data-test="skill-name"]').attributes('href')).toBe('/skills/invoice-drafting')
+        // The row's own `principal_id`, not the acting principal: a row *is* a skill
+        // of exactly one principal, and a link built from ambient state can point at
+        // a principal the row is not on.
+        expect(wrapper.get('[data-test="skill-name"]').attributes('href'))
+            .toBe('/p/7/skill/invoice-drafting')
+    })
+
+    it('links the row\'s own principal, so the desk opens on the scope it belongs to', () => {
+        // Two principals can own identically-named skills (`unique(principal_id,
+        // name)`), so a link derived from the acting principal rather than the row
+        // can land on a different skill with the same name.
+        const wrapper = mountRow({ skill: makeSkill({ principal_id: 8 }) })
+        expect(wrapper.get('[data-test="skill-name"]').attributes('href'))
+            .toBe('/p/8/skill/invoice-drafting')
     })
 
     it('shows the description and the file count', () => {

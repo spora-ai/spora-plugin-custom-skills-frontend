@@ -1,6 +1,10 @@
 <script setup lang="ts">
 /**
- * `/new` — a create form, and a short one.
+ * `/p/{principalId}/new` — a create form, and a short one.
+
+ * The principal is in the path because the create **writes** to it: a form that
+ * submitted under an ambient scope could write a group's skill onto the operator's
+ * own principal, which is the same class of mistake as reading the wrong one.
  *
  * Two design constraints are stated in the UI rather than left implicit:
  *
@@ -31,6 +35,7 @@ import {
     starterBody,
     SKILL_LIMIT,
 } from '../lib/skillFormat'
+import { deskPath, homePath, libraryPath, newSkillPath } from '../lib/paths'
 import type { PreShippedSkillDetail } from '../types'
 
 const store = useSkillsStore()
@@ -105,6 +110,9 @@ const sidecarsToReAdd = computed(() =>
 
 const principal = computed(() => principals.currentPrincipal)
 
+/** The acting principal, which every link on this form carries. */
+const principalId = computed(() => principals.selectedPrincipalId)
+
 const ownNames = computed(() => new Set(store.skills.map((s) => s.name)))
 const shippedNames = computed(() => new Set(store.preShipped.map((s) => s.name)))
 
@@ -167,7 +175,7 @@ async function submit(): Promise<void> {
                 + 'It is not on any agent\'s allowlist yet.',
             )
         }
-        await router.push({ path: `/skills/${created.name}` })
+        await router.push({ path: deskPath(principalId.value, created.name) })
     } catch {
         // `error` and `validationErrors` are rendered by the layout and inline here,
         // so the form and its input survive the rejection.
@@ -178,7 +186,7 @@ async function submit(): Promise<void> {
 <template>
     <div class="mx-auto w-full max-w-xl px-6 py-10" data-test="create-page">
         <RouterLink
-            :to="{ path: '/' }"
+            :to="{ path: homePath(principalId) }"
             class="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
             data-test="create-back"
         >
@@ -306,7 +314,7 @@ async function submit(): Promise<void> {
                             :checked="template === null"
                             class="mt-0.5 h-4 w-4 accent-primary"
                             data-test="start-blank"
-                            @change="router.push({ path: '/new' })"
+                            @change="router.push({ path: newSkillPath(principalId) })"
                         />
                         <span class="min-w-0">
                             <span class="flex items-center gap-2 text-sm font-medium">
@@ -326,7 +334,7 @@ async function submit(): Promise<void> {
                     -->
                     <RouterLink
                         v-if="template === null"
-                        :to="{ path: '/library' }"
+                        :to="{ path: libraryPath(principalId) }"
                         class="flex items-start gap-2.5 rounded-lg border border-border p-3 transition-colors hover:bg-muted/40"
                         data-test="start-shipped"
                     >
@@ -357,7 +365,7 @@ async function submit(): Promise<void> {
                             <span class="flex flex-wrap items-center gap-2 text-sm font-medium">
                                 <span class="truncate font-mono">{{ template.name }}</span>
                                 <RouterLink
-                                    :to="{ path: '/library' }"
+                                    :to="{ path: libraryPath(principalId) }"
                                     class="text-[11px] font-normal text-muted-foreground underline"
                                     data-test="template-change"
                                 >
@@ -403,7 +411,7 @@ async function submit(): Promise<void> {
                     <ChevronRight class="h-4 w-4" />
                 </button>
                 <RouterLink
-                    :to="{ path: '/' }"
+                    :to="{ path: homePath(principalId) }"
                     class="inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     data-test="create-cancel"
                 >

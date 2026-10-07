@@ -1,22 +1,31 @@
 <script setup lang="ts">
 /**
- * `/library/:name` — read one shipped skill. A separate route from
- * `/skills/:name`, not a `?view=` query on it: a shipped skill is a global,
- * read-only resource and a custom skill is a principal-scoped, writable one, and
- * the two having different URLs makes that difference visible instead of hiding it
- * behind a query string.
+ * `/p/{principalId}/library/:name` — read one shipped skill. A separate route from
+ * `/p/{principalId}/skill/:name`, not a `?view=` query on it: a shipped skill is a
+ * global, read-only resource and a custom skill is a principal-scoped, writable one,
+ * and the two having different URLs makes that difference visible instead of hiding
+ * it behind a query string.
+ *
+ * The principal rides along even though the skill it shows does not need one — the
+ * scope is what _Duplicate_ writes the copy onto, so a viewer link that dropped it
+ * would fork onto whichever principal the next reload defaulted to.
  */
 import { computed, inject, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft } from 'lucide-vue-next'
 import SkillViewer from '../components/SkillViewer.vue'
 import * as preshippedApi from '../api/preshippedSkills'
+import { usePrincipalsStore } from '../stores/principals'
+import { libraryPath, newSkillPath } from '../lib/paths'
 import { HOST_CONTEXT_KEY, type PluginHostContext } from '../shims'
 import type { PreShippedSkillDetail } from '../types'
 
 const route = useRoute()
 const router = useRouter()
+const principals = usePrincipalsStore()
 const hostContext = inject<PluginHostContext>(HOST_CONTEXT_KEY)
+
+const principalId = computed(() => principals.selectedPrincipalId)
 
 const name = computed(() => {
     const param = route.params.name
@@ -83,14 +92,14 @@ watch(name, () => {
  * will not serve.
  */
 function duplicate(): void {
-    void router.push({ path: '/new', query: { template: name.value } })
+    void router.push({ path: newSkillPath(principalId.value), query: { template: name.value } })
 }
 </script>
 
 <template>
     <div class="mx-auto w-full max-w-5xl px-6 py-8" data-test="viewer-page">
         <RouterLink
-            :to="{ path: '/library' }"
+            :to="{ path: libraryPath(principalId) }"
             class="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
             data-test="viewer-back"
         >

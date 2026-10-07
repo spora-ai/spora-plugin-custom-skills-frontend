@@ -1,10 +1,13 @@
 <script setup lang="ts">
 /**
- * `/skills/:name` — the writing surface for one principal-scoped skill.
+ * `/p/{principalId}/skill/:name` — the writing surface for one principal-scoped skill.
  *
- * The route names the skill and nothing about whose it is, so a scope change from
- * the bar navigates to home rather than re-pointing this URL at another
- * principal's identically-named skill mid-edit.
+ * **The principal is part of this route, and the read waits for it.** A skill belongs
+ * to exactly one principal, so a URL naming only a skill cannot say whose it is — and
+ * the REST contract resolves an absent `?principal_id=` to the caller's own
+ * user-principal instead of refusing. That silent default is what made a group-owned
+ * skill opened from the palette report "No skill named … on this principal": the
+ * request went to the wrong scope and the answer was honest about the wrong question.
  *
  * It also owns the two things the desk cannot: the instance's tool registry, which
  * only a page can read once, and the post-save declaration box, which needs the
@@ -30,6 +33,8 @@ import type {
     UpdateSkillDto,
 } from '../types'
 import { declaredToolsSummary, plural } from '../lib/skillFormat'
+import { principalIdInLocalPath } from '../lib/hostRoute'
+import { homePath, newSkillPath } from '../lib/paths'
 
 const route = useRoute()
 const router = useRouter()
@@ -41,6 +46,27 @@ const name = computed(() => {
     const param = route.params.name
     return typeof param === 'string' ? param : ''
 })
+
+/**
+ * The principal this skill belongs to, read from the route.
+ *
+ * The route is the source of truth, not `principals.selectedPrincipalId`: they agree
+ * by construction (`App.vue` reconciles one from the other), but a page that read the
+ * store instead would be correct only after someone else had already reconciled it —
+ * which is the race this route shape exists to remove.
+ */
+const routePrincipalId = computed(() => principalIdInLocalPath(route.path))
+
+/**
+ * What the skill read is scoped to, once the principal list is in hand.
+ *
+ * `null` only while the list is still loading or when the URL names no principal at
+ * all, in which case the store's own default applies and the contract resolves it to
+ * the caller's own principal — the same answer the unscoped route would get.
+ */
+const principalId = computed<number | null>(() =>
+    routePrincipalId.value ?? principals.selectedPrincipalId,
+)
 
 /** Null while the resource is being read, and stays null when there is no such skill. */
 const loaded = ref<CustomSkillResource | null>(null)
@@ -104,6 +130,12 @@ async function resolve(): Promise<void> {
     missing.value = false
     shipped.value = null
     if (name.value === '') return
+    // Before any read. A child page's `onMounted` runs before the layout's, so the
+    // principal list has not landed yet on a cold deep link — and reading first
+    // would send no `?principal_id=` at all, which the contract resolves to the
+    // caller's own principal. That is how a group's skill came back as "No skill
+    // named … on this principal" instead of opening.
+    await principals.ensureLoaded()
     const fromStore = store.skillsByName[name.value]
     if (fromStore) {
         loaded.value = fromStore
@@ -112,7 +144,7 @@ async function resolve(): Promise<void> {
     // A deep link, or a principal whose list has not landed yet. The contract has
     // a per-skill read, so a miss here is a real 404 rather than a stale list.
     try {
-        loaded.value = await api.getSkill(name.value, principals.selectedPrincipalId)
+        loaded.value = await api.getSkill(name.value, principalId.value)
         return
     } catch {
         loaded.value = null
@@ -144,7 +176,10 @@ watch(
 
 // A name change has to clear the save report: it names what the *previous* skill
 // stores, and nothing else on the page survives a name change either.
-watch(name, () => {
+// The principal is watched alongside the name: two principals can own
+// identically-named skills (`unique(principal_id, name)`), so a path that changes
+// only `p/{pid}` is still a different skill and has to re-resolve.
+watch([name, routePrincipalId], () => {
     fileContents.value = {}
     savedDeclaration.value = undefined
     void resolve()
@@ -168,7 +203,7 @@ async function loadSidecarFiles(skillName: string): Promise<void> {
     const contents = await Promise.all(
         sidecars.map(async (file) => {
             try {
-                const content = await api.getSkillFile(skillName, file.path, principals.selectedPrincipalId)
+                const content = await api.getSkillFile(skillName, file.path, principalId.value)
                 return [file.path, content.content] as const
             } catch {
                 // A sidecar that cannot be read (413 over the 50 000-byte cap, or
@@ -268,7 +303,7 @@ function restore(): void {
 function duplicate(): void {
     const entry = shipped.value
     if (entry === null) return
-    void router.push({ path: '/new', query: { template: entry.name } })
+    void router.push({ path: newSkillPath(principals.selectedPrincipalId), query: { template: entry.name } })
 }
 </script>
 
@@ -279,7 +314,7 @@ function duplicate(): void {
                 No skill named “{{ name }}” on this principal.
             </span>
             <RouterLink
-                :to="{ path: '/' }"
+                :to="{ path: homePath(principals.selectedPrincipalId) }"
                 class="mt-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
                 <ArrowLeft class="h-3.5 w-3.5" />
@@ -356,7 +391,7 @@ function duplicate(): void {
                 @save="save"
                 @delete="store.requestDelete"
                 @restore="restore"
-                @cancel="router.push({ path: '/' })"
+                @cancel="router.push({ path: homePath(principals.selectedPrincipalId) })"
                 @load-files="loadSidecarFiles"
                 @duplicate="duplicate"
             />

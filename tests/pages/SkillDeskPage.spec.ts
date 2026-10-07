@@ -21,6 +21,7 @@ import SkillDeskPage from '../../src/pages/SkillDeskPage.vue'
 import * as api from '../../src/api/customSkills'
 import * as preshippedApi from '../../src/api/preshippedSkills'
 import * as toolsApi from '../../src/api/tools'
+import * as principalsApi from '../../src/api/principals'
 import { ApiError } from '../../src/api/client'
 import { useSkillsStore } from '../../src/stores/skills'
 import { usePrincipalsStore } from '../../src/stores/principals'
@@ -37,17 +38,23 @@ import { mountPage, stubRoutes } from '../mountPage'
 vi.mock('../../src/api/customSkills')
 vi.mock('../../src/api/preshippedSkills')
 vi.mock('../../src/api/tools')
+vi.mock('../../src/api/principals')
 
 const mockedApi = vi.mocked(api)
 const mockedPreShipped = vi.mocked(preshippedApi)
 const mockedTools = vi.mocked(toolsApi)
+const mockedPrincipals = vi.mocked(principalsApi)
 
 let pinia: Pinia
 let router: Router
 
-async function mountOn(name: string) {
+/**
+ * Mount on a scoped desk path — `p/{principalId}/skill/{name}` — because that is the
+ * shape the app produces and the only one that can name a group-owned skill.
+ */
+async function mountOn(name: string, principalId = 7) {
     router = stubRoutes()
-    await router.push(`/skills/${name}`)
+    await router.push(`/p/${principalId}/skill/${name}`)
     await router.isReady()
     return mountPage(SkillDeskPage, pinia, router)
 }
@@ -63,6 +70,7 @@ beforeEach(() => {
     mockedPreShipped.listPreShippedSkills.mockResolvedValue([])
     mockedPreShipped.getPreShippedSkill.mockResolvedValue(makePreShippedDetail())
     mockedTools.listTools.mockResolvedValue(makeTools())
+    mockedPrincipals.listMyPrincipals.mockResolvedValue([makePrincipal()])
 
     const principals = usePrincipalsStore()
     principals.principals = [makePrincipal()]
@@ -85,6 +93,43 @@ describe('SkillDeskPage → opening', () => {
         await flushPromises()
         expect(mockedApi.getSkill).toHaveBeenCalledWith('expense-policy', 7)
         expect(wrapper.get('[data-test="desk-title"]').text()).toBe('invoice-drafting')
+    })
+
+    it('reads a group-owned skill against the principal its path names', async () => {
+        // The reported bug, as a test. A group skill found through the palette arrived
+        // as a URL naming no principal, so the read carried no `?principal_id=` and
+        // the contract resolved it to the caller's own — answering "No skill named …
+        // on this principal" about a skill that very much exists.
+        useSkillsStore().skills = []
+        mockedApi.getSkill.mockResolvedValue(makeSkill({ name: 'test', principal_id: 8 }))
+
+        const wrapper = await mountOn('test', 8)
+        await flushPromises()
+
+        expect(mockedApi.getSkill).toHaveBeenCalledWith('test', 8)
+        expect(wrapper.get('[data-test="desk-title"]').text()).toBe('test')
+        expect(wrapper.find('[data-test="desk-missing"]').exists()).toBe(false)
+    })
+
+    it('does not issue the read while the principal list is still in flight', async () => {
+        // The ordering that made the bug possible: a child's `onMounted` runs before
+        // the layout's, so a read issued first would go out with no principal at all.
+        useSkillsStore().skills = []
+        let release: (() => void) | null = null
+        mockedPrincipals.listMyPrincipals.mockReturnValue(new Promise((resolve) => {
+            release = () => resolve([
+                makePrincipal(),
+                makePrincipal({ id: 8, type: 'group', name: 'Ops', user_id: null, group_id: 2 }),
+            ])
+        }))
+
+        await mountOn('test', 8)
+        await flushPromises()
+        expect(mockedApi.getSkill).not.toHaveBeenCalled()
+
+        release!()
+        await flushPromises()
+        expect(mockedApi.getSkill).toHaveBeenCalledWith('test', 8)
     })
 
     it('says so when the principal has no such skill, rather than an empty desk', async () => {
@@ -145,7 +190,7 @@ describe('SkillDeskPage → opening', () => {
         // Nothing written from here either. The name is final, and a row created
         // for an operator who has not read the body yet is a row to delete.
         expect(mockedApi.createSkill).not.toHaveBeenCalled()
-        expect(router.currentRoute.value.path).toBe('/new')
+        expect(router.currentRoute.value.path).toBe('/p/7/new')
         expect(router.currentRoute.value.query.template).toBe('code-review')
     })
 
@@ -481,12 +526,14 @@ describe('SkillDeskPage → the tool registry', () => {
 })
 
 describe('SkillDeskPage → leaving', () => {
-    it('goes home on cancel', async () => {
+    it('goes home on cancel, under the principal it was reading', async () => {
         const wrapper = await mountOn('invoice-drafting')
         await flushPromises()
         await wrapper.get('[data-test="desk-cancel"]').trigger('click')
         await flushPromises()
-        expect(router.currentRoute.value.path).toBe('/')
+        // Scoped home, not the bare root: the URL is what says whose skills are on
+        // screen, and a cancel must not silently drop the scope.
+        expect(router.currentRoute.value.path).toBe('/p/7')
     })
 
     it('raises the delete confirmation through the store', async () => {
@@ -530,7 +577,7 @@ describe('SkillDeskPage → leaving', () => {
         // disappears from it. Navigating away here would lose a half-written body.
         useSkillsStore().skills = [makeSkill({ name: 'other', principal_id: 8 })]
         await flushPromises()
-        expect(router.currentRoute.value.path).toBe('/skills/invoice-drafting')
+        expect(router.currentRoute.value.path).toBe('/p/7/skill/invoice-drafting')
         expect(wrapper.get('[data-test="desk-title"]').text()).toBe('invoice-drafting')
     })
 
@@ -538,8 +585,24 @@ describe('SkillDeskPage → leaving', () => {
         const wrapper = await mountOn('invoice-drafting')
         await flushPromises()
         useSkillsStore().skills = [makeSkill({ name: 'expense-policy' })]
-        await router.push('/skills/expense-policy')
+        await router.push('/p/7/skill/expense-policy')
         await flushPromises()
         expect(wrapper.get('[data-test="desk-title"]').text()).toBe('expense-policy')
+    })
+
+    it('re-resolves when only the principal in the path changes', async () => {
+        // `unique(principal_id, name)` makes an identically-named skill on two
+        // principals a real collision, so a path that changes only `p/{pid}` is still
+        // a different skill.
+        const wrapper = await mountOn('invoice-drafting')
+        await flushPromises()
+        mockedApi.getSkill.mockResolvedValue(makeSkill({ name: 'invoice-drafting', principal_id: 8 }))
+        useSkillsStore().skills = []
+
+        await router.push('/p/8/skill/invoice-drafting')
+        await flushPromises()
+
+        expect(mockedApi.getSkill).toHaveBeenCalledWith('invoice-drafting', 8)
+        expect(wrapper.get('[data-test="desk-title"]').text()).toBe('invoice-drafting')
     })
 })

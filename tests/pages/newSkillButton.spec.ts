@@ -70,7 +70,7 @@ describe('New skill', () => {
         await flushPromises()
         await wrapper.get('[data-test="new-skill"]').trigger('click')
         await flushPromises()
-        expect(router.currentRoute.value.path).toBe('/new')
+        expect(router.currentRoute.value.path).toBe('/p/7/new')
     })
 
     it('does not write anything just from opening the form', async () => {
@@ -88,7 +88,7 @@ describe('New skill', () => {
         const form = mountPage(CreateSkillPage, pinia, router)
         await form.get('[data-test="create-back"]').trigger('click')
         await flushPromises()
-        expect(router.currentRoute.value.path).toBe('/')
+        expect(router.currentRoute.value.path).toBe('/p/7')
         expect(mockedApi.createSkill).not.toHaveBeenCalled()
     })
 })

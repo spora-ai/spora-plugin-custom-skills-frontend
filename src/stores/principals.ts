@@ -2,10 +2,12 @@
  * Principal selector store: fetches `/api/v1/principals/me` once and caches it,
  * and holds the acting principal id so `useSkillsStore` resolves it at call time.
  *
- * `selectedPrincipalId` is deliberately session-scoped: persisting it across
- * browser sessions could surface a different principal's name and lead an
- * operator to author under the wrong scope. Re-selecting on each mount is cheap
- * and self-correcting.
+ * The acting principal is *named by the URL* (`/apps/custom-skills/p/{id}/…`, see
+ * `lib/hostRoute.ts`), and this store is what the URL is reconciled against —
+ * `App.vue` reads the path and selects it. Persisting a selection across browser
+ * sessions would still be wrong: it could surface a different principal's name and
+ * lead an operator to author under the wrong scope. So the URL is the only writer,
+ * and a cold mount with no principal in the path falls back to the caller's own.
  */
 import { defineStore, acceptHMRUpdate } from 'pinia'
 import { ref, computed } from 'vue'
@@ -19,20 +21,54 @@ export const usePrincipalsStore = defineStore('custom-skills-principals', () => 
     const loading = ref(false)
     const error = ref<string | null>(null)
 
+    /**
+     * Shared across concurrent callers, so a page that resolves on mount and the
+     * layout that loads the list are one request rather than two.
+     *
+     * This exists because of an ordering trap: a child page's `onMounted` runs
+     * *before* the layout's, so `SkillDeskPage` used to read `selectedPrincipalId`
+     * while it was still `null`, send no `?principal_id=`, and have the contract
+     * silently resolve the read against the caller's own principal. A deep link to
+     * a group-owned skill therefore 404'd as "No skill named … on this principal".
+     */
+    let load: Promise<void> | null = null
+
+    /** Resolves once the principal list is in hand, however many callers await it. */
+    function ensureLoaded(): Promise<void> {
+        load ??= loadPrincipals()
+        return load
+    }
+
     async function loadPrincipals(): Promise<void> {
         loading.value = true
         error.value = null
         try {
             principals.value = await principalsApi.listMyPrincipals()
             if (selectedPrincipalId.value === null) {
-                const ownPrincipal = principals.value.find((p) => p.type === 'user')
-                selectedPrincipalId.value = ownPrincipal?.id ?? principals.value[0]?.id ?? null
+                selectedPrincipalId.value = defaultPrincipalId()
             }
         } catch (e) {
             error.value = e instanceof ApiError ? e.message : 'Failed to load principals.'
         } finally {
             loading.value = false
         }
+    }
+
+    /** The caller's own user-principal, or the first entry when there is no user one. */
+    function defaultPrincipalId(): number | null {
+        const own = principals.value.find((p) => p.type === 'user')
+        return own?.id ?? principals.value[0]?.id ?? null
+    }
+
+    /**
+     * The principal the URL names, or null when the caller cannot act as it.
+     *
+     * `GET /principals/me` is the gate, not the API: a `p/{pid}` the caller is not a
+     * member of must not be selected even to be refused by it later, because the
+     * panel's own reads would carry an id the operator has no business sending.
+     */
+    function isVisible(principalId: number | null): boolean {
+        return principalId !== null && principals.value.some((p) => p.id === principalId)
     }
 
     function selectPrincipal(id: number): void {
@@ -54,6 +90,9 @@ export const usePrincipalsStore = defineStore('custom-skills-principals', () => 
         loading,
         error,
         loadPrincipals,
+        ensureLoaded,
+        defaultPrincipalId,
+        isVisible,
         selectPrincipal,
         clearError,
         currentPrincipal,

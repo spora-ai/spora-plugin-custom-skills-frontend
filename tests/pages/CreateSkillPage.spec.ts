@@ -167,7 +167,7 @@ describe('CreateSkillPage → what the create sends', () => {
         await fill(wrapper)
         await wrapper.get('[data-test="create-form"]').trigger('submit')
         await flushPromises()
-        expect(router.currentRoute.value.path).toBe('/skills/invoice-drafting')
+        expect(router.currentRoute.value.path).toBe('/p/7/skill/invoice-drafting')
     })
 
     it('trims the name and the description', async () => {
@@ -267,14 +267,16 @@ describe('CreateSkillPage → the page around the form', () => {
         const starter = wrapper.get('[data-test="start-blank"]')
         expect((starter.element as HTMLInputElement).checked).toBe(true)
         expect(wrapper.text()).toContain('A short starter outline.')
-        expect(wrapper.get('[data-test="start-shipped"]').attributes('href')).toBe('/library')
+        expect(wrapper.get('[data-test="start-shipped"]').attributes('href')).toBe('/p/7/library')
     })
 
     it('goes back to home from the back link and from Cancel', async () => {
         const router = stubRoutes()
         const wrapper = mountPage(CreateSkillPage, pinia, router)
-        expect(wrapper.get('[data-test="create-back"]').attributes('href')).toBe('/')
-        expect(wrapper.get('[data-test="create-cancel"]').attributes('href')).toBe('/')
+        // Scoped home, not the bare root: the create form writes to the principal in its
+        // path, so leaving without writing must not also drop the scope.
+        expect(wrapper.get('[data-test="create-back"]').attributes('href')).toBe('/p/7')
+        expect(wrapper.get('[data-test="create-cancel"]').attributes('href')).toBe('/p/7')
     })
 })
 
@@ -389,6 +391,6 @@ describe('CreateSkillPage → starting from a shipped skill', () => {
 
         expect((wrapper.get('[data-test="field-name"]').element as HTMLInputElement).value).toBe('')
         expect(wrapper.find('[data-test="start-template"]').exists()).toBe(false)
-        expect(wrapper.get('[data-test="start-shipped"]').attributes('href')).toBe('/library')
+        expect(wrapper.get('[data-test="start-shipped"]').attributes('href')).toBe('/p/7/library')
     })
 })
