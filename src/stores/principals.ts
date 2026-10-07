@@ -35,9 +35,9 @@ export const usePrincipalsStore = defineStore('custom-skills-principals', () => 
         error.value = null
         try {
             principals.value = await principalsApi.listMyPrincipals()
-            if (selectedPrincipalId.value === null) {
-                selectedPrincipalId.value = defaultPrincipalId()
-            }
+            // `??=`, so a cold store adopts the default once and a later
+            // `selectPrincipal()` is never undone by a refresh.
+            selectedPrincipalId.value ??= defaultPrincipalId()
         } catch (e) {
             error.value = e instanceof ApiError ? e.message : 'Failed to load principals.'
         } finally {

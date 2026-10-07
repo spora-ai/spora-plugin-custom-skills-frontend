@@ -99,8 +99,10 @@ export function localPathForHostRoute(route: HostRoute | null, appSlug: string):
     const fromPath = localPathForHostPath(route.path, appSlug)
     if (fromPath !== null && !isRoot) return fromPath
 
-    // A percent-encoded name is a legal skill name, so it is carried across rather
-    // than decoded into a path that cannot be re-parsed.
+    // Interpolated raw, not encoded: vue-router has already decoded the query
+    // value, and `SkillValidator::NAME_PATTERN` allows only `[a-z0-9-]`, so a
+    // legal name contains no `/` or space to be forged with. Encoding here would
+    // double-encode a name that is already decoded.
     const legacy = route.query?.[LEGACY_QUERY_KEY]
     if (typeof legacy === 'string' && legacy !== '') {
         return `/skill/${legacy}`
