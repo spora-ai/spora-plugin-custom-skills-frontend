@@ -103,8 +103,8 @@ async function choose(id: number): Promise<void> {
     await router.push({ path: homePath(id) })
 }
 
-// The menu closes when the scope actually changed — not when this component's own
-// `choose()` ran, so a re-click on the current entry leaves it closed.
+// Redundant with `choose()`'s own `open.value = false`, and kept because a scope
+// can also change from a host navigation, which does not go through this component.
 watch(
     () => principals.selectedPrincipalId,
     () => {

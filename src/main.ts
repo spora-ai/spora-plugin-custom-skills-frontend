@@ -1,10 +1,10 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import { createMemoryHistory, createRouter } from 'vue-router'
+import { createMemoryHistory, createRouter, type LocationQueryRaw } from 'vue-router'
 import App from './App.vue'
 import { panelRoutes } from './lib/routes'
 import { setApi } from './api/client'
-import { appSlugFrom, hostPathForLocalPath, localPathForHostRoute } from './lib/hostRoute'
+import { appSlugFrom, localPathForHostRoute } from './lib/hostRoute'
 import { HOST_CONTEXT_KEY, type PluginHostContext } from './shims'
 
 /**
@@ -39,6 +39,19 @@ interface MountContract {
 
 interface MountTarget extends HTMLElement {
     __sporaApp?: { unmount: () => void; app: import('vue').App }
+}
+
+/**
+ * Whether two query objects carry the same values, order-insensitively.
+ *
+ * The echo guard needs it: a host navigation that only reorders the query still
+ * means "already there", and replacing on it would churn the local history.
+ */
+function sameQuery(a: Record<string, unknown>, b?: Record<string, unknown>): boolean {
+    if (b === undefined) return Object.keys(a).length === 0
+    const ak = Object.keys(a).sort()
+    const bk = Object.keys(b).sort()
+    return ak.length === bk.length && ak.every((k, i) => bk[i] === k && a[k] === b[k])
 }
 
 const SporaApp: MountContract = {
@@ -94,8 +107,8 @@ const SporaApp: MountContract = {
         // pipeline, so it sidesteps that entirely.
         const hostRouter = hostContext.router
         let unregisterHostRoute: (() => void) | undefined
-        // A push out can resolve after `unmount()` — the host router outlives this app,
-        // and the host does mount and unmount this bundle repeatedly.
+        // Suppresses navigation *started* after teardown. It cannot retract a push
+        // already issued, so the comment claims exactly this and no more.
         let disposed = false
 
         // Read once at mount — what a palette hit, a reload or a pasted link looks
@@ -112,22 +125,31 @@ const SporaApp: MountContract = {
             // Host → local. Guarded on the current local path, so a host navigation
             // that did not concern this app — or one this app caused — is a no-op
             // rather than a redirect loop.
-            unregisterHostRoute = hostRouter.afterEach?.((to) => {
-                if (disposed) return
+            // `failure` is checked first in both directions: vue-router fires
+            // `afterEach` for CANCELLED navigations too, so a superseded or
+            // guard-aborted one would otherwise write its stale path — in the host's
+            // case into the address bar the operator is looking at.
+            unregisterHostRoute = hostRouter.afterEach?.((to, _from, failure) => {
+                if (disposed || failure) return
                 const localPath = localPathForHostRoute(to, appSlug)
-                if (localPath === null || router.currentRoute.value.path === localPath) return
-                void router.replace(localPath)
+                if (localPath === null) return
+                const current = router.currentRoute.value
+                if (current.path === localPath && sameQuery(current.query, to.query)) return
+                void router.replace({ path: localPath, query: to.query as LocationQueryRaw }).catch(() => {})
             })
 
             // Local → host: the direction that was missing. Without it the address bar
             // never moves, so browsing the panel produces no link and a reload loses
             // the operator's place.
-            router.afterEach((to) => {
-                if (disposed) return
-                const hostPath = hostPathForLocalPath(to.path, appSlug)
+            router.afterEach((to, _from, failure) => {
+                if (disposed || failure) return
+                // `to.fullPath`, not `to.path`: Duplicate navigates with
+                // `?template=`, and dropping the query would make that page
+                // unshareable and unreloadable — the very thing this direction fixes.
+                const hostPath = to.fullPath.replace(/^/, `/apps/${appSlug}`)
                 const currentHostPath = hostRouter.currentRoute?.value?.path
                 if (currentHostPath === undefined || currentHostPath === hostPath) return
-                void hostRouter.push(hostPath)
+                void hostRouter.push(hostPath).catch(() => {})
             })
         }
 

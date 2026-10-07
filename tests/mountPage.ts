@@ -28,10 +28,6 @@ export function stubRoutes(): Router {
     })
 }
 
-/** The route names the app installs, for specs that assert on the resolved route. */
-export function panelRouteNames(): string[] {
-    return PANEL_ROUTES.map((route) => route.name)
-}
 
 function hostContext(): PluginHostContext {
     return {

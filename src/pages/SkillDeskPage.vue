@@ -125,7 +125,17 @@ async function resolve(): Promise<void> {
     // cold deep link the principal list has not landed and the read would go out with
     // no `?principal_id=` at all — which the contract resolves to the caller's own.
     await principals.ensureLoaded()
-    const fromStore = store.skillsByName[name.value]
+    // Gated on the principal, not just the name. `store.skillsByName` holds the
+    // *acting* principal's rows under a bare name key, and
+    // `unique(principal_id, name)` permits one name under two principals - so on a
+    // `/p/8/` URL with principal 7's list loaded, an ungated lookup returns
+    // principal 7's row. The desk renders one principal's body under another
+    // principal's URL, and a save then writes that body over the *other*
+    // principal's row, because `updateSkill` resolves its principal from the store
+    // at call time. A list reload is the only case this shortcut is for.
+    const fromStore = store.skills.find(
+        (s) => s.name === name.value && s.principal_id === principalId.value,
+    )
     if (fromStore) {
         loaded.value = fromStore
         return
@@ -156,8 +166,10 @@ async function resolve(): Promise<void> {
     }
 }
 
+// Same principal gate as the lookup in `resolve()`: a row for a different
+// principal must never become this desk's content just because the name matches.
 watch(
-    () => store.skillsByName[name.value],
+    () => store.skills.find((s) => s.name === name.value && s.principal_id === principalId.value),
     (skill) => {
         if (skill) loaded.value = skill
     },
@@ -183,7 +195,10 @@ onMounted(() => {
 })
 
 async function loadSidecarFiles(skillName: string): Promise<void> {
-    const sidecars = (store.skillsByName[skillName]?.files ?? []).filter((f) => f.path !== 'SKILL.md')
+    // The manifest comes from the row on screen, not from a name-keyed lookup:
+    // `loadSidecarFiles` runs for a deep link the store has never listed, and a
+    // name-keyed read would hand back another principal's file paths.
+    const sidecars = (loaded.value?.files ?? []).filter((f) => f.path !== 'SKILL.md')
 
     // Read together rather than one at a time. A skill holds at most a couple of
     // dozen sidecars, and the sequential version made opening a skill with

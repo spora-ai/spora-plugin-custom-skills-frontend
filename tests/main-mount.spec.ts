@@ -109,8 +109,15 @@ function makeTarget(): HTMLElement {
  * reactive — a `watch` on `currentRoute` would also "work" here and fail in the
  * host, which is the whole reason the code uses `afterEach`.
  */
+/** The shape a host route arrives in, including vue-router's `failure` argument. */
+type HostRouteArg = {
+    path: string
+    fullPath?: string
+    query?: Record<string, unknown>
+}
+
 function fakeHostRouter(initial: { path: string; query?: Record<string, unknown> }) {
-    let guard: ((to: { path: string; query?: Record<string, unknown> }) => void) | null = null
+    let guard: ((to: HostRouteArg, from: unknown, failure?: unknown) => void) | null = null
 
     return {
         currentRoute: { value: { ...initial } as { path: string; query?: Record<string, unknown> } },
@@ -119,15 +126,15 @@ function fakeHostRouter(initial: { path: string; query?: Record<string, unknown>
         get registered(): number {
             return guard === null ? 0 : 1
         },
-        afterEach(cb: (to: { path: string; query?: Record<string, unknown> }) => void): () => void {
+        afterEach(cb: (to: HostRouteArg, from: unknown, failure?: unknown) => void): () => void {
             guard = cb
             return () => {
                 if (guard === cb) guard = null
             }
         },
-        navigate(to: { path: string; query?: Record<string, unknown> }): void {
+        navigate(to: { path: string; query?: Record<string, unknown> }, failure?: unknown): void {
             this.currentRoute.value = { ...to }
-            guard?.(to)
+            guard?.(to, undefined, failure)
         },
     }
 }

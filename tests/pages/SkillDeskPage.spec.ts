@@ -597,4 +597,43 @@ describe('SkillDeskPage → leaving', () => {
         expect(mockedApi.getSkill).toHaveBeenCalledWith('invoice-drafting', 8)
         expect(wrapper.get('[data-test="desk-title"]').text()).toBe('invoice-drafting')
     })
+
+    it('never shows one principal\'s skill under another principal\'s URL', async () => {
+        // The list is loaded for principal 7 and holds a row named `report`. The URL
+        // names principal 8. `unique(principal_id, name)` permits this, so a
+        // name-keyed lookup returns principal 7's row and the desk renders its body
+        // under `/p/8/` — and a save then writes that body over principal 8's row,
+        // because `updateSkill` takes its principal from the store at call time.
+        useSkillsStore().skills = [makeSkill({ name: 'report', principal_id: 7, body: '# Seven' })]
+        mockedApi.getSkill.mockResolvedValue(makeSkill({ name: 'report', principal_id: 8, body: '# Eight' }))
+
+        const wrapper = await mountOn('report', 8)
+        await flushPromises()
+
+        expect(mockedApi.getSkill).toHaveBeenCalledWith('report', 8)
+        const editor = wrapper.get('[data-testid="md-editor-stub"]').element as HTMLTextAreaElement
+        expect(editor.value).toBe('# Eight')
+        expect(editor.value).not.toBe('# Seven')
+    })
+
+    it('reads sidecars from the row on screen, not a name-keyed lookup', async () => {
+        // A deep link the store never listed: `loadSidecarFiles` used to read the
+        // manifest from `skillsByName`, which for a name the *acting* principal owns
+        // returns that principal's paths while the reads went to the path's principal.
+        useSkillsStore().skills = [makeSkill({ name: 'report', principal_id: 7 })]
+        mockedApi.getSkill.mockResolvedValue(makeSkill({
+            name: 'report',
+            principal_id: 8,
+            files: [
+                { path: 'SKILL.md', bytes: 10 },
+                { path: 'examples/eight.md', bytes: 10 },
+            ],
+        }))
+
+        await mountOn('report', 8)
+        await flushPromises()
+
+        expect(mockedApi.getSkillFile).toHaveBeenCalledWith('report', 'examples/eight.md', 8)
+        expect(mockedApi.getSkillFile).not.toHaveBeenCalledWith('report', expect.anything(), 7)
+    })
 })

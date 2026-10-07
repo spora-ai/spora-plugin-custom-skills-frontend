@@ -50,8 +50,18 @@ export interface PluginHostContext {
          * not subscribe to it); `afterEach` is the imperative way out, and
          * `spora-plugin-media-archive` reaches for the same one. Declared here so
          * this does not need a cast.
+         *
+         * The third argument is vue-router's `failure`. It fires for CANCELLED and
+         * aborted navigations too, so a plugin that syncs a URL must ignore it or it
+         * writes the path of a navigation that never happened.
          */
-        afterEach?: (cb: (to: { path: string; query?: Record<string, unknown> }) => void) => () => void
+       afterEach?: (
+           cb: (
+               to: { path: string; fullPath?: string; query?: Record<string, unknown> },
+               from: unknown,
+               failure?: unknown,
+           ) => void,
+       ) => () => void
     } | null
 }
 

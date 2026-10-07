@@ -99,13 +99,14 @@ export function localPathForHostRoute(route: HostRoute | null, appSlug: string):
     const fromPath = localPathForHostPath(route.path, appSlug)
     if (fromPath !== null && !isRoot) return fromPath
 
-    // Interpolated raw, not encoded: vue-router has already decoded the query
-    // value, and `SkillValidator::NAME_PATTERN` allows only `[a-z0-9-]`, so a
-    // legal name contains no `/` or space to be forged with. Encoding here would
-    // double-encode a name that is already decoded.
+    // Encoded on the way out even though vue-router has already decoded the query
+    // value. A legal name is `[a-z0-9-]` and needs no encoding, but this href can
+    // be anything someone pastes: `?skill=..%2F..%2Fadmin` arrives here as
+    // `../../admin`, and interpolating it raw would push that into the address bar
+    // as a real path traversal.
     const legacy = route.query?.[LEGACY_QUERY_KEY]
     if (typeof legacy === 'string' && legacy !== '') {
-        return `/skill/${legacy}`
+        return `/skill/${encodeURIComponent(legacy)}`
     }
 
     return fromPath
@@ -153,7 +154,14 @@ export function canonicalLocalPath(localPath: string, principalId: number | null
     const named = principalIdInLocalPath(localPath)
     if (named === principalId) return localPath
 
-    const rest = named === null ? localPath : localPath.replace(/^\/p\/\d+/, '')
+    // Matched on `[^/]+`, not `\d+`: `/p/0` and `/p/abc` parse to no principal, so
+    // keying the strip on `principalIdInLocalPath` would leave them in place and
+    // *prepend* a second segment — `/p/7/p/0/skill/x`, which matches no route and
+    // which the local-to-host sync would then write into the address bar.
+    const rest = /^\/p\/[^/]+/.test(localPath)
+        ? localPath.replace(/^\/p\/[^/]+/, '') || '/'
+        : localPath
+
     return `/p/${principalId}${rest === '/' ? '' : rest}`
 }
 

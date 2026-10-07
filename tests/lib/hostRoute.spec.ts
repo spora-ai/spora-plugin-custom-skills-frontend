@@ -88,6 +88,16 @@ describe('localPathForHostRoute — the legacy shapes', () => {
             .toBe('/skill/report')
     })
 
+    it('re-encodes a legacy ?skill= rather than interpolating it raw', () => {
+        // vue-router decodes query values, so this arrives as `../../admin`.
+        // Interpolated raw it becomes a real path traversal in the address bar; a
+        // legal name is `[a-z0-9-]` and is unaffected by the encoding.
+        expect(localPathForHostRoute({ path: '/apps/custom-skills', query: { skill: '../../admin' } }, SLUG))
+            .toBe('/skill/..%2F..%2Fadmin')
+        expect(localPathForHostRoute({ path: '/apps/custom-skills', query: { skill: 'invoice-drafting' } }, SLUG))
+            .toBe('/skill/invoice-drafting')
+    })
+
     it('prefers the path over the legacy query when both are present', () => {
 
         expect(localPathForHostRoute({ path: '/apps/custom-skills/p/8/skill/b', query: { skill: 'a' } }, SLUG))
@@ -155,6 +165,16 @@ describe('canonicalLocalPath', () => {
     it('leaves a path alone when it already names the resolved principal', () => {
 
         expect(canonicalLocalPath('/p/7/skill/report', 7)).toBe('/p/7/skill/report')
+    })
+
+    it('strips a principal segment that is not a valid id, rather than stacking one', () => {
+        // `/p/0` and `/p/abc` name no principal, so keying the strip on a parsed id
+        // would leave them and prepend a second segment: `/p/7/p/0/skill/x`, which
+        // matches no route and which the sync would write into the address bar.
+        expect(canonicalLocalPath('/p/0/skill/x', 7)).toBe('/p/7/skill/x')
+        expect(canonicalLocalPath('/p/abc/skill/x', 7)).toBe('/p/7/skill/x')
+        expect(canonicalLocalPath('/p/99999999999999999999/skill/x', 7)).toBe('/p/7/skill/x')
+        expect(canonicalLocalPath('/p/0', 7)).toBe('/p/7')
     })
 
     it('replaces a principal the caller cannot act as, so the URL matches the screen', () => {

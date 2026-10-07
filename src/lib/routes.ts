@@ -12,7 +12,7 @@
  * unscoped records are transient rather than a second way of being somewhere.
  *
  * `/new` and `/p/{principalId}/new` are deliberately outside the `skill/` subtree: a
- * skill literally named `new` is a legal slug, and `/skills/new` would shadow it.
+ * skill literally named `new` is a legal slug, and `/p/{id}/skill/new` would shadow it.
  */
 import type { Component } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
@@ -57,4 +57,10 @@ export const PANEL_ROUTES: PanelRoute[] = [
     { path: '/library', name: 'catalogue-unscoped', component: CataloguePage },
     { path: '/p/:principalId/library/:name', name: 'viewer', component: SkillViewerPage },
     { path: '/library/:name', name: 'viewer-unscoped', component: SkillViewerPage },
+    // Anything else. A mistyped, stale or hand-written path used to render an empty
+    // panel, because `localPathForHostPath` is a bare prefix strip and no record
+    // matched. Home is the honest landing place, and the layout then scopes it. A
+    // component rather than a redirect, so the URL the operator typed survives for
+    // them to see while the panel shows something useful.
+    { path: '/:pathMatch(.*)*', name: 'not-found', component: HomePage },
 ]

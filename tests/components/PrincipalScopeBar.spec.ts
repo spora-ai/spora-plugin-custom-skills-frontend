@@ -16,6 +16,7 @@ import PrincipalScopeBar from '../../src/components/PrincipalScopeBar.vue'
 import * as api from '../../src/api/customSkills'
 import { useSkillsStore } from '../../src/stores/skills'
 import { usePrincipalsStore } from '../../src/stores/principals'
+import { PANEL_ROUTES } from '../../src/lib/routes'
 import { makePrincipal, makeSkill } from '../fixtures'
 
 vi.mock('../../src/api/customSkills')
@@ -37,14 +38,15 @@ beforeEach(() => {
 
     router = createRouter({
         history: createMemoryHistory(),
-        routes: [
-            { path: '/', name: 'home', component: { template: '<div />' } },
-            { path: '/p/:principalId', name: 'home-scoped', component: { template: '<div />' } },
-            { path: '/p/:principalId/new', name: 'create', component: { template: '<div />' } },
-            { path: '/p/:principalId/skill/:name', name: 'desk', component: { template: '<div />' } },
-            { path: '/p/:principalId/library', name: 'catalogue', component: { template: '<div />' } },
-            { path: '/p/:principalId/library/:name', name: 'viewer', component: { template: '<div />' } },
-        ],
+        // Derived from `PANEL_ROUTES`, the table `main.ts` installs. It used to be a
+        // hand-copied subset, which omitted the unscoped records entirely — so a spec
+        // pushed `/library` at a router that had no such route and passed only
+        // because section detection reads the path string.
+        routes: PANEL_ROUTES.map(({ path, name }) => ({
+            path,
+            name,
+            component: { template: '<div />' },
+        })),
     })
 
     const principals = usePrincipalsStore()

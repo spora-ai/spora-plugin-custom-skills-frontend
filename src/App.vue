@@ -89,7 +89,7 @@ function reconcilePrincipal(): void {
 
     const canonical = canonicalLocalPath(route.path, resolved)
     if (canonical !== route.path) {
-        void router.replace(canonical)
+        void router.replace(canonical).catch(() => {})
     }
 }
 
@@ -110,20 +110,26 @@ async function confirmDelete(): Promise<void> {
  * shipped catalogue is *not* re-read — it is global, and it was loaded once.
  */
 async function loadForPrincipal(): Promise<void> {
+    // Recorded *before* awaiting, so a scope change landing mid-flight is visible
+    // as a mismatch rather than being mistaken for a covered one.
+    loadingFor = principals.selectedPrincipalId
     store.setNotice(null)
     await Promise.all([store.loadSkills(), store.loadAgents()])
 }
 
 /**
- * False until the first load has finished, and read by the watcher below.
+ * The principal the in-flight or most recent load was *issued for*.
  *
- * `reconcilePrincipal()` selects the principal on mount, which the watcher would
- * otherwise see as a change and answer with a second load — every request twice on a
- * cold mount, which `appBootstrap.spec.ts` asserts against. The mount's own `await`
- * marks the transition: a Vue watcher flushes on the microtask queue, so it has already
- * run by the time the flag is set.
+ * A boolean "has the first load finished" flag is not enough: a host navigation can
+ * select a different principal while those three round trips are still open, and the
+ * flag would swallow the reload, leaving principal 8's heading above principal 7's
+ * list. Comparing the selection against what was actually requested says precisely
+ * whether the screen matches the scope.
  */
-let bootstrapped = false
+let loadingFor: number | null = null
+
+/** False only while `onMounted` is still reconciling its own first selection. */
+let mounted = false
 
 onMounted(async () => {
     // The principal list first: the acting principal can only be resolved against
@@ -131,7 +137,10 @@ onMounted(async () => {
     await principals.ensureLoaded()
     reconcilePrincipal()
     await Promise.all([store.loadPreShippedSkills(), loadForPrincipal()])
-    bootstrapped = true
+    mounted = true
+    // A scope change that arrived while the reads above were open: they belong to
+    // the principal selected when they were issued, so redo them.
+    if (loadingFor !== principals.selectedPrincipalId) void loadForPrincipal()
 })
 
 // The scope bar navigates within the acting principal rather than writing the
@@ -140,10 +149,13 @@ onMounted(async () => {
 watch(
     () => principals.selectedPrincipalId,
     (next, prev) => {
-        if (next === prev || !bootstrapped) return
-        // A scope warning describes the scope that was rejected; once the operator has
-        // moved to a different one it is stale.
+        if (next === prev) return
+        // A scope warning describes the scope that was rejected; once the operator
+        // has moved to a different one it is stale.
         principalNotice.value = null
+        // `reconcilePrincipal()` selects on mount; `onMounted` covers that reload
+        // so a cold mount does not issue every request twice.
+        if (!mounted || loadingFor === next) return
         void loadForPrincipal()
     },
 )

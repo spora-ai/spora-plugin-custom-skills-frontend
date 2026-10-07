@@ -23,6 +23,7 @@ import { setApi } from '../../src/api/client'
 import * as api from '../../src/api/customSkills'
 import * as preshippedApi from '../../src/api/preshippedSkills'
 import { usePrincipalsStore } from '../../src/stores/principals'
+import type { CustomSkillResource } from '../../src/types'
 import { makePrincipal } from '../fixtures'
 
 vi.mock('../../src/api/customSkills')
@@ -64,6 +65,9 @@ function mountLikeMain() {
         routes: PANEL_ROUTES.map(({ path, name, component }) => ({
             path,
             name,
+            // Home, the create form and the catch-all must be real: this spec asserts
+            // the layout renders the page its route resolved to. The rest render an
+            // empty div — this is about the layout's bootstrap, not each page.
             component: realPages.has(component) ? component : blank,
         })),
     })
@@ -206,6 +210,51 @@ describe('App bootstrap (main.ts parity)', () => {
         expect(usePrincipalsStore().selectedPrincipalId).toBe(8)
         expect(mockedApi.listSkills).toHaveBeenCalledWith(8)
         expect(mockedPreshipped.listPreShippedSkills).not.toHaveBeenCalled()
+        expect(target.querySelector('[data-test="home-principal"]')?.textContent).toBe('Studio')
+    })
+
+    it('reloads when the scope changes while the first load is still open', async () => {
+        // A host navigation can select a different principal before the mount's own
+        // reads have answered. A boolean "first load finished" flag swallowed that,
+        // leaving the new principal's heading above the *previous* principal's list —
+        // the URL and the screen disagreeing, which is the state this PR exists to
+        // remove. `loadingFor` records what each load was issued for instead.
+        setApi({
+            get: vi.fn().mockImplementation(async (path: string) => {
+                if (path === '/principals/me') {
+                    return {
+                        principals: [
+                            makePrincipal(),
+                            makePrincipal({ id: 8, type: 'group', name: 'Studio', user_id: null, group_id: 2 }),
+                        ],
+                    }
+                }
+                return { agents: [] }
+            }),
+            post: vi.fn(),
+            put: vi.fn(),
+            patch: vi.fn(),
+            delete: vi.fn(),
+        } as never)
+
+        // The skill read is held open, so the push below lands inside the window the
+        // old flag lost. Without this the mount's awaits resolve before the
+        // navigation and the test passes against the buggy code too.
+        let releaseList: ((skills: CustomSkillResource[]) => void) | null = null
+        mockedApi.listSkills.mockImplementation(() => new Promise((resolve) => {
+            releaseList = resolve
+        }))
+
+        const { target } = mountLikeMain()
+        await router.isReady()
+
+        await router.push('/p/8')
+        expect(usePrincipalsStore().selectedPrincipalId).toBe(8)
+
+        releaseList!([])
+        await flushPromises()
+
+        expect(mockedApi.listSkills).toHaveBeenCalledWith(8)
         expect(target.querySelector('[data-test="home-principal"]')?.textContent).toBe('Studio')
     })
 

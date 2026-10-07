@@ -35,18 +35,29 @@ const INITIAL_HOST_PATH = `/apps/${APP_SLUG}`
  * the host does not have.
  */
 function createDevHostRouter(): NonNullable<PluginHostContext['router']> {
-    const listeners = new Set<(to: { path: string }) => void>()
+    type Guard = (
+        to: { path: string; fullPath?: string; query?: Record<string, unknown> },
+        from: unknown,
+        failure?: unknown,
+    ) => void
+    const listeners = new Set<Guard>()
     const state = {
         push: (to: string) => {
-            const path = to.split('?')[0] ?? to
             window.history.replaceState({}, '', to)
-            for (const listener of listeners) listener({ path })
+            // `currentRoute` moves too, not just the address bar: the sync's "is the
+            // other side already there?" guard reads it, so leaving it pinned to the
+            // initial path would make every local navigation push and would never
+            // exercise the echo case the sandbox is meant to reproduce.
+            state.currentRoute.value = { path: to.split('?')[0] ?? to }
+            for (const listener of listeners) listener({ path: to }, undefined, undefined)
             return Promise.resolve(undefined)
         },
-        currentRoute: { value: { path: INITIAL_HOST_PATH } },
-        afterEach: (cb: (to: { path: string }) => void) => {
+        currentRoute: { value: { path: INITIAL_HOST_PATH } as { path: string } },
+        afterEach: (cb: Guard) => {
             listeners.add(cb)
-            return () => listeners.delete(cb)
+            return () => {
+                listeners.delete(cb)
+            }
         },
     }
     return state
