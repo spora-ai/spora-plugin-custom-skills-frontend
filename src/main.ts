@@ -46,12 +46,20 @@ interface MountTarget extends HTMLElement {
  *
  * The echo guard needs it: a host navigation that only reorders the query still
  * means "already there", and replacing on it would churn the local history.
+ *
+ * Compared by key count, then by value — never by sorting the keys. Sorting
+ * would make the answer depend on a locale (typescript:S2871) and buy nothing:
+ * a query is a set of pairs, so the same pairs in a different order are the same
+ * query either way. Equal lengths plus every key of `a` matching in `b` already
+ * forces the key sets to be identical.
  */
 function sameQuery(a: Record<string, unknown>, b?: Record<string, unknown>): boolean {
     if (b === undefined) return Object.keys(a).length === 0
-    const ak = Object.keys(a).sort()
-    const bk = Object.keys(b).sort()
-    return ak.length === bk.length && ak.every((k, i) => bk[i] === k && a[k] === b[k])
+
+    const keys = Object.keys(a)
+    if (keys.length !== Object.keys(b).length) return false
+
+    return keys.every((key) => a[key] === b[key])
 }
 
 const SporaApp: MountContract = {
@@ -115,9 +123,12 @@ const SporaApp: MountContract = {
         // like. `isReady()` matters as much as the `replace`: `App.vue` reconciles the
         // acting principal against `route.path` on mount, and a path still at
         // `START_LOCATION` would canonicalise to `/` and replace away the desk.
-        const initial = localPathForHostRoute(hostRouter?.currentRoute?.value ?? null, appSlug)
+        const hostRoute = hostRouter?.currentRoute?.value ?? null
+        const initial = localPathForHostRoute(hostRoute, appSlug)
         if (initial !== null) {
-            await router.replace(initial)
+            // The query travels too: reloading `/apps/custom-skills/p/7/new?template=x`
+            // must land on the same pre-filled form, not a blank one.
+            await router.replace({ path: initial, query: (hostRoute?.query ?? {}) as LocationQueryRaw })
         }
         await router.isReady()
 

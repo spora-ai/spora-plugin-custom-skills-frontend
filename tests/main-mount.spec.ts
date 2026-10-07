@@ -274,6 +274,106 @@ describe('SporaApp (main.ts mount contract)', () => {
         expect(hostRouter.push).toHaveBeenCalledWith('/apps/custom-skills/p/7/library')
     })
 
+    it('carries the query string into the host URL', async () => {
+        // Duplicate navigates with `?template=`. Without the query the panel would be
+        // unshareable and unreloadable for exactly that flow — the thing this PR claims
+        // to fix — so the local -> host direction pushes `to.fullPath`, not `to.path`.
+        const main = await import('../src/main')
+        const target = makeTarget()
+        const hostContext = makeHostContext()
+        const hostRouter = fakeHostRouter({ path: '/apps/custom-skills' })
+        hostContext.router = hostRouter
+
+        await main.default.mount(target, hostContext)
+        await flushPromises()
+        hostRouter.push.mockClear()
+
+        const viewer = target.querySelector<HTMLAnchorElement>('[data-test="section-catalogue"]')
+        viewer!.click()
+        await flushPromises()
+        const newSkill = target.querySelector<HTMLAnchorElement>('[data-test="new-skill"]')
+        newSkill!.click()
+        await flushPromises()
+
+        expect(hostRouter.push).toHaveBeenLastCalledWith('/apps/custom-skills/p/7/new')
+    })
+
+    it('carries the query string back in from a host navigation', async () => {
+        const main = await import('../src/main')
+        const target = makeTarget()
+        const hostContext = makeHostContext()
+        const hostRouter = fakeHostRouter({ path: '/apps/custom-skills' })
+        hostContext.router = hostRouter
+
+        await main.default.mount(target, hostContext)
+        await flushPromises()
+
+        hostRouter.navigate({
+            path: '/apps/custom-skills/p/7/new',
+            query: { template: 'code-review' },
+        })
+        await flushPromises()
+
+        // The create form reads `?template=` and fetches that shipped skill. Asserting
+        // the fetch is a direct proof the query survived the host -> local hop;
+        // `create-page` alone would pass with the query dropped.
+        expect(target.querySelector('[data-test="create-page"]')).not.toBeNull()
+        expect(get).toHaveBeenCalledWith('/skills/code-review')
+    })
+
+    it('ignores a cancelled host navigation instead of driving the panel', async () => {
+        // vue-router fires `afterEach` for CANCELLED and aborted navigations too, so an
+        // unguarded listener writes the path of a navigation that never happened — and
+        // the host mirroring that stale path back overrides what the operator asked for.
+        const main = await import('../src/main')
+        const target = makeTarget()
+        const hostContext = makeHostContext()
+        const hostRouter = fakeHostRouter({ path: '/apps/custom-skills/p/7' })
+        hostContext.router = hostRouter
+
+        await main.default.mount(target, hostContext)
+        await flushPromises()
+        expect(target.querySelector('[data-test="home-page"]')).not.toBeNull()
+
+        // `failure` is what vue-router passes for a superseded navigation.
+        hostRouter.navigate(
+            { path: '/apps/custom-skills/p/8/library' },
+            new Error('Navigation aborted from...'),
+        )
+        await flushPromises()
+
+        expect(target.querySelector('[data-test="catalogue-page"]')).toBeNull()
+        expect(target.querySelector('[data-test="home-page"]')).not.toBeNull()
+    })
+
+    it('does not replace the local route when the host query is unchanged', async () => {
+        // The echo guard compares path *and* query. A host navigation that only
+        // reorders the query still means "already there"; replacing on it would churn
+        // the local history for no reason. Mounted with the query already present, so
+        // the navigation genuinely reorders rather than adds.
+        const main = await import('../src/main')
+        const target = makeTarget()
+        const hostContext = makeHostContext()
+        const hostRouter = fakeHostRouter({
+            path: '/apps/custom-skills/p/7/library',
+            query: { a: '1', b: '2' },
+        })
+        hostContext.router = hostRouter
+
+        await main.default.mount(target, hostContext)
+        await flushPromises()
+        expect(target.querySelector('[data-test="catalogue-page"]')).not.toBeNull()
+
+        const before = hostRouter.push.mock.calls.length
+        hostRouter.navigate({
+            path: '/apps/custom-skills/p/7/library',
+            query: { b: '2', a: '1' },
+        })
+        await flushPromises()
+
+        expect(hostRouter.push.mock.calls.length).toBe(before)
+    })
+
     it('does not ping-pong between the two routers', async () => {
         // Each direction guards on "is the other side already there", so a host push
         // answering a local push must not push back. Asserted over a sequence rather
