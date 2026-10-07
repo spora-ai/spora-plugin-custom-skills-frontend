@@ -1,11 +1,8 @@
 /**
- * Dev-only entry: the same component tree as the production bundle, rendered into
- * `#app` with a mock host context so the UI loads without a backend. The mock API
- * lives in `./dev-mock` so it is testable without this bootstrap.
- *
- * For end-to-end testing against a real backend use the host dev flow — PHP on
- * :8080, this server on :5190, host SPA on :5173 — which forwards `/api` to PHP
- * and `/plugins/custom-skills/*` here.
+ * Dev-only entry: the production tree rendered into `#app` with a mock host context, so the UI loads
+ * without a backend. The mock API lives in `./dev-mock`. Against a real backend use the host dev
+ * flow — PHP on :8080, this on :5190, host SPA on :5173 — which forwards `/api` and
+ * `/plugins/custom-skills/*`.
  */
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
@@ -17,8 +14,6 @@ import { setApi } from './api/client'
 import { createMockApi } from './dev-mock'
 import { hostPathForLocalPath, localPathForHostPath } from './lib/hostRoute'
 
-// Banner so a developer doesn't waste time wondering why their backend isn't
-// responding.
 console.info('[spora/custom-skills] dev sandbox — using in-memory fixtures (no backend)')
 
 const mockApi = createMockApi()
@@ -27,13 +22,8 @@ setApi(mockApi)
 const APP_SLUG = 'custom-skills'
 const INITIAL_HOST_PATH = `/apps/${APP_SLUG}`
 
-/**
- * A stand-in for the host router, faithful enough to exercise the real sync.
- *
- * `history.replaceState` is the point: in the sandbox the browser URL *is* the host
- * URL, so navigating the panel has to move it or the dev experience claims a behaviour
- * the host does not have.
- */
+/** A stand-in for the host router. `history.replaceState` is the point: in the sandbox the
+ *  browser URL *is* the host URL, so navigating the panel has to move it. */
 function createDevHostRouter(): NonNullable<PluginHostContext['router']> {
     type Guard = (
         to: { path: string; fullPath?: string; query?: Record<string, unknown> },
@@ -44,10 +34,8 @@ function createDevHostRouter(): NonNullable<PluginHostContext['router']> {
     const state = {
         push: (to: string) => {
             window.history.replaceState({}, '', to)
-            // `currentRoute` moves too, not just the address bar: the sync's "is the
-            // other side already there?" guard reads it, so leaving it pinned to the
-            // initial path would make every local navigation push and would never
-            // exercise the echo case the sandbox is meant to reproduce.
+            // `currentRoute` moves too: the sync's "already there?" guard reads it, and leaving it
+            // pinned would never exercise the echo case.
             state.currentRoute.value = { path: to.split('?')[0] ?? to }
             for (const listener of listeners) listener({ path: to }, undefined, undefined)
             return Promise.resolve(undefined)
@@ -71,15 +59,12 @@ const hostContext: PluginHostContext = {
     router: createDevHostRouter(),
 }
 
-// Without `app.use(router)` the `useRoute()` inject keys are missing and the pages
-// warn.
 const router = createRouter({
     history: createMemoryHistory(),
     routes: panelRoutes(),
 })
 
-// The same two-way sync `main.ts` installs, so the sandbox can reproduce a
-// pasted deep link rather than only the happy path.
+/** The same two-way sync `main.ts` installs, so the sandbox can reproduce a pasted link. */
 router.afterEach((to) => {
     const hostRouter = hostContext.router
     if (hostRouter === null) return
@@ -94,8 +79,8 @@ hostContext.router?.afterEach?.((to) => {
     void router.replace(localPath)
 })
 
-// The banner does not say "the address bar is the host URL" — so a pasted path has to
-// come back out of the panel, or the sandbox hides the one thing this sync exists for.
+// The banner does not say "the address bar is the host URL", so a pasted path has to come back out
+// of the panel or the sandbox hides the one thing this sync exists for.
 const deepLink = localPathForHostPath(window.location.pathname, APP_SLUG)
 if (deepLink !== null) {
     void router.replace(deepLink)

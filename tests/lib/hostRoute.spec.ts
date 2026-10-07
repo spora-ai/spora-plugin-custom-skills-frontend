@@ -1,12 +1,5 @@
-/**
- * Between a host URL and a local route — both directions, and the round trip.
- *
- * The host path is the source of truth for this panel, so the two directions are not
- * symmetric conveniences: a local path that cannot be turned back into the host path it
- * came from is a path the operator cannot share. The round trip asserted below is what
- * makes a page impossible to add to the local router without also adding it to the
- * mapping.
- */
+/** Both directions, and the round trip: a local path that cannot be turned back into the host path
+ *  it came from is one the operator cannot share. */
 import { describe, it, expect } from 'vitest'
 import {
     appSlugFrom,
@@ -20,7 +13,6 @@ import {
 
 const SLUG = 'custom-skills'
 
-/** Every canonical host path, paired with the local path it must produce. */
 const CANONICAL: Array<[host: string, local: string]> = [
     ['/apps/custom-skills', '/'],
     ['/apps/custom-skills/', '/'],
@@ -89,9 +81,7 @@ describe('localPathForHostRoute — the legacy shapes', () => {
     })
 
     it('re-encodes a legacy ?skill= rather than interpolating it raw', () => {
-        // vue-router decodes query values, so this arrives as `../../admin`.
-        // Interpolated raw it becomes a real path traversal in the address bar; a
-        // legal name is `[a-z0-9-]` and is unaffected by the encoding.
+        // vue-router decodes query values, so this arrives as `../../admin`; raw, a real traversal.
         expect(localPathForHostRoute({ path: '/apps/custom-skills', query: { skill: '../../admin' } }, SLUG))
             .toBe('/skill/..%2F..%2Fadmin')
         expect(localPathForHostRoute({ path: '/apps/custom-skills', query: { skill: 'invoice-drafting' } }, SLUG))
@@ -168,9 +158,7 @@ describe('canonicalLocalPath', () => {
     })
 
     it('strips a principal segment that is not a valid id, rather than stacking one', () => {
-        // `/p/0` and `/p/abc` name no principal, so keying the strip on a parsed id
-        // would leave them and prepend a second segment: `/p/7/p/0/skill/x`, which
-        // matches no route and which the sync would write into the address bar.
+        // `/p/0` and `/p/abc` name no principal, so a strip keyed on a parsed id prepends `/p/7/p/0/skill/x`.
         expect(canonicalLocalPath('/p/0/skill/x', 7)).toBe('/p/7/skill/x')
         expect(canonicalLocalPath('/p/abc/skill/x', 7)).toBe('/p/7/skill/x')
         expect(canonicalLocalPath('/p/99999999999999999999/skill/x', 7)).toBe('/p/7/skill/x')

@@ -1,11 +1,7 @@
 /**
- * Mounts a page inside the panel's real dependencies: the plugin-local Pinia and
- * the plugin-local memory-history router.
- *
- * The router matters. The panel is page-per-destination, so a page mounted
- * without one renders `RouterLink`s as bare elements and `useRoute()` reads
- * `START_LOCATION` — which is how a test ends up asserting against a component
- * that could never be reached in the app.
+ * Mounts a page inside the panel's real dependencies. The router matters — without one, `RouterLink`s
+ * render as bare elements and `useRoute()` reads `START_LOCATION`, so a test asserts against a page
+ * unreachable in the app.
  */
 import { vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
@@ -15,11 +11,7 @@ import type { Pinia } from 'pinia'
 import { PANEL_ROUTES } from '../src/lib/routes'
 import { HOST_CONTEXT_KEY, type PluginHostContext } from '../src/shims'
 
-/**
- * The real route table with empty components. Derived from `PANEL_ROUTES` rather than
- * restated, so a spec always routes through the paths and names the app installs — it
- * used to be a hand-copied table, and the copies drifted.
- */
+/** Derived from `PANEL_ROUTES`, so a spec always routes through the app's own table. */
 export function stubRoutes(): Router {
     const stub = { template: '<div />' }
     return createRouter({

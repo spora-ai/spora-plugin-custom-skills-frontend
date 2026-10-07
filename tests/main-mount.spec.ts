@@ -1,20 +1,10 @@
-/**
- * Mount/unmount contract for `src/main.ts → SporaApp`, end-to-end against a fake
- * DOM target. `main.ts` builds the Vue app, installs Pinia + the local router, and
- * exposes `mount()` / `unmount()` for the host's `apps/registry.ts`.
- *
- * The two load-bearing cases: the plugin's API bridge must receive the host's
- * client so descendants' `getApi()` resolves at runtime, not just at compile time;
- * and `unmount()` must be idempotent before, after and twice over a mount.
- */
+/** Mount/unmount contract for `src/main.ts → SporaApp`, end-to-end against a fake DOM target. */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import type { PluginHostContext } from '../src/shims'
 
-/** The last host `get`, so a spec can assert on the query the panel actually sent. */
 let get: ReturnType<typeof vi.fn>
 
-/** A `custom_skills` row, field-for-field with the contract's frozen shape. */
 function makeRemoteSkill(principalId: number, name: string): Record<string, unknown> {
     return {
         id: 1,
@@ -43,11 +33,7 @@ function makeRemoteSkill(principalId: number, name: string): Record<string, unkn
 }
 
 function makeHostContext(): PluginHostContext {
-    // `SkillsPage` fetches these four envelopes on mount; empty ones resolve
-    // instead of blowing up with "Cannot read properties of undefined".
     get = vi.fn().mockImplementation((path: string) => {
-        // Principals, so the scope bar has something to name and the layout can
-        // resolve the acting principal the URL states.
         if (path === '/principals/me') {
             return Promise.resolve({
                 principals: [
@@ -56,8 +42,7 @@ function makeHostContext(): PluginHostContext {
                 ],
             })
         }
-        // Answering per principal is deliberate: a read sent with the *wrong*
-        // `?principal_id=` has to fail, which is the bug this spec exists for.
+        // Answering per principal is deliberate: a read with the *wrong* `?principal_id=` must fail.
         const principalOf = (p: string) => Number(/principal_id=(\d+)/.exec(p)?.[1])
         if (path.startsWith('/custom-skills?')) {
             return Promise.resolve({
@@ -78,9 +63,7 @@ function makeHostContext(): PluginHostContext {
     })
     return {
         api: {
-            // `as never` because the vi.fn's `any` signature is wider than the host
-            // client's generic one, which is a typing artefact of the mock rather
-            // than a shape mismatch.
+            // `as never`: the vi.fn's `any` signature is wider than the host client's — a mock artefact.
             get: get as never,
             post: vi.fn(),
             put: vi.fn(),
@@ -101,15 +84,8 @@ function makeTarget(): HTMLElement {
     return target
 }
 
-/**
- * The slice of the host's Vue Router this app touches.
- *
- * `afterEach` is a real Vue Router method the host exposes, so the fake fires the
- * same imperative callback the code registers rather than pretending to be
- * reactive — a `watch` on `currentRoute` would also "work" here and fail in the
- * host, which is the whole reason the code uses `afterEach`.
- */
-/** The shape a host route arrives in, including vue-router's `failure` argument. */
+/** The slice of the host's Router this app touches. A `watch` on `currentRoute` would "work" here
+ *  and fail in the host, which is why the fake exposes `afterEach`. */
 type HostRouteArg = {
     path: string
     fullPath?: string
@@ -122,7 +98,7 @@ function fakeHostRouter(initial: { path: string; query?: Record<string, unknown>
     return {
         currentRoute: { value: { ...initial } as { path: string; query?: Record<string, unknown> } },
         push: vi.fn().mockResolvedValue(undefined),
-        /** How many guards are currently registered — 1 while mounted, 0 after. */
+        /** Guards currently registered: 1 while mounted, 0 after. */
         get registered(): number {
             return guard === null ? 0 : 1
         },
@@ -141,8 +117,6 @@ function fakeHostRouter(initial: { path: string; query?: Record<string, unknown>
 
 beforeEach(() => {
     document.body.innerHTML = ''
-    // Reset the module cache so the `window.SporaAppCustomSkills` assignment
-    // lands fresh in each test.
     vi.resetModules()
     delete (window as unknown as { SporaAppCustomSkills?: unknown }).SporaAppCustomSkills
 })
@@ -167,8 +141,7 @@ describe('SporaApp (main.ts mount contract)', () => {
         const hostContext = makeHostContext()
         await main.default.mount(target, hostContext)
         await new Promise((r) => setTimeout(r, 0))
-        // `#spora-plugin-custom-skills` is the anchor every Tailwind utility nests
-        // beneath; losing it unscopes the plugin CSS into the host.
+        // Loses it and the plugin CSS unscopes into the host.
         expect(target.querySelector('#spora-plugin-custom-skills')).not.toBeNull()
         expect(target.querySelector('[data-test="home-page"]')).not.toBeNull()
     })
@@ -182,8 +155,7 @@ describe('SporaApp (main.ts mount contract)', () => {
         await main.default.mount(target, hostContext)
         await flushPromises()
 
-        // Without this the palette's link opened the panel's home page and dropped
-        // the skill, because the host registers no child route for the path.
+        // Without the child route the host registers for this path, a palette's link opened home.
         expect(target.querySelector('[data-test="desk-page"]')).not.toBeNull()
         expect(target.querySelector('[data-test="home-page"]')).toBeNull()
     })
@@ -223,10 +195,8 @@ describe('SporaApp (main.ts mount contract)', () => {
         await main.default.mount(target, hostContext)
         await flushPromises()
 
-        // A shipped skill is global and read-only, so the host links it under
-        // `/library/`. Collapsing both kinds onto the desk route would render the
-        // viewer page under the writable route, and the scope bar would announce the
-        // acting principal for a skill that has none.
+        // Collapsing both kinds onto the desk route would render the viewer under the writable one, and
+        // the scope bar would announce a principal a shipped skill does not have.
         expect(target.querySelector('[data-test="viewer-page"]')).not.toBeNull()
         expect(target.querySelector('[data-test="desk-page"]')).toBeNull()
         expect(target.querySelector('[data-test="section-catalogue"]')?.getAttribute('aria-current')).toBe('page')
@@ -250,8 +220,7 @@ describe('SporaApp (main.ts mount contract)', () => {
         expect(target.querySelector('[data-test="home-page"]')).toBeNull()
 
         main.default.unmount(target)
-        // The host router outlives the app, so a surviving listener would push into
-        // a router whose element is gone — and the host remounts this bundle.
+        // A surviving listener would push into a router whose element is gone.
         expect(hostRouter.registered).toBe(0)
     })
 
@@ -275,9 +244,8 @@ describe('SporaApp (main.ts mount contract)', () => {
     })
 
     it('carries the query string into the host URL', async () => {
-        // Duplicate navigates with `?template=`. Without the query the panel would be
-        // unshareable and unreloadable for exactly that flow — the thing this PR claims
-        // to fix — so the local -> host direction pushes `to.fullPath`, not `to.path`.
+        // Duplicate navigates with `?template=`; without the query that page is neither shareable nor
+        // reloadable.
         const main = await import('../src/main')
         const target = makeTarget()
         const hostContext = makeHostContext()
@@ -314,17 +282,14 @@ describe('SporaApp (main.ts mount contract)', () => {
         })
         await flushPromises()
 
-        // The create form reads `?template=` and fetches that shipped skill. Asserting
-        // the fetch is a direct proof the query survived the host -> local hop;
-        // `create-page` alone would pass with the query dropped.
+        // The assertion proves the query survived; `create-page` alone would pass with it dropped.
         expect(target.querySelector('[data-test="create-page"]')).not.toBeNull()
         expect(get).toHaveBeenCalledWith('/skills/code-review')
     })
 
     it('ignores a cancelled host navigation instead of driving the panel', async () => {
-        // vue-router fires `afterEach` for CANCELLED and aborted navigations too, so an
-        // unguarded listener writes the path of a navigation that never happened — and
-        // the host mirroring that stale path back overrides what the operator asked for.
+        // vue-router fires `afterEach` for CANCELLED too, so an unguarded listener writes a path
+        // that never happened, which the host then mirrors straight back.
         const main = await import('../src/main')
         const target = makeTarget()
         const hostContext = makeHostContext()
@@ -335,7 +300,6 @@ describe('SporaApp (main.ts mount contract)', () => {
         await flushPromises()
         expect(target.querySelector('[data-test="home-page"]')).not.toBeNull()
 
-        // `failure` is what vue-router passes for a superseded navigation.
         hostRouter.navigate(
             { path: '/apps/custom-skills/p/8/library' },
             new Error('Navigation aborted from...'),
@@ -347,10 +311,7 @@ describe('SporaApp (main.ts mount contract)', () => {
     })
 
     it('does not replace the local route when the host query is unchanged', async () => {
-        // The echo guard compares path *and* query. A host navigation that only
-        // reorders the query still means "already there"; replacing on it would churn
-        // the local history for no reason. Mounted with the query already present, so
-        // the navigation genuinely reorders rather than adds.
+        // The echo guard compares path *and* query; a reorder still means "already there".
         const main = await import('../src/main')
         const target = makeTarget()
         const hostContext = makeHostContext()
@@ -375,9 +336,7 @@ describe('SporaApp (main.ts mount contract)', () => {
     })
 
     it('does not ping-pong between the two routers', async () => {
-        // Each direction guards on "is the other side already there", so a host push
-        // answering a local push must not push back. Asserted over a sequence rather
-        // than a single hop: a two-step loop settles within one step.
+        // A sequence, not a single hop: a two-step loop settles within one step.
         const main = await import('../src/main')
         const target = makeTarget()
         const hostContext = makeHostContext()
@@ -410,8 +369,7 @@ describe('SporaApp (main.ts mount contract)', () => {
 
         await main.default.mount(target, hostContext)
         await flushPromises()
-        // Mount itself canonicalises the bare root, so start counting from here —
-        // this asserts about what happens *after* the app is gone.
+        // Mount canonicalises the bare root, so count from here.
         hostRouter.push.mockClear()
         main.default.unmount(target)
 
@@ -427,8 +385,7 @@ describe('SporaApp (main.ts mount contract)', () => {
         const target = makeTarget()
         const hostContext = makeHostContext()
         await main.default.mount(target, hostContext)
-        // Must resolve to the instance passed via `hostContext.api`, not throw
-        // "Plugin API not initialized".
+
         expect(client.getApi()).toBe(hostContext.api)
     })
 
@@ -454,9 +411,7 @@ describe('SporaApp (main.ts mount contract)', () => {
         const target = makeTarget()
         await main.default.mount(target, makeHostContext())
         await new Promise((r) => setTimeout(r, 0))
-        // The scope bar calls `useRoute()` / `useRouter()` unconditionally; an
-        // unbound router leaves it on `START_LOCATION` and warns, so every section
-        // would read as current at once.
+        // An unbound router leaves the scope bar on `START_LOCATION`, so every section reads as current.
         const skills = target.querySelector('[data-test="section-skills"]')
         expect(skills?.getAttribute('aria-current')).toBe('page')
         expect(target.querySelector('[data-test="section-catalogue"]')?.getAttribute('aria-current')).toBeNull()

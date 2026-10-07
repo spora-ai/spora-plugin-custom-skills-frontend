@@ -1,9 +1,4 @@
-/**
- * Every path the panel navigates to.
- *
- * Not helper tests: each `principalId: number | null` parameter *is* the enforcement
- * mechanism, and the `null` cases are what the unscoped legacy routes use.
- */
+/** The `principalId: number | null` parameter *is* the enforcement mechanism. */
 import { describe, it, expect } from 'vitest'
 import {
     deskPath,
@@ -70,8 +65,7 @@ describe('libraryPath and viewerPath', () => {
 
 describe('the two vocabularies stay in step', () => {
     it('produces paths the local router and the host mapping both know', () => {
-        // Each path here must resolve to a registered route *and* survive the round
-        // trip through the host mapping, or a link the panel renders 404s on reload.
+        // Each path must resolve to a registered route *and* survive the host round trip.
         const produced = [
             homePath(8),
             newSkillPath(8),

@@ -1,13 +1,5 @@
-/**
- * `PrincipalScopeBar` — the panel's one piece of global state, made visible.
- *
- * Three things are load-bearing. The dropdown carries a skill count per entry,
- * because a count is what makes a scope something you *choose* rather than a
- * filter you apply — and the contract has no count endpoint, so each count is its
- * own `GET /custom-skills?principal_id=N`, read when the menu opens. A scope change
- * *navigates* rather than writing the store, because the path is the only writer of
- * the acting principal. And it lands on home — see `PrincipalScopeBar.vue → choose()`.
- */
+/** Each entry's count is its own read on open (no count endpoint exists); a scope change navigates
+ *  rather than writing the store, and lands on home. */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
@@ -38,10 +30,7 @@ beforeEach(() => {
 
     router = createRouter({
         history: createMemoryHistory(),
-        // Derived from `PANEL_ROUTES`, the table `main.ts` installs. It used to be a
-        // hand-copied subset, which omitted the unscoped records entirely — so a spec
-        // pushed `/library` at a router that had no such route and passed only
-        // because section detection reads the path string.
+        // Derived from `PANEL_ROUTES`: a hand-copied subset omitted the unscoped records.
         routes: PANEL_ROUTES.map(({ path, name }) => ({
             path,
             name,
@@ -69,9 +58,8 @@ describe('PrincipalScopeBar → the scope control', () => {
         const wrapper = mountBar()
         expect(wrapper.find('[data-test="scope-menu"]').exists()).toBe(false)
         await wrapper.get('[data-test="scope-toggle"]').trigger('click')
-        // A `menu` of buttons, not a listbox of fake options: the entries were
-        // always buttons with click handlers, and claiming `option` made a screen
-        // reader announce something the keyboard behaviour did not match.
+        // A `menu` of buttons, not a listbox: `option` announced something the keyboard behaviour did
+        // not match.
         const menu = wrapper.get('[data-test="scope-menu"]')
         expect(menu.attributes('role')).toBe('menu')
         expect(menu.findAll('button[data-test^="scope-option-"]')).toHaveLength(2)
@@ -118,8 +106,7 @@ describe('PrincipalScopeBar → the scope control', () => {
         const entries = wrapper.findAll('button[data-test^="scope-option-"]')
         expect(entries[0]?.text()).toContain('Personal')
         expect(entries[1]?.text()).toContain('Group')
-        // Asserting "admin" or "member" here would be inventing a fact: the host
-        // does not send a role, so the read/write split is stated once for all.
+        // Asserting "admin" or "member" would invent a fact: the host sends no role.
         expect(wrapper.get('[data-test="scope-menu"]').text()).toContain('owner or an admin')
     })
 
@@ -212,8 +199,8 @@ describe('PrincipalScopeBar → navigation', () => {
     })
 
     it('carries no search box — the host palette owns search', () => {
-        // A second search box here would only ever see the *selected* principal's
-        // skills, so it would quietly mean "search what is in memory".
+        // A second search box here would only ever see the *selected* principal's skills,
+        // so it would quietly mean "search what is in memory".
         const wrapper = mountBar()
         expect(wrapper.find('input[type="search"]').exists()).toBe(false)
         expect(wrapper.find('input[type="text"]').exists()).toBe(false)
