@@ -12,21 +12,25 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import type { Component } from 'vue'
 import type { Pinia } from 'pinia'
+import { PANEL_ROUTES } from '../src/lib/routes'
 import { HOST_CONTEXT_KEY, type PluginHostContext } from '../src/shims'
 
-/** The route map from `src/main.ts`, stubbed — these specs are about the page. */
+/**
+ * The real route table with empty components. Derived from `PANEL_ROUTES` rather than
+ * restated, so a spec always routes through the paths and names the app installs — it
+ * used to be a hand-copied table, and the copies drifted.
+ */
 export function stubRoutes(): Router {
     const stub = { template: '<div />' }
     return createRouter({
         history: createMemoryHistory(),
-        routes: [
-            { path: '/', name: 'home', component: stub },
-            { path: '/new', name: 'create', component: stub },
-            { path: '/skills/:name', name: 'desk', component: stub },
-            { path: '/library', name: 'catalogue', component: stub },
-            { path: '/library/:name', name: 'library', component: stub },
-        ],
+        routes: PANEL_ROUTES.map(({ path, name }) => ({ path, name, component: stub })),
     })
+}
+
+/** The route names the app installs, for specs that assert on the resolved route. */
+export function panelRouteNames(): string[] {
+    return PANEL_ROUTES.map((route) => route.name)
 }
 
 function hostContext(): PluginHostContext {

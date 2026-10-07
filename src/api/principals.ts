@@ -12,8 +12,15 @@ export interface Principal {
     group_id: number | null
 }
 
+/**
+ * The principals the caller can act as, or `[]` when the envelope is not there.
+ *
+ * The `?? []` is not defensive padding: every consumer reaches into this list
+ * immediately, so a missing envelope must degrade to "no principal is visible" rather
+ * than throw mid-render. Doing it here beats a `?? []` at each of those call sites.
+ */
 export async function listMyPrincipals(): Promise<Principal[]> {
     const api = getApi()
     const result = await api.get<{ principals: Principal[] }>('/principals/me')
-    return result.principals
+    return result.principals ?? []
 }

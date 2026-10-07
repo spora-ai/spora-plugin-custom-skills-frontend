@@ -122,8 +122,8 @@ describe('CataloguePage → the list', () => {
         useSkillsStore().preShipped = [makePreShipped({ name: 'code-review' })]
         const wrapper = await mountOn('/library')
         await flushPromises()
-        expect(wrapper.get('[data-test="preshipped-name"]').attributes('href')).toBe('/library/code-review')
-        expect(wrapper.get('[data-test="view-shipped"]').attributes('href')).toBe('/library/code-review')
+        expect(wrapper.get('[data-test="preshipped-name"]').attributes('href')).toBe('/p/7/library/code-review')
+        expect(wrapper.get('[data-test="view-shipped"]').attributes('href')).toBe('/p/7/library/code-review')
     })
 })
 
@@ -139,7 +139,7 @@ describe('CataloguePage → duplicate', () => {
         // Nothing is written here. The name is final, and a copy written before the
         // operator has seen it is a row they then have to delete.
         expect(mockedApi.createSkill).not.toHaveBeenCalled()
-        expect(router.currentRoute.value.path).toBe('/new')
+        expect(router.currentRoute.value.path).toBe('/p/7/new')
         expect(router.currentRoute.value.query.template).toBe('code-review')
     })
 
@@ -184,14 +184,14 @@ describe('SkillViewerPage → reading a shipped skill', () => {
         // One word, one meaning. A Duplicate that wrote from one page and
         // navigated from another is the kind of thing that gets clicked twice.
         expect(mockedApi.createSkill).not.toHaveBeenCalled()
-        expect(router.currentRoute.value.path).toBe('/new')
+        expect(router.currentRoute.value.path).toBe('/p/7/new')
         expect(router.currentRoute.value.query.template).toBe('code-review')
     })
 
     it('goes back to the catalogue', async () => {
         const wrapper = await mountOn('/library/code-review')
         await flushPromises()
-        expect(wrapper.get('[data-test="viewer-back"]').attributes('href')).toBe('/library')
+        expect(wrapper.get('[data-test="viewer-back"]').attributes('href')).toBe('/p/7/library')
     })
 
     it('duplicates from a deep link even when the catalogue list is empty', async () => {

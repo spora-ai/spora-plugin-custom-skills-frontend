@@ -22,6 +22,7 @@ import {
     sortSkills,
     type SkillSort,
 } from '../lib/skillFormat'
+import { libraryPath, newSkillPath } from '../lib/paths'
 
 const store = useSkillsStore()
 const principals = usePrincipalsStore()
@@ -30,6 +31,10 @@ const sort = ref<SkillSort>('updated')
 
 const principal = computed(() => principals.currentPrincipal)
 const rows = computed(() => sortSkills(store.skills, sort.value))
+
+const principalId = computed(() => principals.selectedPrincipalId)
+const cataloguePath = computed(() => libraryPath(principalId.value))
+const newSkill = computed(() => newSkillPath(principalId.value))
 
 // The three store calls below re-throw after setting `error`, so each needs a
 // catch: `void` alone satisfies no-floating-promises while leaving the rejection
@@ -67,7 +72,7 @@ function restore(name: string): void {
             <!-- The discoverable half of duplication. A button that says
                  "duplicate" cannot help you decide; this one points at the reading. -->
             <RouterLink
-                :to="{ path: '/library' }"
+                :to="{ path: cataloguePath }"
                 class="group inline-flex items-center gap-3 rounded-lg border border-border px-3.5 py-2.5 transition-colors hover:bg-muted/50"
                 data-test="home-catalogue-link"
             >
@@ -127,7 +132,7 @@ function restore(name: string): void {
                 </p>
                 <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
                     <RouterLink
-                        :to="{ path: '/new' }"
+                        :to="{ path: newSkill }"
                         class="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                         data-test="home-empty-new"
                     >
@@ -135,7 +140,7 @@ function restore(name: string): void {
                         New skill
                     </RouterLink>
                     <RouterLink
-                        :to="{ path: '/library' }"
+                        :to="{ path: cataloguePath }"
                         class="inline-flex h-9 items-center rounded-lg border border-border px-3.5 text-sm font-medium transition-colors hover:bg-muted"
                         data-test="home-empty-catalogue"
                     >

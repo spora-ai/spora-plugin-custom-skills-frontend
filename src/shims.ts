@@ -58,7 +58,12 @@ export interface PluginHostContext {
 declare global {
     interface Window {
         SporaAppCustomSkills?: {
-            mount: (target: HTMLElement, ctx: PluginHostContext) => void | Promise<void>
+            /**
+             * Async, and must stay so: the panel may mount onto a URL that already
+             * names a skill, and cannot render before that navigation resolves. The
+             * host registry awaits a thenable return.
+             */
+            mount: (target: HTMLElement, ctx: PluginHostContext) => Promise<void>
             unmount?: (target: HTMLElement) => void
         }
     }

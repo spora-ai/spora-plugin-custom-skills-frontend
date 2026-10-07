@@ -17,6 +17,7 @@ import { createMemoryHistory, createRouter, type Router } from 'vue-router'
 import App from '../../src/App.vue'
 import HomePage from '../../src/pages/HomePage.vue'
 import CreateSkillPage from '../../src/pages/CreateSkillPage.vue'
+import { PANEL_ROUTES } from '../../src/lib/routes'
 import { HOST_CONTEXT_KEY, type PluginHostContext } from '../../src/shims'
 import { setApi } from '../../src/api/client'
 import * as api from '../../src/api/customSkills'
@@ -50,15 +51,21 @@ function mountLikeMain() {
     app.provide(HOST_CONTEXT_KEY, hostContext)
     app.use(createPinia())
 
+    // The real route map, so a spec that resolves a route resolves one the app installs.
+    // Home and the create form are real — *including their scoped twins*, since the
+    // layout canonicalises `/` into `/p/{id}` and every assertion here runs against the
+    // scoped route. Keyed on the component rather than the route name, so a future
+    // third spelling of the same page does not silently render a stub; everything else
+    // renders an empty div, this file being about the layout's bootstrap.
+    const blank = { render: () => h('div') }
+    const realPages = new Set<unknown>([HomePage, CreateSkillPage])
     router = createRouter({
         history: createMemoryHistory(),
-        routes: [
-            { path: '/', name: 'home', component: HomePage },
-            { path: '/new', name: 'create', component: CreateSkillPage },
-            { path: '/skills/:name', name: 'desk', component: { render: () => h('div') } },
-            { path: '/library', name: 'catalogue', component: { render: () => h('div') } },
-            { path: '/library/:name', name: 'library', component: { render: () => h('div') } },
-        ],
+        routes: PANEL_ROUTES.map(({ path, name, component }) => ({
+            path,
+            name,
+            component: realPages.has(component) ? component : blank,
+        })),
     })
     app.use(router)
 
@@ -71,8 +78,14 @@ function mountLikeMain() {
 beforeEach(async () => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    // The principals envelope has to be *answered*, not just seeded on the store: the
+    // layout reconciles against `GET /principals/me`, and an empty list leaves every
+    // principal-less path unscoped.
     setApi({
-        get: vi.fn().mockResolvedValue({ agents: [] }),
+        get: vi.fn().mockImplementation(async (path: string) => {
+            if (path === '/principals/me') return { principals: [makePrincipal()] }
+            return { agents: [] }
+        }),
         post: vi.fn(),
         put: vi.fn(),
         patch: vi.fn(),
@@ -81,19 +94,17 @@ beforeEach(async () => {
     mockedApi.listSkills.mockResolvedValue([])
     mockedApi.getSkillAllowlist.mockResolvedValue([])
     mockedPreshipped.listPreShippedSkills.mockResolvedValue([])
-
-    const principals = usePrincipalsStore()
-    principals.principals = [makePrincipal()]
-    principals.selectedPrincipalId = 7
 })
 
 describe('App bootstrap (main.ts parity)', () => {
-    it('resolves the initial route to home', async () => {
+    it('canonicalises the bare root into the scoped home', async () => {
         const { target } = mountLikeMain()
         await flushPromises()
         await router.isReady()
 
-        expect(router.currentRoute.value.name).toBe('home')
+        // `/apps/custom-skills` — what the apps dropdown links to — means "my own
+        // skills", and once the principal list answers the path is rewritten to say so.
+        expect(router.currentRoute.value.path).toBe('/p/7')
         expect(target.querySelector('[data-test="home-page"]')).not.toBeNull()
     })
 
@@ -118,7 +129,7 @@ describe('App bootstrap (main.ts parity)', () => {
         await flushPromises()
         await router.isReady()
 
-        expect(router.currentRoute.value.path).toBe('/new')
+        expect(router.currentRoute.value.path).toBe('/p/7/new')
         expect(target.querySelector('[data-test="create-page"]')).not.toBeNull()
         expect(target.querySelector('[data-test="create-form"]')).not.toBeNull()
     })
@@ -134,14 +145,23 @@ describe('App bootstrap (main.ts parity)', () => {
         expect(mockedPreshipped.listPreShippedSkills).toHaveBeenCalledTimes(1)
     })
 
-    it('sends no principal filter when none is selected, rather than a wrong one', async () => {
-        // `mountLikeMain` installs its own Pinia, so this store starts empty and
-        // the host client returns no principals envelope. `null` is the contract's
-        // "the caller's own user-principal"; a stale id would be an IDOR.
+    it('sends no principal filter when the principal list could not be read', async () => {
+        // With no principal to name, `null` is the contract's "the caller's own
+        // user-principal" — a stale id would be an IDOR.
+        setApi({
+            get: vi.fn().mockRejectedValue(new Error('boom')),
+            post: vi.fn(),
+            put: vi.fn(),
+            patch: vi.fn(),
+            delete: vi.fn(),
+        } as never)
+
         mountLikeMain()
         await flushPromises()
         await router.isReady()
+
         expect(mockedApi.listSkills).toHaveBeenCalledWith(null)
+        expect(router.currentRoute.value.path).toBe('/')
     })
 
     it('renders no error banner on a clean load', async () => {
@@ -151,32 +171,80 @@ describe('App bootstrap (main.ts parity)', () => {
         expect(target.querySelector('[role="alert"]')).toBeNull()
     })
 
-    it('reloads the list and the agents when the principal changes', async () => {
-        // The scope bar navigates to home on a change; the reload is what makes the
-        // new principal's skills appear, and it must not re-read the shipped
-        // catalogue, which is global and already loaded.
+    it('reloads the list and the agents when the URL names a different principal', async () => {
+        // The scope bar navigates rather than writing the store, so the principal
+        // arrives as a *path*. The shipped catalogue is global and already loaded.
+        setApi({
+            get: vi.fn().mockImplementation(async (path: string) => {
+                if (path === '/principals/me') {
+                    return {
+                        principals: [
+                            makePrincipal(),
+                            makePrincipal({ id: 8, type: 'group', name: 'Studio', user_id: null, group_id: 2 }),
+                        ],
+                    }
+                }
+                return { agents: [] }
+            }),
+            post: vi.fn(),
+            put: vi.fn(),
+            patch: vi.fn(),
+            delete: vi.fn(),
+        } as never)
+
         const { target } = mountLikeMain()
         await flushPromises()
         await router.isReady()
+        expect(router.currentRoute.value.path).toBe('/p/7')
+
         mockedApi.listSkills.mockClear()
         mockedPreshipped.listPreShippedSkills.mockClear()
 
-        const principals = usePrincipalsStore()
-        principals.principals = [
-            makePrincipal(),
-            makePrincipal({ id: 8, type: 'group', name: 'Studio', user_id: null, group_id: 2 }),
-        ]
-        principals.selectPrincipal(8)
+        await router.push('/p/8')
         await flushPromises()
 
+        expect(usePrincipalsStore().selectedPrincipalId).toBe(8)
         expect(mockedApi.listSkills).toHaveBeenCalledWith(8)
         expect(mockedPreshipped.listPreShippedSkills).not.toHaveBeenCalled()
         expect(target.querySelector('[data-test="home-principal"]')?.textContent).toBe('Studio')
     })
 
+    it('falls back and says so when the URL names a principal the caller cannot act as', async () => {
+        // A shared link to a group you have since left: URLs outlive membership, and the
+        // alternative is "No skill named …", which blames the skill for a scope problem.
+        const { target } = mountLikeMain()
+        await flushPromises()
+        await router.isReady()
+
+        await router.push('/p/4242/skill/test')
+        await flushPromises()
+
+        expect(usePrincipalsStore().selectedPrincipalId).toBe(7)
+        expect(router.currentRoute.value.path).toBe('/p/7/skill/test')
+        expect(target.querySelector('[role="alert"]')?.textContent).toContain('not one of yours')
+    })
+
     it('clears a stale notice on a principal change', async () => {
         // "Deleted x." from the previous principal is not news about this one.
         const { useSkillsStore } = await import('../../src/stores/skills')
+        setApi({
+            get: vi.fn().mockImplementation(async (path: string) => {
+                if (path === '/principals/me') {
+                    return {
+                        principals: [
+                            makePrincipal(),
+                            makePrincipal({ id: 8, type: 'group', name: 'Studio', user_id: null, group_id: 2 }),
+                        ],
+                    }
+                }
+                return { agents: [] }
+            }),
+            post: vi.fn(),
+            put: vi.fn(),
+            patch: vi.fn(),
+            delete: vi.fn(),
+        } as never)
+
         const { target } = mountLikeMain()
         await flushPromises()
         await router.isReady()
@@ -184,12 +252,7 @@ describe('App bootstrap (main.ts parity)', () => {
         await flushPromises()
         expect(target.textContent).toContain('Deleted invoice-drafting.')
 
-        const principals = usePrincipalsStore()
-        principals.principals = [
-            makePrincipal(),
-            makePrincipal({ id: 8, type: 'group', name: 'Studio', user_id: null, group_id: 2 }),
-        ]
-        principals.selectPrincipal(8)
+        await router.push('/p/8')
         await flushPromises()
         expect(target.textContent).not.toContain('Deleted invoice-drafting.')
     })

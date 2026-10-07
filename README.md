@@ -18,31 +18,46 @@ while there is exactly one thing to do.
 
 | Route | Page | Source | Mutability |
 |---|---|---|---|
-| `/` | Home — what this principal owns | `GET /api/v1/custom-skills` (this plugin) | navigates |
-| `/new` | Create — a name, then the desk | `POST /api/v1/custom-skills` | writes once |
-| `/skills/:name` | Desk — write | `GET`/`PUT`/`DELETE /api/v1/custom-skills/{name}` | full CRUD + restore |
-| `/library` | Catalogue — every shipped skill | `GET /api/v1/skills` (the **host**) | read-only + *Duplicate* |
-| `/library/:name` | Viewer — read a shipped skill | `GET /api/v1/skills/{name}` + `…/files/{path}` per sidecar (the **host**) | read-only |
+| `/p/{pid}` | Home — what this principal owns | `GET /api/v1/custom-skills` (this plugin) | navigates |
+| `/p/{pid}/new` | Create — a name, then the desk | `POST /api/v1/custom-skills` | writes once |
+| `/p/{pid}/skill/{name}` | Desk — write | `GET`/`PUT`/`DELETE /api/v1/custom-skills/{name}` | full CRUD + restore |
+| `/p/{pid}/library` | Catalogue — every shipped skill | `GET /api/v1/skills` (the **host**) | read-only + *Duplicate* |
+| `/p/{pid}/library/{name}` | Viewer — read a shipped skill | `GET /api/v1/skills/{name}` + `…/files/{path}` per sidecar (the **host**) | read-only |
 
 Four routing decisions worth defending:
 
-- **`/skills/:name` and `/library/:name` are separate routes**, not one route with
-  a `?view=` query. A shipped skill is a global, read-only resource; a custom one
-  is principal-scoped and writable. Different URLs make that structural difference
-  visible instead of hiding it behind a query string.
-- **`/new` is top-level, not `/skills/new`**, which would shadow a skill literally
-  named `new` — a legal slug under the contract.
-- **A host link follows the skill's kind.** The backend plugin's
-  `CustomSkillSearchProvider` emits `/apps/custom-skills/skill/{name}` for an own
-  skill and `/apps/custom-skills/library/{name}` for a shipped one, and the host
-  registers no child route for either — so `src/lib/hostRoute.ts` parses the path
-  itself and forwards it to the matching local route. The legacy `?skill=` form
-  still means the desk, because core only ever emitted an href for a skill whose
-  owning plugin had an app, which back then meant an own skill.
-- **The principal is not in the URL.** It lives in the Pinia store, and a scope
-  change navigates to home: the desk's URL says `invoice-drafting` and nothing
-  about whose it is, so re-pointing it at another principal's identically-named
-  skill mid-edit is the worst outcome the routing enables.
+- **The host URL is the source of truth; the local router is a mirror of it.** A local
+  path is the host path minus `/apps/{app}`, so `src/lib/hostRoute.ts` is a prefix
+  strip and a prefix append rather than a table of kinds — a page added to the router
+  cannot be left out of the mapping. A host navigation *replaces* the local route (it
+  has already been pushed onto the browser stack); a local navigation *pushes* a host
+  path, which is the direction that was missing entirely: without it the address bar
+  never moves while browsing, so nothing in the panel is linkable, bookmarkable or
+  reloadable. Same arrangement as `spora-plugin-media-archive`.
+- **Every path carries the principal as `p/{pid}`.** A skill belongs to exactly one
+  principal (`unique(principal_id, name)`) and the REST contract resolves an absent
+  `?principal_id=` to the *caller's own* rather than refusing — so a principal-less
+  URL silently reads the wrong scope. That is how a group-owned skill found through
+  the palette reported "No skill named … on this principal". It rides on the library
+  routes too: a shipped skill has no owner, but the acting principal is what
+  *Duplicate* writes the copy onto.
+- **`skill/{name}` and `library/{name}` are separate routes**, not one route with a
+  `?view=` query. A shipped skill is a global, read-only resource; a custom one is
+  principal-scoped and writable. Different URLs make that structural difference visible
+  instead of hiding it behind a query string.
+- **A host link follows the skill's kind, and the older shapes still land.** The
+  backend plugin's `CustomSkillSearchProvider` emits `/apps/custom-skills/p/{pid}/…`,
+  and the host registers no child route for it — so this package parses the path
+  itself. `/skill/{name}`, `/library[/{name}]` and the older `?skill=` query form are
+  still followed, then rewritten to the scoped spelling, because a link made under
+  the old shape is still a link someone holds.
+
+`src/lib/paths.ts` holds every path the panel navigates to, as pure builders taking
+the principal. It exists so a link *cannot* be built without one: roughly fifteen call
+sites once concatenated `/skills/${skill.name}` by hand, and each was an independent
+chance to re-open the wrong-scope bug. `src/lib/routes.ts` holds the route table,
+shared with `dev-main.ts` and the specs — it used to be copied into each, and the
+copies drifted.
 
 Pre-shipped skills are served by `spora-core`'s `SkillController`, which has
 three routes (`index`, `show`, `file`). The frozen contract lists them under
@@ -96,8 +111,10 @@ not one of the options because nothing records a skill's last invocation.
 
 ```
 src/
-  main.ts            mount/unmount contract, plugin-local Pinia + the route map
-  App.vue            the layout: scope bar, banners, delete dialog, <RouterView>
+  main.ts            mount/unmount contract, plugin-local Pinia + the two-way
+                     host↔local route sync
+  App.vue            the layout: scope bar, banners, delete dialog, <RouterView>,
+                     and the URL↔principal reconciliation
   shims.ts           PluginHostContext + injection key + the window global
   types.ts           CustomSkillResource and friends, field-for-field with the contract
   api/
@@ -109,7 +126,11 @@ src/
   stores/
     skills.ts        loading / saving / error / notice, the delete confirmation,
                      per-principal counts
-    principals.ts    the acting principal
+    principals.ts    the visible principals + the acting one the URL names
+  lib/hostRoute.ts  host path ⇄ local path, both directions, plus the legacy shapes
+  lib/paths.ts      every path the panel navigates to, as builders that require a
+                    principal
+  lib/routes.ts     the route table, shared with dev-main and the specs
   lib/skillFormat.ts pure derivations: validator path → field, provenance label,
                      fork name, slug rule, relative timestamps, sort orders
   pages/             HomePage, CreateSkillPage, SkillDeskPage, CataloguePage,

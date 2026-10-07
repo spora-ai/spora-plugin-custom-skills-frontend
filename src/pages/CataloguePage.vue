@@ -13,13 +13,23 @@ import { useRouter } from 'vue-router'
 import { AlertTriangle, Copy, Eye, FileText, Package } from 'lucide-vue-next'
 import SkillSortSelect from '../components/SkillSortSelect.vue'
 import { useSkillsStore } from '../stores/skills'
+import { usePrincipalsStore } from '../stores/principals'
 import { CATALOGUE_SORT_OPTIONS, sortByName, type NameSort } from '../lib/skillFormat'
+import { newSkillPath, viewerPath } from '../lib/paths'
 import type { PreShippedSkillSummary } from '../types'
 
 const store = useSkillsStore()
+const principals = usePrincipalsStore()
 const router = useRouter()
 
 const sort = ref<NameSort>('name-asc')
+
+/**
+ * The acting principal, which every link below carries: a shipped skill has no owner,
+ * but the panel's *acting* principal is what _Duplicate_ writes the copy onto. Leaving
+ * it off would make a copy land on whichever principal the next reload defaulted to.
+ */
+const principalId = computed(() => principals.selectedPrincipalId)
 
 const groups = computed(() => {
     const bySource = new Map<string, PreShippedSkillSummary[]>()
@@ -43,7 +53,7 @@ const groups = computed(() => {
  * written until they press create, and what comes across is visible first.
  */
 function duplicate(skill: PreShippedSkillSummary): void {
-    void router.push({ path: '/new', query: { template: skill.name } })
+    void router.push({ path: newSkillPath(principalId.value), query: { template: skill.name } })
 }
 </script>
 
@@ -113,7 +123,7 @@ function duplicate(skill: PreShippedSkillSummary): void {
                         <div class="min-w-0">
                             <div class="flex flex-wrap items-center gap-2">
                                 <RouterLink
-                                    :to="{ path: `/library/${skill.name}` }"
+                                    :to="{ path: viewerPath(principalId, skill.name) }"
                                     class="truncate font-mono text-sm font-medium hover:underline"
                                     data-test="preshipped-name"
                                 >
@@ -147,7 +157,7 @@ function duplicate(skill: PreShippedSkillSummary): void {
 
                         <div class="flex items-center gap-1.5">
                             <RouterLink
-                                :to="{ path: `/library/${skill.name}` }"
+                                :to="{ path: viewerPath(principalId, skill.name) }"
                                 class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium transition-colors hover:bg-muted"
                                 data-test="view-shipped"
                             >

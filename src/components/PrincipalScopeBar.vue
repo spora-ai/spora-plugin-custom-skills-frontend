@@ -20,6 +20,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { Check, ChevronDown, Plus, Users } from 'lucide-vue-next'
 import { useSkillsStore } from '../stores/skills'
 import { usePrincipalsStore } from '../stores/principals'
+import { homePath, libraryPath, newSkillPath } from '../lib/paths'
+import { isLibraryPath } from '../lib/hostRoute'
 import type { Principal } from '../api/principals'
 
 const principals = usePrincipalsStore()
@@ -31,12 +33,18 @@ const open = ref(false)
 
 const selected = computed<Principal | null>(() => principals.currentPrincipal)
 
+const principalId = computed(() => principals.selectedPrincipalId)
+
+const skillsPath = computed(() => homePath(principalId.value))
+const cataloguePath = computed(() => libraryPath(principalId.value))
+const newPath = computed(() => newSkillPath(principalId.value))
+
 /**
  * "Skills" is the section for everything that is not the catalogue, including the
  * desk and the create form — the tab says which side of the panel you are on, not
- * which page.
+ * which page. `isLibraryPath()` rather than `route.name`, for the reason it gives.
  */
-const section = computed(() => (route.path.startsWith('/library') ? 'library' : 'skills'))
+const section = computed(() => (isLibraryPath(route.path) ? 'library' : 'skills'))
 
 /**
  * A type glyph rather than an avatar: the host has no portrait for a principal,
@@ -82,19 +90,21 @@ function openMenu(): void {
 }
 
 /**
- * A scope change lands on home. The desk's URL says `invoice-drafting` and
- * nothing about whose it is, so re-pointing it at another principal's
- * identically-named skill while the operator is mid-edit is the worst outcome the
- * routing enables — and home is the one page where the principal is the subject.
+ * A scope change navigates — it does not mutate the store. The path is the only writer
+ * of the acting principal, and two writers would leave the path and the store
+ * disagreeing, which is the state that made the panel read the wrong principal.
+ *
+ * Home, not the current page: `unique(principal_id, name)` makes another principal's
+ * identically-named skill a real collision, and re-pointing a desk at one mid-edit is
+ * the worst outcome the routing enables.
  */
 async function choose(id: number): Promise<void> {
     open.value = false
-    if (principals.selectedPrincipalId !== id) {
-        principals.selectPrincipal(id)
-    }
-    await router.push({ path: '/' })
+    await router.push({ path: homePath(id) })
 }
 
+// The menu closes when the scope actually changed — not when this component's own
+// `choose()` ran, so a re-click on the current entry leaves it closed.
 watch(
     () => principals.selectedPrincipalId,
     () => {
@@ -205,7 +215,7 @@ watch(
              width to say the same thing, and the desk needs that width. -->
         <nav class="flex items-center gap-0.5 rounded-lg bg-muted p-0.5" aria-label="Sections">
             <RouterLink
-                :to="{ path: '/' }"
+                :to="{ path: skillsPath }"
                 :aria-current="section === 'skills' ? 'page' : undefined"
                 :class="section === 'skills'
                     ? 'rounded-md bg-background px-3 py-1.5 text-xs font-medium shadow-sm'
@@ -215,7 +225,7 @@ watch(
                 Skills
             </RouterLink>
             <RouterLink
-                :to="{ path: '/library' }"
+                :to="{ path: cataloguePath }"
                 :aria-current="section === 'library' ? 'page' : undefined"
                 :class="section === 'library'
                     ? 'rounded-md bg-background px-3 py-1.5 text-xs font-medium shadow-sm'
@@ -228,7 +238,7 @@ watch(
 
         <div class="ml-auto flex items-center gap-1.5">
             <RouterLink
-                :to="{ path: '/new' }"
+                :to="{ path: newPath }"
                 class="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                 data-test="new-skill"
             >

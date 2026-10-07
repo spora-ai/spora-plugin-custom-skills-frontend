@@ -8,24 +8,80 @@
  * and `unmount()` must be idempotent before, after and twice over a mount.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { flushPromises } from '@vue/test-utils'
 import type { PluginHostContext } from '../src/shims'
+
+/** The last host `get`, so a spec can assert on the query the panel actually sent. */
+let get: ReturnType<typeof vi.fn>
+
+/** A `custom_skills` row, field-for-field with the contract's frozen shape. */
+function makeRemoteSkill(principalId: number, name: string): Record<string, unknown> {
+    return {
+        id: 1,
+        principal_id: principalId,
+        name,
+        slug: name,
+        description: '',
+        license: null,
+        compatibility: null,
+        allowed_tools: null,
+        metadata: {},
+        body: '',
+        body_bytes: 0,
+        provenance: 'human',
+        created_by_user_id: 3,
+        updated_by_user_id: 3,
+        created_at: '',
+        updated_at: '',
+        files: [],
+        has_previous: false,
+        previous_at: null,
+        previous_by: null,
+        warnings: [],
+        warning_count: 0,
+    }
+}
 
 function makeHostContext(): PluginHostContext {
     // `SkillsPage` fetches these four envelopes on mount; empty ones resolve
     // instead of blowing up with "Cannot read properties of undefined".
-    const get = vi.fn().mockImplementation((path: string) => {
-        // A principal, so the scope bar and the home heading have something to name.
+    get = vi.fn().mockImplementation((path: string) => {
+        // Principals, so the scope bar has something to name and the layout can
+        // resolve the acting principal the URL states.
         if (path === '/principals/me') {
-            return Promise.resolve({ principals: [{ id: 7, type: 'user', name: 'Maya Fischer', user_id: 3, group_id: null }] })
+            return Promise.resolve({
+                principals: [
+                    { id: 7, type: 'user', name: 'Maya Fischer', user_id: 3, group_id: null },
+                    { id: 8, type: 'group', name: 'Studio', user_id: null, group_id: 2 },
+                ],
+            })
         }
-        if (path === '/custom-skills' || path.startsWith('/custom-skills?')) return Promise.resolve({ skills: [] })
+        // Answering per principal is deliberate: a read sent with the *wrong*
+        // `?principal_id=` has to fail, which is the bug this spec exists for.
+        const principalOf = (p: string) => Number(/principal_id=(\d+)/.exec(p)?.[1])
+        if (path.startsWith('/custom-skills?')) {
+            return Promise.resolve({
+                skills: principalOf(path) === 8 ? [makeRemoteSkill(8, 'test')] : [],
+            })
+        }
+        if (path === '/custom-skills') return Promise.resolve({ skills: [] })
+        if (path.startsWith('/custom-skills/')) {
+            const name = decodeURIComponent(path.slice('/custom-skills/'.length).split('?')[0] ?? '')
+            if (principalOf(path) !== 8 || name !== 'test') {
+                return Promise.reject(new Error('404 SKILL_NOT_FOUND'))
+            }
+            return Promise.resolve({ skill: makeRemoteSkill(8, 'test') })
+        }
         if (path === '/skills') return Promise.resolve({ skills: [] })
         if (path === '/agents') return Promise.resolve({ agents: [] })
         return Promise.resolve(undefined)
     })
     return {
         api: {
-            get,
+            // `as never` because the vi.fn's `any` signature is wider than the host
+            // client's generic one, which is a typing artefact of the mock rather
+            // than a shape mismatch.
+            get: get as never,
             post: vi.fn(),
             put: vi.fn(),
             patch: vi.fn(),
@@ -114,27 +170,51 @@ describe('SporaApp (main.ts mount contract)', () => {
         const main = await import('../src/main')
         const target = makeTarget()
         const hostContext = makeHostContext()
+        hostContext.router = fakeHostRouter({ path: '/apps/custom-skills/p/7/skill/invoice-drafting' })
+
+        await main.default.mount(target, hostContext)
+        await flushPromises()
+
+        // Without this the palette's link opened the panel's home page and dropped
+        // the skill, because the host registers no child route for the path.
+        expect(target.querySelector('[data-test="desk-page"]')).not.toBeNull()
+        expect(target.querySelector('[data-test="home-page"]')).toBeNull()
+    })
+
+    it('mount() opens a group-owned skill under the principal its URL names', async () => {
+        const main = await import('../src/main')
+        const target = makeTarget()
+        const hostContext = makeHostContext()
+        hostContext.router = fakeHostRouter({ path: '/apps/custom-skills/p/8/skill/test' })
+
+        await main.default.mount(target, hostContext)
+        await flushPromises()
+
+        expect(get).toHaveBeenCalledWith('/custom-skills/test?principal_id=8')
+        expect(target.querySelector('[data-test="desk-missing"]')).toBeNull()
+    })
+
+    it('mount() follows a pre-principal href, so an older bookmark still opens', async () => {
+        
+        const main = await import('../src/main')
+        const target = makeTarget()
+        const hostContext = makeHostContext()
         hostContext.router = fakeHostRouter({ path: '/apps/custom-skills/skill/invoice-drafting' })
 
         await main.default.mount(target, hostContext)
-        await new Promise((r) => setTimeout(r, 0))
+        await flushPromises()
 
-        // Without this the palette's link opened the panel's home page and dropped
-        // the skill, because the host registers no child route for the path. The
-        // assertion is on what rendered: the host's own URL is unchanged, since the
-        // app routes on its local memory-history router.
         expect(target.querySelector('[data-test="desk-page"]')).not.toBeNull()
-        expect(target.querySelector('[data-test="home-page"]')).toBeNull()
     })
 
     it('mount() lands a /library/ host URL on the read-only viewer, not the desk', async () => {
         const main = await import('../src/main')
         const target = makeTarget()
         const hostContext = makeHostContext()
-        hostContext.router = fakeHostRouter({ path: '/apps/custom-skills/library/time-arithmetic' })
+        hostContext.router = fakeHostRouter({ path: '/apps/custom-skills/p/7/library/time-arithmetic' })
 
         await main.default.mount(target, hostContext)
-        await new Promise((r) => setTimeout(r, 0))
+        await flushPromises()
 
         // A shipped skill is global and read-only, so the host links it under
         // `/library/`. Collapsing both kinds onto the desk route would render the
@@ -154,11 +234,11 @@ describe('SporaApp (main.ts mount contract)', () => {
         hostContext.router = hostRouter
 
         await main.default.mount(target, hostContext)
-        await new Promise((r) => setTimeout(r, 0))
+        await flushPromises()
         expect(hostRouter.registered).toBe(1)
 
-        hostRouter.navigate({ path: '/apps/custom-skills/skill/report' })
-        await new Promise((r) => setTimeout(r, 0))
+        hostRouter.navigate({ path: '/apps/custom-skills/p/8/skill/report' })
+        await flushPromises()
         expect(target.querySelector('[data-test="desk-page"]')).not.toBeNull()
         expect(target.querySelector('[data-test="home-page"]')).toBeNull()
 
@@ -166,6 +246,72 @@ describe('SporaApp (main.ts mount contract)', () => {
         // The host router outlives the app, so a surviving listener would push into
         // a router whose element is gone — and the host remounts this bundle.
         expect(hostRouter.registered).toBe(0)
+    })
+
+    it('writes the host URL when the panel navigates', async () => {
+
+        const main = await import('../src/main')
+        const target = makeTarget()
+        const hostContext = makeHostContext()
+        const hostRouter = fakeHostRouter({ path: '/apps/custom-skills' })
+        hostContext.router = hostRouter
+
+        await main.default.mount(target, hostContext)
+        await flushPromises()
+
+        const catalogue = target.querySelector<HTMLAnchorElement>('[data-test="section-catalogue"]')
+        expect(catalogue).not.toBeNull()
+        catalogue!.click()
+        await flushPromises()
+
+        expect(hostRouter.push).toHaveBeenCalledWith('/apps/custom-skills/p/7/library')
+    })
+
+    it('does not ping-pong between the two routers', async () => {
+        // Each direction guards on "is the other side already there", so a host push
+        // answering a local push must not push back. Asserted over a sequence rather
+        // than a single hop: a two-step loop settles within one step.
+        const main = await import('../src/main')
+        const target = makeTarget()
+        const hostContext = makeHostContext()
+        const hostRouter = fakeHostRouter({ path: '/apps/custom-skills' })
+        hostContext.router = hostRouter
+
+        await main.default.mount(target, hostContext)
+        await flushPromises()
+        const afterMount = hostRouter.push.mock.calls.length
+
+        for (const testId of ['section-catalogue', 'section-skills', 'new-skill']) {
+            const link = target.querySelector<HTMLAnchorElement>(`[data-test="${testId}"]`)
+            expect(link).not.toBeNull()
+            link!.click()
+            await flushPromises()
+        }
+
+        // One push per navigation the operator made — no extras from the echo.
+        expect(hostRouter.push.mock.calls.length - afterMount).toBe(3)
+        expect(hostRouter.push).toHaveBeenLastCalledWith('/apps/custom-skills/p/7/new')
+    })
+
+    it('does not push into the host router after unmount', async () => {
+
+        const main = await import('../src/main')
+        const target = makeTarget()
+        const hostContext = makeHostContext()
+        const hostRouter = fakeHostRouter({ path: '/apps/custom-skills' })
+        hostContext.router = hostRouter
+
+        await main.default.mount(target, hostContext)
+        await flushPromises()
+        // Mount itself canonicalises the bare root, so start counting from here —
+        // this asserts about what happens *after* the app is gone.
+        hostRouter.push.mockClear()
+        main.default.unmount(target)
+
+        hostRouter.navigate({ path: '/apps/custom-skills/p/8/library' })
+        await flushPromises()
+
+        expect(hostRouter.push).not.toHaveBeenCalled()
     })
 
     it('mount() wires hostContext.api into the plugin-local api/client bridge', async () => {

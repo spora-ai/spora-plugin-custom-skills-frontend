@@ -1,12 +1,12 @@
 /**
  * `PrincipalScopeBar` — the panel's one piece of global state, made visible.
  *
- * Two things are load-bearing. The dropdown carries a skill count per entry,
+ * Three things are load-bearing. The dropdown carries a skill count per entry,
  * because a count is what makes a scope something you *choose* rather than a
  * filter you apply — and the contract has no count endpoint, so each count is its
- * own `GET /custom-skills?principal_id=N`, read when the menu opens. And a scope
- * change lands on home: the desk's URL says `invoice-drafting` and nothing about
- * whose it is, so re-pointing it mid-edit is the worst outcome the routing enables.
+ * own `GET /custom-skills?principal_id=N`, read when the menu opens. A scope change
+ * *navigates* rather than writing the store, because the path is the only writer of
+ * the acting principal. And it lands on home — see `PrincipalScopeBar.vue → choose()`.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -39,10 +39,11 @@ beforeEach(() => {
         history: createMemoryHistory(),
         routes: [
             { path: '/', name: 'home', component: { template: '<div />' } },
-            { path: '/new', name: 'create', component: { template: '<div />' } },
-            { path: '/skills/:name', name: 'desk', component: { template: '<div />' } },
-            { path: '/library', name: 'catalogue', component: { template: '<div />' } },
-            { path: '/library/:name', name: 'library', component: { template: '<div />' } },
+            { path: '/p/:principalId', name: 'home-scoped', component: { template: '<div />' } },
+            { path: '/p/:principalId/new', name: 'create', component: { template: '<div />' } },
+            { path: '/p/:principalId/skill/:name', name: 'desk', component: { template: '<div />' } },
+            { path: '/p/:principalId/library', name: 'catalogue', component: { template: '<div />' } },
+            { path: '/p/:principalId/library/:name', name: 'viewer', component: { template: '<div />' } },
         ],
     })
 
@@ -120,16 +121,40 @@ describe('PrincipalScopeBar → the scope control', () => {
         expect(wrapper.get('[data-test="scope-menu"]').text()).toContain('owner or an admin')
     })
 
-    it('selects a new principal and lands on home, not on the route it came from', async () => {
-        await router.push('/skills/invoice-drafting')
+    it('navigates to the new scope\'s home, carrying the principal in the path', async () => {
+        await router.push('/p/7/skill/invoice-drafting')
         await router.isReady()
         const wrapper = mountBar()
         await wrapper.get('[data-test="scope-toggle"]').trigger('click')
         await flushPromises()
         await wrapper.get('[data-test="scope-option-8"]').trigger('click')
         await flushPromises()
-        expect(usePrincipalsStore().selectedPrincipalId).toBe(8)
-        expect(router.currentRoute.value.path).toBe('/')
+
+
+        expect(router.currentRoute.value.path).toBe('/p/8')
+    })
+
+    it('does not write the store itself — the URL is the only writer', async () => {
+
+        const wrapper = mountBar()
+        await wrapper.get('[data-test="scope-toggle"]').trigger('click')
+        await flushPromises()
+        await wrapper.get('[data-test="scope-option-8"]').trigger('click')
+        await flushPromises()
+
+        expect(usePrincipalsStore().selectedPrincipalId).toBe(7)
+        expect(router.currentRoute.value.path).toBe('/p/8')
+    })
+
+    it('lands home even when re-picking the principal already selected', async () => {
+        await router.push('/p/7/skill/invoice-drafting')
+        await router.isReady()
+        const wrapper = mountBar()
+        await wrapper.get('[data-test="scope-toggle"]').trigger('click')
+        await flushPromises()
+        await wrapper.get('[data-test="scope-option-7"]').trigger('click')
+        await flushPromises()
+        expect(router.currentRoute.value.path).toBe('/p/7')
     })
 
     it('does not refetch the skills the store already holds for a principal', async () => {
@@ -148,25 +173,40 @@ describe('PrincipalScopeBar → navigation', () => {
         expect(wrapper.get('[data-test="section-skills"]').attributes('aria-current')).toBe('page')
         expect(wrapper.get('[data-test="section-catalogue"]').attributes('aria-current')).toBeUndefined()
 
-        await router.push('/library/code-review')
+        await router.push('/p/7/library/code-review')
         await router.isReady()
         await flushPromises()
         expect(wrapper.get('[data-test="section-catalogue"]').attributes('aria-current')).toBe('page')
         expect(wrapper.get('[data-test="section-skills"]').attributes('aria-current')).toBeUndefined()
     })
 
+    it('marks the catalogue section from the path shape, not the route name', async () => {
+
+        await router.push('/library')
+        await router.isReady()
+        const wrapper = mountBar()
+        expect(wrapper.get('[data-test="section-catalogue"]').attributes('aria-current')).toBe('page')
+    })
+
     it('treats the desk and the create form as the Skills section', async () => {
-        await router.push('/skills/invoice-drafting')
+        await router.push('/p/7/skill/invoice-drafting')
         await router.isReady()
         const wrapper = mountBar()
         expect(wrapper.get('[data-test="section-skills"]').attributes('aria-current')).toBe('page')
     })
 
-    it('sends New skill to the create route', async () => {
+    it('sends New skill to the create route, carrying the acting principal', async () => {
         const wrapper = mountBar()
         await wrapper.get('[data-test="new-skill"]').trigger('click')
         await flushPromises()
-        expect(router.currentRoute.value.path).toBe('/new')
+        expect(router.currentRoute.value.path).toBe('/p/7/new')
+    })
+
+    it('carries the acting principal in every section link', async () => {
+        const wrapper = mountBar()
+        expect(wrapper.get('[data-test="section-skills"]').attributes('href')).toBe('/p/7')
+        expect(wrapper.get('[data-test="section-catalogue"]').attributes('href')).toBe('/p/7/library')
+        expect(wrapper.get('[data-test="new-skill"]').attributes('href')).toBe('/p/7/new')
     })
 
     it('carries no search box — the host palette owns search', () => {
