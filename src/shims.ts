@@ -59,9 +59,9 @@ declare global {
     interface Window {
         SporaAppCustomSkills?: {
             /**
-             * Async, and must stay so: the panel is mounted onto a host URL that may
-             * already name a principal and a skill, and it cannot render before that
-             * navigation resolves. The host registry awaits a thenable return.
+             * Async, and must stay so: the panel may mount onto a URL that already
+             * names a skill, and cannot render before that navigation resolves. The
+             * host registry awaits a thenable return.
              */
             mount: (target: HTMLElement, ctx: PluginHostContext) => Promise<void>
             unmount?: (target: HTMLElement) => void

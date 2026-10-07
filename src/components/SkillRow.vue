@@ -43,13 +43,10 @@ const menuOpen = ref(false)
 const selectedAgentId = ref<number | null>(null)
 
 /**
- * Where this row's skill lives.
- *
- * Built from the row's own `principal_id` rather than the acting principal: a row is
- * a skill of exactly one principal (`unique(principal_id, name)`), so the resource
- * already carries the scope its link needs. Reading the store here would work only
- * while the store and the list agree — and the whole point of this change is that the
- * URL names the scope, so a link derived from ambient state can point at the wrong one.
+ * Where this row's skill lives, from the row's own `principal_id` rather than the
+ * acting principal. A row *is* a skill of exactly one principal, so the resource already
+ * carries the scope its link needs; a link derived from ambient state can point at the
+ * wrong one.
  */
 const desk = computed(() => deskPath(props.skill.principal_id, props.skill.name))
 

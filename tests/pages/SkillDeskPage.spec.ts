@@ -96,10 +96,7 @@ describe('SkillDeskPage → opening', () => {
     })
 
     it('reads a group-owned skill against the principal its path names', async () => {
-        // The reported bug, as a test. A group skill found through the palette arrived
-        // as a URL naming no principal, so the read carried no `?principal_id=` and
-        // the contract resolved it to the caller's own — answering "No skill named …
-        // on this principal" about a skill that very much exists.
+
         useSkillsStore().skills = []
         mockedApi.getSkill.mockResolvedValue(makeSkill({ name: 'test', principal_id: 8 }))
 
@@ -112,8 +109,7 @@ describe('SkillDeskPage → opening', () => {
     })
 
     it('does not issue the read while the principal list is still in flight', async () => {
-        // The ordering that made the bug possible: a child's `onMounted` runs before
-        // the layout's, so a read issued first would go out with no principal at all.
+
         useSkillsStore().skills = []
         let release: (() => void) | null = null
         mockedPrincipals.listMyPrincipals.mockReturnValue(new Promise((resolve) => {
@@ -531,8 +527,7 @@ describe('SkillDeskPage → leaving', () => {
         await flushPromises()
         await wrapper.get('[data-test="desk-cancel"]').trigger('click')
         await flushPromises()
-        // Scoped home, not the bare root: the URL is what says whose skills are on
-        // screen, and a cancel must not silently drop the scope.
+
         expect(router.currentRoute.value.path).toBe('/p/7')
     })
 
@@ -591,9 +586,6 @@ describe('SkillDeskPage → leaving', () => {
     })
 
     it('re-resolves when only the principal in the path changes', async () => {
-        // `unique(principal_id, name)` makes an identically-named skill on two
-        // principals a real collision, so a path that changes only `p/{pid}` is still
-        // a different skill.
         const wrapper = await mountOn('invoice-drafting')
         await flushPromises()
         mockedApi.getSkill.mockResolvedValue(makeSkill({ name: 'invoice-drafting', principal_id: 8 }))

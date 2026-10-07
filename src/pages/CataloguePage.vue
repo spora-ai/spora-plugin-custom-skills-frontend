@@ -25,12 +25,9 @@ const router = useRouter()
 const sort = ref<NameSort>('name-asc')
 
 /**
- * The acting principal, which every link below carries.
- *
- * A shipped skill has no owner, but the panel's *acting* principal is what _Duplicate_
- * writes the copy onto — so it has to travel in the link even though the skill it
- * opens does not need it. Leaving it off would make a copy land on whichever
- * principal the next reload happened to default to.
+ * The acting principal, which every link below carries: a shipped skill has no owner,
+ * but the panel's *acting* principal is what _Duplicate_ writes the copy onto. Leaving
+ * it off would make a copy land on whichever principal the next reload defaulted to.
  */
 const principalId = computed(() => principals.selectedPrincipalId)
 

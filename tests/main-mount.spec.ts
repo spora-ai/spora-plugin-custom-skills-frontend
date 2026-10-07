@@ -56,10 +56,8 @@ function makeHostContext(): PluginHostContext {
                 ],
             })
         }
-        // One principal-scoped skill on principal 8, so a scoped deep link has
-        // something to open. Answering per principal is deliberate: it is what makes
-        // a read sent with the *wrong* `?principal_id=` fail, which is the bug this
-        // spec exists for. Everything else is empty.
+        // Answering per principal is deliberate: a read sent with the *wrong*
+        // `?principal_id=` has to fail, which is the bug this spec exists for.
         const principalOf = (p: string) => Number(/principal_id=(\d+)/.exec(p)?.[1])
         if (path.startsWith('/custom-skills?')) {
             return Promise.resolve({
@@ -184,10 +182,6 @@ describe('SporaApp (main.ts mount contract)', () => {
     })
 
     it('mount() opens a group-owned skill under the principal its URL names', async () => {
-        // The reported bug. The href the provider emits carries the principal, so a
-        // hit on a group's skill names both — and the desk reads the skill against
-        // that principal rather than resolving an absent `?principal_id=` to the
-        // caller's own and reporting it missing.
         const main = await import('../src/main')
         const target = makeTarget()
         const hostContext = makeHostContext()
@@ -201,9 +195,7 @@ describe('SporaApp (main.ts mount contract)', () => {
     })
 
     it('mount() follows a pre-principal href, so an older bookmark still opens', async () => {
-        // A link emitted before the principal moved into the path is still a link
-        // someone holds. It carries no principal, so it lands on the unscoped desk
-        // and the layout resolves it to the caller's own.
+        
         const main = await import('../src/main')
         const target = makeTarget()
         const hostContext = makeHostContext()
@@ -257,9 +249,7 @@ describe('SporaApp (main.ts mount contract)', () => {
     })
 
     it('writes the host URL when the panel navigates', async () => {
-        // The direction that was missing entirely: without it the address bar never
-        // moved while browsing, so nothing in the panel was linkable, bookmarkable or
-        // reloadable.
+
         const main = await import('../src/main')
         const target = makeTarget()
         const hostContext = makeHostContext()
@@ -280,8 +270,7 @@ describe('SporaApp (main.ts mount contract)', () => {
     it('does not ping-pong between the two routers', async () => {
         // Each direction guards on "is the other side already there", so a host push
         // answering a local push must not push back. Asserted over a sequence rather
-        // than a single hop: a two-step loop settles within one step, and only a longer
-        // one exposes it.
+        // than a single hop: a two-step loop settles within one step.
         const main = await import('../src/main')
         const target = makeTarget()
         const hostContext = makeHostContext()
@@ -305,8 +294,7 @@ describe('SporaApp (main.ts mount contract)', () => {
     })
 
     it('does not push into the host router after unmount', async () => {
-        // The host router outlives this app and the host remounts the bundle
-        // repeatedly, so a late-resolving push would land on a slot that is gone.
+
         const main = await import('../src/main')
         const target = makeTarget()
         const hostContext = makeHostContext()

@@ -51,22 +51,19 @@ function mountLikeMain() {
     app.provide(HOST_CONTEXT_KEY, hostContext)
     app.use(createPinia())
 
-    // The real route map, so a spec that resolves a route resolves one the app
-    // actually installs. `home` and `create` are the real pages; the rest render an
-    // empty div, since this file is about the layout's bootstrap, not each page.
+    // The real route map, so a spec that resolves a route resolves one the app installs.
+    // Home and the create form are real — *including their scoped twins*, since the
+    // layout canonicalises `/` into `/p/{id}` and every assertion here runs against the
+    // scoped route. Keyed on the component rather than the route name, so a future
+    // third spelling of the same page does not silently render a stub; everything else
+    // renders an empty div, this file being about the layout's bootstrap.
     const blank = { render: () => h('div') }
-    // Home and the create form must be real — *including their scoped twins*, since
-    // the layout canonicalises `/` into `/p/{id}` and every assertion here runs
-    // against the scoped route. Keyed on the component rather than the route name so
-    // a future third spelling of the same page does not silently render a stub.
     const realPages = new Set<unknown>([HomePage, CreateSkillPage])
     router = createRouter({
         history: createMemoryHistory(),
         routes: PANEL_ROUTES.map(({ path, name, component }) => ({
             path,
             name,
-            // The rest render an empty div — this file is about the layout's
-            // bootstrap, not each page.
             component: realPages.has(component) ? component : blank,
         })),
     })
@@ -81,9 +78,9 @@ function mountLikeMain() {
 beforeEach(async () => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
-    // The principals envelope has to be answered, not just seeded on the store: the
-    // layout now reconciles the acting principal against `GET /principals/me`, and a
-    // list that comes back empty makes every principal-less path stay unscoped.
+    // The principals envelope has to be *answered*, not just seeded on the store: the
+    // layout reconciles against `GET /principals/me`, and an empty list leaves every
+    // principal-less path unscoped.
     setApi({
         get: vi.fn().mockImplementation(async (path: string) => {
             if (path === '/principals/me') return { principals: [makePrincipal()] }
@@ -106,8 +103,7 @@ describe('App bootstrap (main.ts parity)', () => {
         await router.isReady()
 
         // `/apps/custom-skills` — what the apps dropdown links to — means "my own
-        // skills". Once the principal list answers, the path is rewritten to say so
-        // outright, so the URL survives a reload and a paste.
+        // skills", and once the principal list answers the path is rewritten to say so.
         expect(router.currentRoute.value.path).toBe('/p/7')
         expect(target.querySelector('[data-test="home-page"]')).not.toBeNull()
     })
@@ -151,8 +147,7 @@ describe('App bootstrap (main.ts parity)', () => {
 
     it('sends no principal filter when the principal list could not be read', async () => {
         // With no principal to name, `null` is the contract's "the caller's own
-        // user-principal". A stale id would be an IDOR, and the URL cannot be
-        // canonicalised to a principal nobody resolved.
+        // user-principal" — a stale id would be an IDOR.
         setApi({
             get: vi.fn().mockRejectedValue(new Error('boom')),
             post: vi.fn(),
@@ -178,9 +173,7 @@ describe('App bootstrap (main.ts parity)', () => {
 
     it('reloads the list and the agents when the URL names a different principal', async () => {
         // The scope bar navigates rather than writing the store, so the principal
-        // arrives here as a *path*. The reload is what makes the new principal's
-        // skills appear, and it must not re-read the shipped catalogue, which is
-        // global and already loaded.
+        // arrives as a *path*. The shipped catalogue is global and already loaded.
         setApi({
             get: vi.fn().mockImplementation(async (path: string) => {
                 if (path === '/principals/me') {
@@ -217,10 +210,8 @@ describe('App bootstrap (main.ts parity)', () => {
     })
 
     it('falls back and says so when the URL names a principal the caller cannot act as', async () => {
-        // A shared link to a group you have since left is a real case: the path is a
-        // URL, and URLs outlive membership. The alternative is rendering it as "No
-        // skill named … on this principal", which blames the skill for a scope
-        // problem.
+        // A shared link to a group you have since left: URLs outlive membership, and the
+        // alternative is "No skill named …", which blames the skill for a scope problem.
         const { target } = mountLikeMain()
         await flushPromises()
         await router.isReady()

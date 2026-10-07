@@ -33,7 +33,6 @@ const open = ref(false)
 
 const selected = computed<Principal | null>(() => principals.currentPrincipal)
 
-/** The acting principal's id, which every path in this bar carries. */
 const principalId = computed(() => principals.selectedPrincipalId)
 
 const skillsPath = computed(() => homePath(principalId.value))
@@ -43,11 +42,7 @@ const newPath = computed(() => newSkillPath(principalId.value))
 /**
  * "Skills" is the section for everything that is not the catalogue, including the
  * desk and the create form — the tab says which side of the panel you are on, not
- * which page.
- *
- * Read off the path's shape rather than `route.name`, because home has two names
- * (scoped and unscoped) and a `/library` prefix check stopped matching the moment the
- * principal moved into the path.
+ * which page. `isLibraryPath()` rather than `route.name`, for the reason it gives.
  */
 const section = computed(() => (isLibraryPath(route.path) ? 'library' : 'skills'))
 
@@ -95,16 +90,13 @@ function openMenu(): void {
 }
 
 /**
- * A scope change navigates — it does not mutate the store.
+ * A scope change navigates — it does not mutate the store. The path is the only writer
+ * of the acting principal, and two writers would leave the path and the store
+ * disagreeing, which is the state that made the panel read the wrong principal.
  *
- * The URL names the acting principal now, so the store follows the path rather than
- * the other way round: two writers would leave the two disagreeing, which is the state
- * that made the panel read the wrong principal in the first place. `App.vue` watches
- * the path and selects; this only has to say where the new scope's home is.
- *
- * Home, not the current page: re-pointing a desk at another principal's
- * identically-named skill (`unique(principal_id, name)` makes that a real collision)
- * while the operator is mid-edit is the worst outcome the routing enables.
+ * Home, not the current page: `unique(principal_id, name)` makes another principal's
+ * identically-named skill a real collision, and re-pointing a desk at one mid-edit is
+ * the worst outcome the routing enables.
  */
 async function choose(id: number): Promise<void> {
     open.value = false
@@ -112,8 +104,7 @@ async function choose(id: number): Promise<void> {
 }
 
 // The menu closes when the scope actually changed — not when this component's own
-// `choose()` ran, so a click that resolves to the principal already selected (a
-// re-click on the current entry) leaves the menu closed rather than re-rendered.
+// `choose()` ran, so a re-click on the current entry leaves it closed.
 watch(
     () => principals.selectedPrincipalId,
     () => {

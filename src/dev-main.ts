@@ -31,9 +31,8 @@ const INITIAL_HOST_PATH = `/apps/${APP_SLUG}`
  * A stand-in for the host router, faithful enough to exercise the real sync.
  *
  * `history.replaceState` is the point: in the sandbox the browser URL *is* the host
- * URL, so navigating the panel has to move it or the dev experience claims a
- * behaviour the host does not have. `mounted` mirrors the host's app slug param,
- * which `appSlugFrom()` prefers over parsing the path.
+ * URL, so navigating the panel has to move it or the dev experience claims a behaviour
+ * the host does not have.
  */
 function createDevHostRouter(): NonNullable<PluginHostContext['router']> {
     const listeners = new Set<(to: { path: string }) => void>()
@@ -62,14 +61,14 @@ const hostContext: PluginHostContext = {
 }
 
 // Without `app.use(router)` the `useRoute()` inject keys are missing and the pages
-// warn. The same route map as `main.ts`, read from the one definition both share.
+// warn.
 const router = createRouter({
     history: createMemoryHistory(),
     routes: panelRoutes(),
 })
 
-// The same two-way sync `main.ts` installs, so the sandbox reproduces a real deep link
-// (`…/p/8/skill/foo` pasted into the address bar) rather than only the happy path.
+// The same two-way sync `main.ts` installs, so the sandbox can reproduce a
+// pasted deep link rather than only the happy path.
 router.afterEach((to) => {
     const hostRouter = hostContext.router
     if (hostRouter === null) return
@@ -84,9 +83,8 @@ hostContext.router?.afterEach?.((to) => {
     void router.replace(localPath)
 })
 
-// The banner does not say "the host URL is what a paste reproduces" — so a dev typing
-// a path into the address bar has to get it back out of the panel, or the sandbox
-// hides the one thing this sync exists to make work.
+// The banner does not say "the address bar is the host URL" — so a pasted path has to
+// come back out of the panel, or the sandbox hides the one thing this sync exists for.
 const deepLink = localPathForHostPath(window.location.pathname, APP_SLUG)
 if (deepLink !== null) {
     void router.replace(deepLink)

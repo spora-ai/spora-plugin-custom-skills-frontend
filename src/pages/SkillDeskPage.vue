@@ -2,12 +2,11 @@
 /**
  * `/p/{principalId}/skill/:name` — the writing surface for one principal-scoped skill.
  *
- * **The principal is part of this route, and the read waits for it.** A skill belongs
- * to exactly one principal, so a URL naming only a skill cannot say whose it is — and
- * the REST contract resolves an absent `?principal_id=` to the caller's own
- * user-principal instead of refusing. That silent default is what made a group-owned
- * skill opened from the palette report "No skill named … on this principal": the
- * request went to the wrong scope and the answer was honest about the wrong question.
+ * **The principal is part of this route, and the read waits for it** — see
+ * `lib/hostRoute.ts`. A URL naming only a skill cannot say whose skill it is, and the
+ * contract resolves an absent `?principal_id=` to the caller's own rather than
+ * refusing, which is what made a group-owned skill from the palette report "No skill
+ * named … on this principal".
  *
  * It also owns the two things the desk cannot: the instance's tool registry, which
  * only a page can read once, and the post-save declaration box, which needs the
@@ -48,22 +47,14 @@ const name = computed(() => {
 })
 
 /**
- * The principal this skill belongs to, read from the route.
- *
- * The route is the source of truth, not `principals.selectedPrincipalId`: they agree
- * by construction (`App.vue` reconciles one from the other), but a page that read the
- * store instead would be correct only after someone else had already reconciled it —
- * which is the race this route shape exists to remove.
+ * The principal this skill belongs to, read from the route rather than
+ * `principals.selectedPrincipalId`: the two agree only once `App.vue` has reconciled
+ * them, and a page correct only after someone else's await is the race this shape
+ * exists to remove. Falls back to the store when the URL names no principal, which the
+ * contract resolves to the caller's own — the same answer the unscoped route would get.
  */
 const routePrincipalId = computed(() => principalIdInLocalPath(route.path))
 
-/**
- * What the skill read is scoped to, once the principal list is in hand.
- *
- * `null` only while the list is still loading or when the URL names no principal at
- * all, in which case the store's own default applies and the contract resolves it to
- * the caller's own principal — the same answer the unscoped route would get.
- */
 const principalId = computed<number | null>(() =>
     routePrincipalId.value ?? principals.selectedPrincipalId,
 )
@@ -130,11 +121,9 @@ async function resolve(): Promise<void> {
     missing.value = false
     shipped.value = null
     if (name.value === '') return
-    // Before any read. A child page's `onMounted` runs before the layout's, so the
-    // principal list has not landed yet on a cold deep link — and reading first
-    // would send no `?principal_id=` at all, which the contract resolves to the
-    // caller's own principal. That is how a group's skill came back as "No skill
-    // named … on this principal" instead of opening.
+    // Before any read. A child page's `onMounted` runs before the layout's, so on a
+    // cold deep link the principal list has not landed and the read would go out with
+    // no `?principal_id=` at all — which the contract resolves to the caller's own.
     await principals.ensureLoaded()
     const fromStore = store.skillsByName[name.value]
     if (fromStore) {
@@ -176,8 +165,8 @@ watch(
 
 // A name change has to clear the save report: it names what the *previous* skill
 // stores, and nothing else on the page survives a name change either.
-// The principal is watched alongside the name: two principals can own
-// identically-named skills (`unique(principal_id, name)`), so a path that changes
+// The principal is watched alongside the name: `unique(principal_id, name)` makes an
+// identically-named skill on two principals a real collision, so a path that changes
 // only `p/{pid}` is still a different skill and has to re-resolve.
 watch([name, routePrincipalId], () => {
     fileContents.value = {}

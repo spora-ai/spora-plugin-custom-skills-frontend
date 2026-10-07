@@ -6,9 +6,8 @@
  * and the two having different URLs makes that difference visible instead of hiding
  * it behind a query string.
  *
- * The principal rides along even though the skill it shows does not need one — the
- * scope is what _Duplicate_ writes the copy onto, so a viewer link that dropped it
- * would fork onto whichever principal the next reload defaulted to.
+ * The principal rides along even though the skill it shows does not need one — it is
+ * what _Duplicate_ writes the copy onto (`lib/paths.ts → viewerPath`).
  */
 import { computed, inject, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

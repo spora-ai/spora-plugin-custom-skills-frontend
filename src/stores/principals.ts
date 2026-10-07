@@ -3,11 +3,10 @@
  * and holds the acting principal id so `useSkillsStore` resolves it at call time.
  *
  * The acting principal is *named by the URL* (`/apps/custom-skills/p/{id}/…`, see
- * `lib/hostRoute.ts`), and this store is what the URL is reconciled against —
- * `App.vue` reads the path and selects it. Persisting a selection across browser
- * sessions would still be wrong: it could surface a different principal's name and
- * lead an operator to author under the wrong scope. So the URL is the only writer,
- * and a cold mount with no principal in the path falls back to the caller's own.
+ * `lib/hostRoute.ts`) and `App.vue` is what reconciles one from the other — so the URL
+ * is the only writer, and a cold mount with no principal in the path falls back to the
+ * caller's own. Persisting a selection instead would surface a different principal's
+ * name and lead an operator to author under the wrong scope.
  */
 import { defineStore, acceptHMRUpdate } from 'pinia'
 import { ref, computed } from 'vue'
@@ -21,16 +20,8 @@ export const usePrincipalsStore = defineStore('custom-skills-principals', () => 
     const loading = ref(false)
     const error = ref<string | null>(null)
 
-    /**
-     * Shared across concurrent callers, so a page that resolves on mount and the
-     * layout that loads the list are one request rather than two.
-     *
-     * This exists because of an ordering trap: a child page's `onMounted` runs
-     * *before* the layout's, so `SkillDeskPage` used to read `selectedPrincipalId`
-     * while it was still `null`, send no `?principal_id=`, and have the contract
-     * silently resolve the read against the caller's own principal. A deep link to
-     * a group-owned skill therefore 404'd as "No skill named … on this principal".
-     */
+    // Shared across concurrent callers, so a page that resolves on mount and the layout
+    // that loads the list are one request rather than two.
     let load: Promise<void> | null = null
 
     /** Resolves once the principal list is in hand, however many callers await it. */
@@ -64,8 +55,8 @@ export const usePrincipalsStore = defineStore('custom-skills-principals', () => 
      * The principal the URL names, or null when the caller cannot act as it.
      *
      * `GET /principals/me` is the gate, not the API: a `p/{pid}` the caller is not a
-     * member of must not be selected even to be refused by it later, because the
-     * panel's own reads would carry an id the operator has no business sending.
+     * member of must not be selected even to be refused later, because the panel's own
+     * reads would carry an id the operator has no business sending.
      */
     function isVisible(principalId: number | null): boolean {
         return principalId !== null && principals.value.some((p) => p.id === principalId)

@@ -16,11 +16,9 @@ import { PANEL_ROUTES } from '../src/lib/routes'
 import { HOST_CONTEXT_KEY, type PluginHostContext } from '../src/shims'
 
 /**
- * The real route table with empty components.
- *
- * Derived from `PANEL_ROUTES` rather than restated, so a spec always routes through
- * the paths and names the app installs. It used to be a hand-copied table, and the
- * copies drifted — a page added to one passed every spec and was still unreachable.
+ * The real route table with empty components. Derived from `PANEL_ROUTES` rather than
+ * restated, so a spec always routes through the paths and names the app installs — it
+ * used to be a hand-copied table, and the copies drifted.
  */
 export function stubRoutes(): Router {
     const stub = { template: '<div />' }

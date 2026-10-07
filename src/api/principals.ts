@@ -15,12 +15,9 @@ export interface Principal {
 /**
  * The principals the caller can act as, or `[]` when the envelope is not there.
  *
- * The `?? []` is not defensive padding — it is what keeps a store from holding
- * `undefined`. Every consumer of this list reaches into it immediately (the default
- * principal, the per-entry counts, and now the URL's principal check), so a missing
- * envelope has to degrade to "no principal is visible" rather than throwing inside a
- * layout that is mid-render. The API layer is where that belongs: the alternative is
- * a `?? []` at each of those call sites, which is how the same gap gets reintroduced.
+ * The `?? []` is not defensive padding: every consumer reaches into this list
+ * immediately, so a missing envelope must degrade to "no principal is visible" rather
+ * than throw mid-render. Doing it here beats a `?? []` at each of those call sites.
  */
 export async function listMyPrincipals(): Promise<Principal[]> {
     const api = getApi()

@@ -1,30 +1,18 @@
 /**
- * The panel's route table — one definition, three consumers.
+ * The panel's route table — one definition, three consumers: `main.ts` installs it,
+ * `dev-main.ts` mirrors it, and the specs route through it. It used to be copied into
+ * each, and the copies drifted: a page added to one passed every spec and was still
+ * unreachable in the app.
  *
- * `main.ts` installs it, `dev-main.ts` mirrors it for the sandbox, and the specs
- * route through it. It used to be copied into each of them, and the copies drifted:
- * a page added to one would pass every spec and still be unreachable in the app,
- * because the spec was exercising a table the app does not have. So the table lives
- * here and the copies assert against it instead of restating it.
+ * **Every path carries the acting principal as `p/{pid}`** — see `lib/hostRoute.ts` for
+ * why. Each destination therefore has two records, scoped and unscoped, rendering the
+ * same component: the unscoped one because `/apps/custom-skills` (the apps dropdown)
+ * means "my own skills" and because pre-`p/{pid}` hrefs are still links people hold.
+ * `App.vue` rewrites an unscoped path as soon as the principal is known, so the
+ * unscoped records are transient rather than a second way of being somewhere.
  *
- * **Every path carries the acting principal as `p/{pid}`.** A skill belongs to
- * exactly one principal (`unique(principal_id, name)`), and the REST contract
- * resolves an absent `?principal_id=` to the caller's own user-principal rather than
- * refusing — so a URL without a principal silently reads the wrong scope. That is
- * what made a group-owned skill found through the palette report "No skill named …
- * on this principal" instead of opening.
- *
- * Each destination therefore has two records: the scoped one and the unscoped one,
- * both rendering the same component. The unscoped pair exists because
- * `/apps/custom-skills` — what the apps dropdown links to — means "my own skills",
- * and because hrefs emitted before the principal moved into the path are still links
- * people hold. `App.vue` rewrites an unscoped path to its scoped form as soon as the
- * principal is known, so the unscoped records are transient rather than a second
- * way of being somewhere.
- *
- * `/new` and `/p/{principalId}/new` are deliberately separate from the `skill/`
- * subtree: a skill literally named `new` is a legal slug, and putting the create
- * form at `/skills/new` would shadow it.
+ * `/new` and `/p/{principalId}/new` are deliberately outside the `skill/` subtree: a
+ * skill literally named `new` is a legal slug, and `/skills/new` would shadow it.
  */
 import type { Component } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
@@ -37,11 +25,10 @@ import SkillViewerPage from '../pages/SkillViewerPage.vue'
 /**
  * One destination: a path, a route name, and the component it renders.
  *
- * Narrower than `RouteRecordRaw` on purpose. That type is a union whose members
- * disagree about which fields are required — spreading one of its members into a new
- * object loses the guarantee that `component` is there, and every consumer then has
- * to re-assert it. Every route in this panel is a plain component route, so the
- * shape is stated once here and widened at the single point the router consumes it.
+ * Narrower than `RouteRecordRaw` on purpose: that type is a union whose members disagree
+ * about which fields are required, so spreading one of its members into a new object
+ * loses the guarantee that `component` is there. Every route here is a plain component
+ * route, so the shape is stated once and widened where the router consumes it.
  */
 export interface PanelRoute {
     path: string
@@ -55,11 +42,9 @@ export function panelRoutes(): RouteRecordRaw[] {
 }
 
 /**
- * Every route, in one array.
- *
- * The specs' stub table swaps the components for empty stubs but keeps the paths and
- * names, so a spec asserts against the real route names rather than a private copy
- * that can drift from what the app installs.
+ * Every route, in one array. The specs' stub table swaps the components for empty stubs
+ * but keeps these paths and names, so a spec asserts against the route names the app
+ * actually installs rather than a private copy that can drift from it.
  */
 export const PANEL_ROUTES: PanelRoute[] = [
     { path: '/', name: 'home', component: HomePage },

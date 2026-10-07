@@ -273,8 +273,6 @@ describe('CreateSkillPage → the page around the form', () => {
     it('goes back to home from the back link and from Cancel', async () => {
         const router = stubRoutes()
         const wrapper = mountPage(CreateSkillPage, pinia, router)
-        // Scoped home, not the bare root: the create form writes to the principal in its
-        // path, so leaving without writing must not also drop the scope.
         expect(wrapper.get('[data-test="create-back"]').attributes('href')).toBe('/p/7')
         expect(wrapper.get('[data-test="create-cancel"]').attributes('href')).toBe('/p/7')
     })

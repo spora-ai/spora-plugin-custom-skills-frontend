@@ -18,10 +18,9 @@
  *
  * **This layout reconciles the acting principal with the URL**, which is where the
  * principal lives now: the path names it, the store follows, and everything below
- * reads the store. It has to happen before the first skill read, because the REST
- * contract resolves an absent `?principal_id=` to the caller's own principal rather
- * than refusing — so a panel that read before reconciling would answer a group skill
- * with the operator's own (empty) list and call it missing.
+ * reads the store. It must happen before the first skill read — the REST contract
+ * resolves an absent `?principal_id=` to the caller's own principal rather than
+ * refusing, so a panel that read first would call a group skill missing.
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -49,34 +48,25 @@ const route = useRoute()
 const pathPrincipalId = computed(() => principalIdInLocalPath(route.path))
 
 /**
- * Said once, in the layout, when the URL named a principal the caller cannot act as.
+ * Said once, when the URL names a principal the caller cannot act as.
  *
- * A shared link to a group you have since left is a real case — the path is a URL, and
- * URLs outlive membership. The alternative is rendering that as "No skill named … on
- * this principal", which blames the skill for a scope problem and sends the operator
- * looking in the wrong place.
+ * A shared link to a group you have since left is a real case — a path is a URL, and
+ * URLs outlive membership. The alternative renders it as "No skill named … on this
+ * principal", which blames the skill for a scope problem.
  *
- * Local to the layout rather than in a store: it is a statement about one navigation,
- * not panel state, and it must not survive into the next principal's session the way
- * the skills store's notice does not.
+ * Local to the layout rather than in a store: it describes one navigation, so it must
+ * not survive into the next principal's session the way the skills store's notice does.
  */
 const principalNotice = ref<string | null>(null)
 
 /**
  * Put the acting principal into the URL, and the URL's principal into the store.
  *
- * Two cases, and they are not symmetric:
- *
- * - The path names a principal the caller can act as → select it.
- * - The path names one they cannot → fall back to the default and *rewrite the path*,
- *   so the address bar stops claiming a scope the panel is not showing. Nothing
- *   leaks either way (the API refuses it too); rewriting just stops the URL from
- *   disagreeing with the screen.
- *
- * A path naming no principal is canonicalised too, once the default is known. That
- * is what makes `/apps/custom-skills` become `/apps/custom-skills/p/{id}` after a
- * beat — the operator still landed on their own skills, but the URL now survives a
- * reload and a paste.
+ * Two cases, and they are not symmetric: a principal the caller can act as is selected;
+ * one they cannot falls back to the default *and* has its path rewritten, so the address
+ * bar stops claiming a scope the panel is not showing (nothing leaks either way — the
+ * API refuses it too). A path naming no principal is canonicalised too, which is what
+ * turns `/apps/custom-skills` into `/apps/custom-skills/p/{id}` once the default is known.
  */
 function reconcilePrincipal(): void {
     const named = pathPrincipalId.value
@@ -90,9 +80,7 @@ function reconcilePrincipal(): void {
     }
 
     // Only act once there *is* a principal to act as. Before `/principals/me`
-    // answers there is nothing to name: selecting `null` would look like a
-    // deliberate "no principal", and rewriting the path to `/p/null` is a path
-    // that means nothing.
+    // answers there is nothing to name, and `/p/null` is a path that means nothing.
     if (resolved === null) return
 
     if (principals.selectedPrincipalId !== resolved) {
@@ -130,10 +118,9 @@ async function loadForPrincipal(): Promise<void> {
  * False until the first load has finished, and read by the watcher below.
  *
  * `reconcilePrincipal()` selects the principal on mount, which the watcher would
- * otherwise see as a change and answer with a second load of the same principal —
- * the panel would issue every request twice on a cold mount, which `appBootstrap.spec.ts`
- * asserts against. Waiting for the mount's own `await` to complete is what marks
- * the transition: a Vue watcher flushes on the microtask queue, so it has already
+ * otherwise see as a change and answer with a second load — every request twice on a
+ * cold mount, which `appBootstrap.spec.ts` asserts against. The mount's own `await`
+ * marks the transition: a Vue watcher flushes on the microtask queue, so it has already
  * run by the time the flag is set.
  */
 let bootstrapped = false
@@ -162,13 +149,12 @@ watch(
 )
 
 // A host navigation (a palette hit, browser Back, a pasted link) can land on a
-// principal the store is not on yet. `replace` on the local route mirrors back into
-// the host path via `main.ts`, so this converges rather than ping-pongs.
+// principal the store is not on yet. The `replace` mirrors back into the host path
+// via `main.ts`, so this converges rather than ping-pongs.
 //
-// The notice is *not* cleared here. A path change is often this very handler
-// rewriting an inaccessible principal to the resolved one, and clearing on the
-// rewrite would erase the explanation in the same tick it was raised. It is cleared
-// when the operator moves to a different scope — see the watcher above.
+// The notice is *not* cleared here: a path change is often this very handler rewriting
+// an inaccessible principal, and clearing would erase the explanation in the same tick
+// it was raised. It is cleared when the operator moves to a different scope.
 watch(pathPrincipalId, () => {
     reconcilePrincipal()
 })

@@ -32,7 +32,6 @@ const sort = ref<SkillSort>('updated')
 const principal = computed(() => principals.currentPrincipal)
 const rows = computed(() => sortSkills(store.skills, sort.value))
 
-/** The acting principal, which every path below carries. */
 const principalId = computed(() => principals.selectedPrincipalId)
 const cataloguePath = computed(() => libraryPath(principalId.value))
 const newSkill = computed(() => newSkillPath(principalId.value))

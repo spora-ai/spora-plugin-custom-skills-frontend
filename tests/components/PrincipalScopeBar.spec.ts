@@ -6,9 +6,7 @@
  * filter you apply — and the contract has no count endpoint, so each count is its
  * own `GET /custom-skills?principal_id=N`, read when the menu opens. A scope change
  * *navigates* rather than writing the store, because the path is the only writer of
- * the acting principal. And it lands on home: `unique(principal_id, name)` makes an
- * identically-named skill on another principal a real collision, so re-pointing a
- * desk mid-edit is the worst outcome the routing enables.
+ * the acting principal. And it lands on home — see `PrincipalScopeBar.vue → choose()`.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -132,15 +130,12 @@ describe('PrincipalScopeBar → the scope control', () => {
         await wrapper.get('[data-test="scope-option-8"]').trigger('click')
         await flushPromises()
 
-        // Home, not the desk it came from: `unique(principal_id, name)` makes an
-        // identically-named skill on another principal a real collision, so
-        // re-pointing a desk mid-edit is the worst outcome the routing enables.
+
         expect(router.currentRoute.value.path).toBe('/p/8')
     })
 
     it('does not write the store itself — the URL is the only writer', async () => {
-        // Two writers leave the path and the store disagreeing, which is the state
-        // that made the panel read the wrong principal in the first place.
+
         const wrapper = mountBar()
         await wrapper.get('[data-test="scope-toggle"]').trigger('click')
         await flushPromises()
@@ -186,9 +181,7 @@ describe('PrincipalScopeBar → navigation', () => {
     })
 
     it('marks the catalogue section from the path shape, not the route name', async () => {
-        // Home has two names (scoped and unscoped), and a `/library` prefix check
-        // stopped matching the moment the principal moved into the path — which
-        // would have left both section tabs lit at once.
+
         await router.push('/library')
         await router.isReady()
         const wrapper = mountBar()
@@ -203,8 +196,6 @@ describe('PrincipalScopeBar → navigation', () => {
     })
 
     it('sends New skill to the create route, carrying the acting principal', async () => {
-        // The create *writes* to the principal in its path, so a link that dropped
-        // it could write a group's skill onto the operator's own principal.
         const wrapper = mountBar()
         await wrapper.get('[data-test="new-skill"]').trigger('click')
         await flushPromises()

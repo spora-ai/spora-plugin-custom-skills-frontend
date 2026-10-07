@@ -110,7 +110,6 @@ const sidecarsToReAdd = computed(() =>
 
 const principal = computed(() => principals.currentPrincipal)
 
-/** The acting principal, which every link on this form carries. */
 const principalId = computed(() => principals.selectedPrincipalId)
 
 const ownNames = computed(() => new Set(store.skills.map((s) => s.name)))

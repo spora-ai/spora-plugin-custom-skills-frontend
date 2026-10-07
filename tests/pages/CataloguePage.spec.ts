@@ -122,9 +122,6 @@ describe('CataloguePage → the list', () => {
         useSkillsStore().preShipped = [makePreShipped({ name: 'code-review' })]
         const wrapper = await mountOn('/library')
         await flushPromises()
-        // Scoped: a shipped skill has no owner, but the acting principal is what
-        // _Duplicate_ writes the copy onto, so a viewer link that dropped it would
-        // fork onto whichever principal the next reload defaulted to.
         expect(wrapper.get('[data-test="preshipped-name"]').attributes('href')).toBe('/p/7/library/code-review')
         expect(wrapper.get('[data-test="view-shipped"]').attributes('href')).toBe('/p/7/library/code-review')
     })
