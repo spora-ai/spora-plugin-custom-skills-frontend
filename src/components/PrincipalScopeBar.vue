@@ -1,19 +1,14 @@
 <script setup lang="ts">
 /**
- * The panel's one piece of global state, made visible: which principal's skills
- * everything below belongs to, and where the panel's pages are.
+ * The panel's one piece of global state, made visible.
  *
- * A dropdown, not a chip row: a row of equal-weight chips reads as *filters*, and
- * a filter chip does not say "everything below this belongs to what I picked". The
- * per-entry skill count is what makes it a scope — you can see the shape of each
- * scope before committing to it.
+ * A dropdown, not a chip row: equal-weight chips read as *filters*, and a filter does not say
+ * "everything below this belongs to what I picked". The per-entry skill count is what makes it a
+ * scope — you can see the shape of each before committing to it.
  *
- * **No search box, deliberately.** A ⌘K palette already exists one layer up and
- * covers agents, groups and chats. A second search box inside a plugin panel is
- * not a shortcut to the same thing — it is two search boxes that disagree, and
- * this one would be strictly narrower, since the store only ever holds the
- * *selected* principal's skills. Until core accepts search contributions from
- * plugins, this panel stays sorted-and-scrolled.
+ * **No search box, deliberately.** A ⌘K palette already covers agents, groups and chats, and a second
+ * search box here would only ever see the *selected* principal's skills: two boxes that disagree,
+ * this one strictly narrower.
  */
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -39,26 +34,16 @@ const skillsPath = computed(() => homePath(principalId.value))
 const cataloguePath = computed(() => libraryPath(principalId.value))
 const newPath = computed(() => newSkillPath(principalId.value))
 
-/**
- * "Skills" is the section for everything that is not the catalogue, including the
- * desk and the create form — the tab says which side of the panel you are on, not
- * which page. `isLibraryPath()` rather than `route.name`, for the reason it gives.
- */
 const section = computed(() => (isLibraryPath(route.path) ? 'library' : 'skills'))
 
-/**
- * A type glyph rather than an avatar: the host has no portrait for a principal,
- * and an initial-in-a-circle invites the reader to treat a group as a person.
- */
+/** A type glyph rather than an avatar: the host has no portrait for a principal. */
 function initials(name: string): string {
     return name
         .split(/\s+/)
         .filter((part) => /[a-z0-9]/i.test(part))
         .slice(0, 2)
-        // `[...part][0]`, not `charAt(0)`: a word can pass the filter above on an
-        // ASCII letter while *starting* with an astral character ("🚀 Team"), and
-        // `charAt` indexes UTF-16 code units, so it would return a lone surrogate
-        // and the badge would render a replacement glyph instead of the T.
+        // `[...part][0]`, not `charAt(0)`: a word can pass the filter above on an ASCII letter while
+        // *starting* with an astral one ("🚀 Team"), and `charAt` indexes UTF-16 units.
         .map((part) => [...part][0]!.toUpperCase())
         .join('')
 }
@@ -67,11 +52,7 @@ function isUser(principal: Principal): boolean {
     return principal.type === 'user'
 }
 
-/**
- * `GET /api/v1/principals/me` carries no membership role, so a group entry cannot
- * say "owner", "admin" or "member" — the read/write split is stated once, for
- * every group, in the footer of the list instead of being guessed at per entry.
- */
+/** `/principals/me` carries no membership role, so the read/write split is stated once. */
 function sublabel(principal: Principal): string {
     return isUser(principal) ? 'Personal' : 'Group'
 }
@@ -90,21 +71,18 @@ function openMenu(): void {
 }
 
 /**
- * A scope change navigates — it does not mutate the store. The path is the only writer
- * of the acting principal, and two writers would leave the path and the store
- * disagreeing, which is the state that made the panel read the wrong principal.
+ * A scope change navigates — it does not mutate the store. The path is the only writer of the acting
+ * principal, and two writers would leave path and store disagreeing.
  *
- * Home, not the current page: `unique(principal_id, name)` makes another principal's
- * identically-named skill a real collision, and re-pointing a desk at one mid-edit is
- * the worst outcome the routing enables.
+ * Home, not the current page: `unique(principal_id, name)` makes another principal's identically-named
+ * skill a real collision, and re-pointing a desk mid-edit is the worst outcome the routing enables.
  */
 async function choose(id: number): Promise<void> {
     open.value = false
     await router.push({ path: homePath(id) })
 }
 
-// The menu closes when the scope actually changed — not when this component's own
-// `choose()` ran, so a re-click on the current entry leaves it closed.
+// Also needed for a scope change arriving as a host navigation, which skips `choose()`.
 watch(
     () => principals.selectedPrincipalId,
     () => {
@@ -199,11 +177,9 @@ watch(
                     />
                 </button>
 
-                <!--
-                    Said once, before the operator spends an edit finding out:
-                    membership is not ownership. Suppressing a group you cannot write
-                    to would be cleaner UX and a lie about what exists.
-                -->
+                <!-- Said once, before the operator spends an edit finding out:
+                     membership is not ownership, and suppressing a group you cannot
+                     write to would be a lie about what exists. -->
                 <p class="border-t border-border bg-muted/40 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
                     You can read every group you belong to. Writing needs to be an
                     owner or an admin.
@@ -211,8 +187,8 @@ watch(
             </div>
         </div>
 
-        <!-- Two tabs, not a rail: with this few destinations a rail costs 200px of
-             width to say the same thing, and the desk needs that width. -->
+        <!-- Two tabs, not a rail: with this few destinations a rail costs 200px to say
+             the same thing, and the desk needs that width. -->
         <nav class="flex items-center gap-0.5 rounded-lg bg-muted p-0.5" aria-label="Sections">
             <RouterLink
                 :to="{ path: skillsPath }"

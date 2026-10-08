@@ -1,13 +1,7 @@
 /**
- * Reproduction against the app's REAL bootstrap. Mounting a page directly passes,
- * but that is not how the panel boots: `main.ts → mount()` calls `app.mount(target)`
- * **without awaiting `router.isReady()`**, and Vue Router starts the initial
- * navigation as a promise inside `install()`, so the first render can happen while
- * `currentRoute` is still `START_LOCATION`.
- *
- * The second case is the shape of the whole panel: with a route per destination, a
- * scope bar that renders before the first navigation resolves would put a "New
- * skill" link on a route the router has not chosen yet.
+ * Reproduction against the app's REAL bootstrap: `main.ts → mount()` awaits `router.isReady()` before
+ * `app.mount(target)`, so a layout reconciling before that navigation settles would link to a route
+ * the router has not chosen yet.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
@@ -23,6 +17,7 @@ import { setApi } from '../../src/api/client'
 import * as api from '../../src/api/customSkills'
 import * as preshippedApi from '../../src/api/preshippedSkills'
 import { usePrincipalsStore } from '../../src/stores/principals'
+import type { CustomSkillResource } from '../../src/types'
 import { makePrincipal } from '../fixtures'
 
 vi.mock('../../src/api/customSkills')
@@ -51,12 +46,8 @@ function mountLikeMain() {
     app.provide(HOST_CONTEXT_KEY, hostContext)
     app.use(createPinia())
 
-    // The real route map, so a spec that resolves a route resolves one the app installs.
-    // Home and the create form are real — *including their scoped twins*, since the
-    // layout canonicalises `/` into `/p/{id}` and every assertion here runs against the
-    // scoped route. Keyed on the component rather than the route name, so a future
-    // third spelling of the same page does not silently render a stub; everything else
-    // renders an empty div, this file being about the layout's bootstrap.
+    // The real route map, so a spec resolves a route the app installs. Home and the create form are
+    // real *including their scoped twins*, since the layout scopes `/`.
     const blank = { render: () => h('div') }
     const realPages = new Set<unknown>([HomePage, CreateSkillPage])
     router = createRouter({
@@ -64,12 +55,14 @@ function mountLikeMain() {
         routes: PANEL_ROUTES.map(({ path, name, component }) => ({
             path,
             name,
+            // The rest render an empty div: this file is about the layout's bootstrap.
             component: realPages.has(component) ? component : blank,
         })),
     })
     app.use(router)
 
-    // The line under test: no `await router.isReady()`, matching main.ts.
+    // No `await router.isReady()` here: this exercises the layout before the first navigation
+    // has settled.
     app.mount(target)
 
     return { app, target }
@@ -78,9 +71,7 @@ function mountLikeMain() {
 beforeEach(async () => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
-    // The principals envelope has to be *answered*, not just seeded on the store: the
-    // layout reconciles against `GET /principals/me`, and an empty list leaves every
-    // principal-less path unscoped.
+    // Answered, not just seeded: the layout reconciles against `GET /principals/me`.
     setApi({
         get: vi.fn().mockImplementation(async (path: string) => {
             if (path === '/principals/me') return { principals: [makePrincipal()] }
@@ -102,8 +93,7 @@ describe('App bootstrap (main.ts parity)', () => {
         await flushPromises()
         await router.isReady()
 
-        // `/apps/custom-skills` — what the apps dropdown links to — means "my own
-        // skills", and once the principal list answers the path is rewritten to say so.
+        // What the apps dropdown links to means "my own skills", rewritten once the principal answers.
         expect(router.currentRoute.value.path).toBe('/p/7')
         expect(target.querySelector('[data-test="home-page"]')).not.toBeNull()
     })
@@ -139,8 +129,7 @@ describe('App bootstrap (main.ts parity)', () => {
         await flushPromises()
         await router.isReady()
 
-        // One read each. The layout is the single place that loads, so a page that
-        // also loaded would double every request on navigation.
+        // One read each: a page that also loaded would double every request.
         expect(mockedApi.listSkills).toHaveBeenCalledTimes(1)
         expect(mockedPreshipped.listPreShippedSkills).toHaveBeenCalledTimes(1)
     })
@@ -172,8 +161,7 @@ describe('App bootstrap (main.ts parity)', () => {
     })
 
     it('reloads the list and the agents when the URL names a different principal', async () => {
-        // The scope bar navigates rather than writing the store, so the principal
-        // arrives as a *path*. The shipped catalogue is global and already loaded.
+        // The scope bar navigates rather than writing the store, so the principal arrives as a path.
         setApi({
             get: vi.fn().mockImplementation(async (path: string) => {
                 if (path === '/principals/me') {
@@ -209,9 +197,49 @@ describe('App bootstrap (main.ts parity)', () => {
         expect(target.querySelector('[data-test="home-principal"]')?.textContent).toBe('Studio')
     })
 
+    it('reloads when the scope changes while the first load is still open', async () => {
+        // A host navigation can select another principal before the mount's own reads answer. A boolean
+        // "first load finished" flag swallowed that, leaving the wrong principal's heading above.
+        setApi({
+            get: vi.fn().mockImplementation(async (path: string) => {
+                if (path === '/principals/me') {
+                    return {
+                        principals: [
+                            makePrincipal(),
+                            makePrincipal({ id: 8, type: 'group', name: 'Studio', user_id: null, group_id: 2 }),
+                        ],
+                    }
+                }
+                return { agents: [] }
+            }),
+            post: vi.fn(),
+            put: vi.fn(),
+            patch: vi.fn(),
+            delete: vi.fn(),
+        } as never)
+
+        // Held open so the push below lands inside the window the old flag lost; without
+        // this the mount's awaits resolve first and the test passes against the bug.
+        let releaseList: ((skills: CustomSkillResource[]) => void) | null = null
+        mockedApi.listSkills.mockImplementation(() => new Promise((resolve) => {
+            releaseList = resolve
+        }))
+
+        const { target } = mountLikeMain()
+        await router.isReady()
+
+        await router.push('/p/8')
+        expect(usePrincipalsStore().selectedPrincipalId).toBe(8)
+
+        releaseList!([])
+        await flushPromises()
+
+        expect(mockedApi.listSkills).toHaveBeenCalledWith(8)
+        expect(target.querySelector('[data-test="home-principal"]')?.textContent).toBe('Studio')
+    })
+
     it('falls back and says so when the URL names a principal the caller cannot act as', async () => {
-        // A shared link to a group you have since left: URLs outlive membership, and the
-        // alternative is "No skill named …", which blames the skill for a scope problem.
+        // URLs outlive membership, and the alternative blames the skill for a scope problem.
         const { target } = mountLikeMain()
         await flushPromises()
         await router.isReady()

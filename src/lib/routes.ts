@@ -1,18 +1,15 @@
 /**
- * The panel's route table — one definition, three consumers: `main.ts` installs it,
- * `dev-main.ts` mirrors it, and the specs route through it. It used to be copied into
- * each, and the copies drifted: a page added to one passed every spec and was still
- * unreachable in the app.
+ * The panel's route table — one definition, three consumers (`main.ts`, `dev-main.ts`, the specs).
+ * It used to be copied into each, and a page added to one copy was unreachable.
  *
- * **Every path carries the acting principal as `p/{pid}`** — see `lib/hostRoute.ts` for
- * why. Each destination therefore has two records, scoped and unscoped, rendering the
- * same component: the unscoped one because `/apps/custom-skills` (the apps dropdown)
- * means "my own skills" and because pre-`p/{pid}` hrefs are still links people hold.
- * `App.vue` rewrites an unscoped path as soon as the principal is known, so the
- * unscoped records are transient rather than a second way of being somewhere.
+ * **Every path carries the acting principal as `p/{pid}`** — see `lib/hostRoute.ts` for why. Each
+ * destination therefore has a scoped and an unscoped record rendering the same component: the
+ * unscoped one because `/apps/custom-skills` means "my own skills" and pre-`p/{pid}` hrefs are
+ * still links people hold. `App.vue` rewrites an unscoped path as soon as the principal is known,
+ * so those records are transient, not a second way of being somewhere.
  *
- * `/new` and `/p/{principalId}/new` are deliberately outside the `skill/` subtree: a
- * skill literally named `new` is a legal slug, and `/skills/new` would shadow it.
+ * `/new` is deliberately outside the `skill/` subtree: a skill named `new` is a legal slug, and
+ * `/p/{id}/skill/new` would shadow it.
  */
 import type { Component } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
@@ -22,30 +19,17 @@ import SkillDeskPage from '../pages/SkillDeskPage.vue'
 import CataloguePage from '../pages/CataloguePage.vue'
 import SkillViewerPage from '../pages/SkillViewerPage.vue'
 
-/**
- * One destination: a path, a route name, and the component it renders.
- *
- * Narrower than `RouteRecordRaw` on purpose: that type is a union whose members disagree
- * about which fields are required, so spreading one of its members into a new object
- * loses the guarantee that `component` is there. Every route here is a plain component
- * route, so the shape is stated once and widened where the router consumes it.
- */
+/** Narrower than `RouteRecordRaw`, whose union members disagree about which fields are required. */
 export interface PanelRoute {
     path: string
     name: string
     component: Component
 }
 
-/** `PANEL_ROUTES` in the shape `createRouter` expects. */
 export function panelRoutes(): RouteRecordRaw[] {
     return PANEL_ROUTES.map(({ path, name, component }) => ({ path, name, component }))
 }
 
-/**
- * Every route, in one array. The specs' stub table swaps the components for empty stubs
- * but keeps these paths and names, so a spec asserts against the route names the app
- * actually installs rather than a private copy that can drift from it.
- */
 export const PANEL_ROUTES: PanelRoute[] = [
     { path: '/', name: 'home', component: HomePage },
     { path: '/p/:principalId', name: 'home-scoped', component: HomePage },
@@ -57,4 +41,7 @@ export const PANEL_ROUTES: PanelRoute[] = [
     { path: '/library', name: 'catalogue-unscoped', component: CataloguePage },
     { path: '/p/:principalId/library/:name', name: 'viewer', component: SkillViewerPage },
     { path: '/library/:name', name: 'viewer-unscoped', component: SkillViewerPage },
+    // A mistyped path matched no record and rendered an empty panel. Home is the honest landing, and
+    // a component rather than a redirect so the typed URL survives.
+    { path: '/:pathMatch(.*)*', name: 'not-found', component: HomePage },
 ]
