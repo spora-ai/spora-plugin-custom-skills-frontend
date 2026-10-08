@@ -1,7 +1,7 @@
 {
     "name": "spora-ai/spora-plugin-custom-skills-frontend",
     "private": true,
-    "version": "0.3.0",
+    "version": "0.3.1",
     "description": "Vue IIFE bundle for the Spora custom-skills admin panel. Built and shipped as type spora-plugin-frontend.",
     "type": "module",
     "scripts": {
