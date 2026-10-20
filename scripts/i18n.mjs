@@ -125,13 +125,29 @@ const SCAN_EXTENSIONS = new Set(['.vue', '.ts', '.tsx', '.js', '.jsx'])
  */
 const TEXT_ESCAPES = /\\([\\@{}|])/g
 
+/**
+ * A named or list placeholder — `{name}`, `{0}`.
+ *
+ * vue-i18n's message compiler turns these into parameter lookups, so they
+ * are *not* a syntax error: a message that interpolates a count or a
+ * filename is the normal case, and the catalogue is meant to carry it.
+ *
+ * Only the well-formed ones are removed before the brace check. A JSON or
+ * CSS snippet pasted into help text — `{"tier": "pro"}` — carries quotes and
+ * a colon, so it does not match and its braces are still rejected.
+ */
+const PLACEHOLDER = /\{\s*[\w.-]+\s*\}/g
+
 function syntaxProblem(key) {
     // Escapes are *consumed* by the compiler and rendered literally, so they
     // are removed rather than unwrapped: `Use \{braces\}` compiles to the
     // literal text `Use {braces}`, and unwrapping it would leave exactly the
     // braces this rule exists to reject.
     const stripped = key.replace(TEXT_ESCAPES, '')
-    const found = ['{', '}', '|'].filter((ch) => stripped.includes(ch))
+    // The well-formed placeholders go too: they are the interpolation
+    // syntax, and what is left over is a brace vue-i18n cannot compile.
+    const withoutPlaceholders = stripped.replace(PLACEHOLDER, '')
+    const found = ['{', '}', '|'].filter((ch) => withoutPlaceholders.includes(ch))
     return found.length > 0 ? found : null
 }
 
@@ -193,6 +209,32 @@ function calleeName(node) {
     return null
 }
 
+/**
+ * A `String.raw` tagged template with no interpolation.
+ *
+ * The tag changes how the source text is *read*, not whether it is a literal,
+ * so the extractor has to see through it — otherwise `t(String.raw`…`)` reads
+ * as a dynamic key and the catalogue loses the entry.
+ *
+ * The key is the *raw* text: `String.raw` hands the raw source to the message
+ * compiler, so `String.raw`e.g. \{"tier": "pro"\}.`` is the key
+ * `e.g. \{"tier": "pro"\}.`, with the backslash — the same key the escaped
+ * string literal it replaced produced.
+ */
+function isRawTemplate(node) {
+    if (node?.type !== 'TaggedTemplateExpression') return false
+    if (node.quasi.expressions.length > 0) return false
+    const { tag } = node
+    return (
+        tag.type === 'MemberExpression' &&
+        tag.computed === false &&
+        tag.object.type === 'Identifier' &&
+        tag.object.name === 'String' &&
+        tag.property.type === 'Identifier' &&
+        tag.property.name === 'raw'
+    )
+}
+
 /** The string a call was passed at argument 0, if it was passed a literal one. */
 function stringArgument(args) {
     const first = args[0]
@@ -200,6 +242,7 @@ function stringArgument(args) {
     if (first?.type === 'TemplateLiteral' && first.expressions.length === 0) {
         return first.quasis[0].value.cooked ?? first.quasis[0].value.raw
     }
+    if (isRawTemplate(first)) return first.quasi.quasis[0].value.raw
     return null
 }
 

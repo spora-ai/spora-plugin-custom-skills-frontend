@@ -224,12 +224,12 @@
   "warnings": "Warnungen",
   "you": "Sie",
   "your own skills": "Ihre eigenen Skills",
+  "{day} {month}": "{day}. {month}",
   "— not available on this instance": "— auf dieser Instanz nicht verfügbar",
   "— read-only here.": "— hier schreibgeschützt.",
   "— they are listed above the file.": "— sie sind oberhalb der Datei aufgeführt.",
-  "“": "„",
   "“.” and “..” are not file names.": "„.“ und „..“ sind keine Dateinamen.",
-  "” is removed from this principal, together with its sidecar files.": "“ wird von diesem Principal zusammen mit den zugehörigen Sidecar-Dateien entfernt.",
+  "“{name}” is removed from this principal, together with its sidecar files.": "„{name}“ wird von diesem Principal zusammen mit den zugehörigen Sidecar-Dateien entfernt.",
   "” on this principal.": "“ auf diesem Principal.",
   "”.": "“."
 }

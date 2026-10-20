@@ -551,7 +551,9 @@ function parseMetadata(): { value: Record<string, unknown> } | { error: string }
         if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
             // The braces are escaped: vue-i18n reads an unescaped `{` as the start of a
             // named interpolation, and the extractor rejects a key that carries one.
-            return { error: t('Metadata must be a JSON object, e.g. \\{"tier": "pro"\\}.') }
+            // `String.raw` keeps the backslash in the source instead of doubling it,
+            // which is what the escape needs and what the catalogue key carries.
+            return { error: t(String.raw`Metadata must be a JSON object, e.g. \{"tier": "pro"\}.`) }
         }
         return { value: parsed as Record<string, unknown> }
     } catch {

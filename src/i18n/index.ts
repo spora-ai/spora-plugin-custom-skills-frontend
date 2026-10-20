@@ -56,9 +56,12 @@ export function createPluginI18n(locale: string) {
  * The composer's own `t` is read through an alias: the extractor
  * treats every call named `t` as a catalogue lookup, and a call with
  * a runtime key would be reported as a dynamic key it cannot harvest.
+ *
+ * The params are forwarded so a message outside a component can carry a
+ * placeholder the same way a component's own `t` can.
  */
-export function t(key: string): string {
+export function t(key: string, params?: Record<string, unknown>): string {
     if (composer === null) return key
     const translate = composer.t
-    return translate(key)
+    return params === undefined ? translate(key) : translate(key, params)
 }

@@ -146,7 +146,7 @@ watch(pathPrincipalId, () => {
             :busy="store.saving"
             :title="t('Delete this skill?')"
             :body="store.pendingDelete
-                ? `${t('“')}${store.pendingDelete}${t('” is removed from this principal, together with its sidecar files.')}`
+                ? t('“{name}” is removed from this principal, together with its sidecar files.', { name: store.pendingDelete })
                 : ''"
             :affected-agents="store.deleteBlastRadius"
             @confirm="confirmDelete"

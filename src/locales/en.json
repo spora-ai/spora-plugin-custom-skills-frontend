@@ -224,12 +224,12 @@
   "warnings": "warnings",
   "you": "you",
   "your own skills": "your own skills",
+  "{day} {month}": "{day} {month}",
   "— not available on this instance": "— not available on this instance",
   "— read-only here.": "— read-only here.",
   "— they are listed above the file.": "— they are listed above the file.",
-  "“": "“",
   "“.” and “..” are not file names.": "“.” and “..” are not file names.",
-  "” is removed from this principal, together with its sidecar files.": "” is removed from this principal, together with its sidecar files.",
+  "“{name}” is removed from this principal, together with its sidecar files.": "“{name}” is removed from this principal, together with its sidecar files.",
   "” on this principal.": "” on this principal.",
   "”.": "”."
 }

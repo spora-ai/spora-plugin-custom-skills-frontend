@@ -24,6 +24,7 @@ import HomePage from '../src/pages/HomePage.vue'
 import CreateSkillPage from '../src/pages/CreateSkillPage.vue'
 import CataloguePage from '../src/pages/CataloguePage.vue'
 import { createPluginI18n } from '../src/i18n'
+import { updatedLabel } from '../src/lib/skillFormat'
 import { usePrincipalsStore } from '../src/stores/principals'
 import { useSkillsStore } from '../src/stores/skills'
 import { makePrincipal, makeSkill, makeTool, makeTools } from './fixtures'
@@ -146,6 +147,12 @@ describe('German catalogue → the panel renders German', () => {
         expect(text).toContain('2 Warnungen')
         expect(text).toContain('2 Dateien')
         expect(text).toContain('geändert am')
+    })
+
+    it('writes the date with the German ordinal period', () => {
+        // German orthography writes the day as an ordinal: "1. September", where
+        // English writes "1 Sep" with no period.
+        expect(updatedLabel('2026-09-01 14:02:00', Date.UTC(2026, 8, 30, 18, 0, 0))).toBe('1. September')
     })
 })
 

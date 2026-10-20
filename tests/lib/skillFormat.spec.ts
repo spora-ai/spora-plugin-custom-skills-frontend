@@ -5,6 +5,8 @@
  * server's slug rule.
  */
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
     byteSize,
     clockTime,
@@ -12,6 +14,7 @@ import {
     declaredToolsSummary,
     errorsForField,
     fieldForPath,
+    fileNameProblemText,
     forkName,
     formatBytes,
     isValidSkillName,
@@ -27,8 +30,16 @@ import {
     toolOptions,
     unattachedErrors,
     updatedLabel,
+    SKILL_ENTRY_FILE,
 } from '../../src/lib/skillFormat'
 import { makePrincipal, makeSkill, makeTool, makeTools, makeValidationEntry } from '../fixtures'
+
+const ROOT = resolve(__dirname, '..', '..')
+
+/** A catalogue as the extractor writes it: the English source text is the key. */
+function catalogue(locale: string): Record<string, string> {
+    return JSON.parse(readFileSync(resolve(ROOT, `src/locales/${locale}.json`), 'utf8')) as Record<string, string>
+}
 
 describe('fieldForPath', () => {
     it('normalises the validator’s free-text paths', () => {
@@ -327,6 +338,25 @@ describe('updatedLabel', () => {
 
     it('returns nothing for a timestamp it cannot read', () => {
         expect(updatedLabel('', now)).toBe('')
+    })
+})
+
+describe('the reserved-file message', () => {
+    // The message names the entry file, and the entry file has one source of
+    // truth. The catalogue key is that name plus the sentence, so a renamed
+    // constant would leave the key behind and the German orphaned — silently,
+    // because the key is the English source text and nothing else reads it.
+    const key = `${SKILL_ENTRY_FILE} is the skill itself and always exists.`
+
+    it('is keyed on the entry file rather than on a hard-coded name', () => {
+        expect(Object.keys(catalogue('en'))).toContain(key)
+        expect(fileNameProblemText('reserved')).toBe(key)
+    })
+
+    it('carries a German translation of that exact key', () => {
+        const german = catalogue('de')
+        expect(Object.keys(german)).toContain(key)
+        expect(german[key]).not.toBe(key)
     })
 })
 

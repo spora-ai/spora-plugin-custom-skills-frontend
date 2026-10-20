@@ -117,8 +117,11 @@ const DAY_MS = 86_400_000
 /**
  * The weekday and month names are operator-facing copy, so they are looked up in
  * the catalogue. The English abbreviations are the keys; the German ones are the
- * full names, because a two-letter German abbreviation would be identical to the
- * English one for half the year and the catalogue rejects an identical value.
+ * full names, because a three-letter German abbreviation would be the same three
+ * letters as the English one for more than half the year — `Jan`, `Feb`, `Jun`
+ * and `Jul` among them — and the catalogue rejects an identical value. A
+ * two-letter German abbreviation could not collide at all: every English key is
+ * three letters long.
  *
  * They are built when they are needed rather than in a module constant: a
  * constant would freeze the label at import time, before the locale is known.
@@ -163,7 +166,13 @@ export function updatedLabel(updatedAt: string, now: number = Date.now()): strin
     if (elapsed < DAY_MS) return clockTime(updatedAt)
     if (elapsed < 7 * DAY_MS) return weekdayLabels()[new Date(stamp).getUTCDay()] ?? ''
     const date = new Date(stamp)
-    const label = `${date.getUTCDate()} ${monthLabels()[date.getUTCMonth()] ?? ''}`
+    // The day-and-month pattern is a catalogue entry because the punctuation is
+    // language: German writes the ordinal with a period ("5. Januar"), English
+    // does not ("5 September").
+    const label = t('{day} {month}', {
+        day: date.getUTCDate(),
+        month: monthLabels()[date.getUTCMonth()] ?? '',
+    })
     return date.getUTCFullYear() === new Date(inServerFrame(now)).getUTCFullYear()
         ? label
         : `${label} ${date.getUTCFullYear()}`
