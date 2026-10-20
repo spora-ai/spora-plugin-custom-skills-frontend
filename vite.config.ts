@@ -12,6 +12,24 @@ import vue from '@vitejs/plugin-vue'
  */
 export default defineConfig({
     plugins: [vue()],
+
+    // `process.env.NODE_ENV` has to be replaced at build time.
+    //
+    // Vite replaces it for an *app* build, but not for a **library** build —
+    // and this is a library build (`build.lib.formats: ['iife']`). So the
+    // `process.env.NODE_ENV` inside vue-i18n survives into the bundle, and
+    // `process` does not exist in a browser: the panel dies on load with
+    // "process is not defined" before it renders a single string.
+    //
+    // vue-i18n only uses it to decide whether to *warn* — every use is a
+    // `!== 'production'` guard — so replacing it with the real build mode
+    // removes the development warnings and changes nothing else. The host
+    // SPA gets the same replacement for free, which is why the bug only
+    // shows up in a plugin bundle.
+    define: {
+        'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
+    },
+
     // Must match the host's dev proxy prefix (`SPORA_PLUGIN_DEV_PORTS=
     // custom-skills:5190` → the host's Vite forwards `/plugins/<slug>/*` here).
     // Otherwise the browser resolves `/src/App.vue` against the host's :5173, the

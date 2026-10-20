@@ -6,6 +6,7 @@ import * as preshippedApi from '../api/preshippedSkills'
 import * as allowlistApi from '../api/agentAllowlist'
 import * as agentsApi from '../api/agents'
 import { CUSTOM_SKILLS_SOURCE, plural } from '../lib/skillFormat'
+import { t } from '../i18n'
 import { usePrincipalsStore } from './principals'
 import type {
     AgentSummary,
@@ -117,7 +118,7 @@ export const useSkillsStore = defineStore('custom-skills', () => {
                 principalSkillCounts.value = { ...principalSkillCounts.value, [principalId]: skills.value.length }
             }
         } catch (e) {
-            error.value = e instanceof ApiError ? e.message : 'Failed to load skills.'
+            error.value = e instanceof ApiError ? e.message : t('Failed to load skills.')
         } finally {
             loading.value = false
         }
@@ -200,7 +201,7 @@ export const useSkillsStore = defineStore('custom-skills', () => {
             return skill
         } catch (e) {
             validationErrors.value = extractValidationErrors(e)
-            error.value = e instanceof ApiError ? e.message : 'Failed to create skill.'
+            error.value = e instanceof ApiError ? e.message : t('Failed to create skill.')
             throw e
         } finally {
             saving.value = false
@@ -220,7 +221,7 @@ export const useSkillsStore = defineStore('custom-skills', () => {
             return skill
         } catch (e) {
             validationErrors.value = extractValidationErrors(e)
-            error.value = e instanceof ApiError ? e.message : 'Failed to update skill.'
+            error.value = e instanceof ApiError ? e.message : t('Failed to update skill.')
             throw e
         } finally {
             saving.value = false
@@ -243,7 +244,7 @@ export const useSkillsStore = defineStore('custom-skills', () => {
             allowlists.value = next
             return result
         } catch (e) {
-            error.value = e instanceof ApiError ? e.message : 'Failed to delete skill.'
+            error.value = e instanceof ApiError ? e.message : t('Failed to delete skill.')
             throw e
         } finally {
             saving.value = false
@@ -281,8 +282,8 @@ export const useSkillsStore = defineStore('custom-skills', () => {
             const result = await deleteSkill(name)
             const scrubbed = result.scrubbed_agents.map((a) => a.name)
             notice.value = scrubbed.length > 0
-                ? `Deleted ${result.name} and removed it from ${plural(scrubbed.length, 'agent')}: ${scrubbed.join(', ')}.`
-                : `Deleted ${result.name}.`
+                ? `${t('Deleted')} ${result.name}. ${t('Removed from')} ${plural(scrubbed.length, t('agent'), t('agents'))}: ${scrubbed.join(', ')}.`
+                : `${t('Deleted')} ${result.name}.`
             return result.name
         } catch {
             // `error` carries the message.
@@ -301,7 +302,7 @@ export const useSkillsStore = defineStore('custom-skills', () => {
             upsert(skill)
             return skill
         } catch (e) {
-            error.value = e instanceof ApiError ? e.message : 'Failed to restore previous version.'
+            error.value = e instanceof ApiError ? e.message : t('Failed to restore previous version.')
             throw e
         } finally {
             saving.value = false
@@ -319,7 +320,7 @@ export const useSkillsStore = defineStore('custom-skills', () => {
             await allowlistApi.addSkillsToAgentAllowlist(agentId, [name])
             await loadAllowlist(name)
         } catch (e) {
-            error.value = e instanceof ApiError ? e.message : 'Failed to enable the skill on this agent.'
+            error.value = e instanceof ApiError ? e.message : t('Failed to enable the skill on this agent.')
             throw e
         } finally {
             saving.value = false
@@ -334,7 +335,7 @@ export const useSkillsStore = defineStore('custom-skills', () => {
             await allowlistApi.removeSkillsFromAgentAllowlist(agentId, [name])
             await loadAllowlist(name)
         } catch (e) {
-            error.value = e instanceof ApiError ? e.message : 'Failed to disable the skill on this agent.'
+            error.value = e instanceof ApiError ? e.message : t('Failed to disable the skill on this agent.')
             throw e
         } finally {
             saving.value = false

@@ -46,6 +46,12 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: i18n check
+        # The catalogue contract: `en.json` is generated from the source, `de.json` is
+        # hand-edited, and every operator-facing string goes through `t()`. A copy edit
+        # orphans the German entry, and the gate reports it as an unknown key.
+        run: npm run i18n:check
+
       - name: Code style
         # ESLint already carries the style rules; this step re-runs it in
         # autofix mode and fails when anything would change, so a

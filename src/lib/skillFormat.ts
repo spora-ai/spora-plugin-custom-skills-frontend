@@ -11,6 +11,7 @@
  */
 import type { Principal } from '../api/principals'
 import type { CustomSkillResource, SkillValidationEntry, ToolSummary } from '../types'
+import { t } from '../i18n'
 
 /** Also the set of frontmatter keys a `SkillValidator` finding can anchor to. */
 export const SKILL_FIELDS = [
@@ -112,8 +113,26 @@ export function lineCount(text: string): number {
 }
 
 const DAY_MS = 86_400_000
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/**
+ * The weekday and month names are operator-facing copy, so they are looked up in
+ * the catalogue. The English abbreviations are the keys; the German ones are the
+ * full names, because a two-letter German abbreviation would be identical to the
+ * English one for half the year and the catalogue rejects an identical value.
+ *
+ * They are built when they are needed rather than in a module constant: a
+ * constant would freeze the label at import time, before the locale is known.
+ */
+function weekdayLabels(): readonly string[] {
+    return [t('Sun'), t('Mon'), t('Tue'), t('Wed'), t('Thu'), t('Fri'), t('Sat')]
+}
+
+function monthLabels(): readonly string[] {
+    return [
+        t('Jan'), t('Feb'), t('Mar'), t('Apr'), t('May'), t('Jun'),
+        t('Jul'), t('Aug'), t('Sep'), t('Oct'), t('Nov'), t('Dec'),
+    ]
+}
 
 /**
  * The contract sends the server's own wall clock with no timezone, so the
@@ -142,9 +161,9 @@ export function updatedLabel(updatedAt: string, now: number = Date.now()): strin
     if (stamp === null) return ''
     const elapsed = inServerFrame(now) - stamp
     if (elapsed < DAY_MS) return clockTime(updatedAt)
-    if (elapsed < 7 * DAY_MS) return WEEKDAYS[new Date(stamp).getUTCDay()] ?? ''
+    if (elapsed < 7 * DAY_MS) return weekdayLabels()[new Date(stamp).getUTCDay()] ?? ''
     const date = new Date(stamp)
-    const label = `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`
+    const label = `${date.getUTCDate()} ${monthLabels()[date.getUTCMonth()] ?? ''}`
     return date.getUTCFullYear() === new Date(inServerFrame(now)).getUTCFullYear()
         ? label
         : `${label} ${date.getUTCFullYear()}`
@@ -156,20 +175,33 @@ export function updatedLabel(updatedAt: string, now: number = Date.now()): strin
  * group's are readable by any member and writable only by an owner or admin.
  */
 export function principalScopeBlurb(principal: Principal | null): string {
-    if (principal === null) return 'No principal is selected.'
+    if (principal === null) return t('No principal is selected.')
     return principal.type === 'user'
-        ? 'Your personal skills. Only you can see and edit these.'
-        : `Skills owned by ${principal.name}. Everyone in the group can read them; writing needs to be an owner or an admin.`
+        ? t('Your personal skills. Only you can see and edit these.')
+        : `${t('Skills owned by')} ${principal.name}. ${t('Everyone in the group can read them; writing needs to be an owner or an admin.')}`
 }
 
-export const HOME_SORT_OPTIONS = [
-    { value: 'updated', label: 'Recently updated' },
-    { value: 'created', label: 'Recently created' },
-    { value: 'name-asc', label: 'Name (A–Z)' },
-    { value: 'name-desc', label: 'Name (Z–A)' },
-] as const
+/**
+ * The sort options, translated.
+ *
+ * A function rather than a constant: the labels are operator-facing copy, and a
+ * constant would freeze them at import time, before the locale is known.
+ */
+export interface SortOption {
+    value: SkillSort | NameSort
+    label: string
+}
 
-export type SkillSort = (typeof HOME_SORT_OPTIONS)[number]['value']
+export function homeSortOptions(): SortOption[] {
+    return [
+        { value: 'updated', label: t('Recently updated') },
+        { value: 'created', label: t('Recently created') },
+        { value: 'name-asc', label: t('Name (A–Z)') },
+        { value: 'name-desc', label: t('Name (Z–A)') },
+    ]
+}
+
+export type SkillSort = 'updated' | 'created' | 'name-asc' | 'name-desc'
 export type NameSort = 'name-asc' | 'name-desc'
 
 /**
@@ -193,10 +225,12 @@ export function sortSkills(skills: readonly CustomSkillResource[], sort: SkillSo
 }
 
 /** The catalogue summary carries no timestamps, so only the name orders are offered. */
-export const CATALOGUE_SORT_OPTIONS = [
-    { value: 'name-asc', label: 'Name (A–Z)' },
-    { value: 'name-desc', label: 'Name (Z–A)' },
-] as const
+export function catalogueSortOptions(): SortOption[] {
+    return [
+        { value: 'name-asc', label: t('Name (A–Z)') },
+        { value: 'name-desc', label: t('Name (Z–A)') },
+    ]
+}
 
 export function sortByName<T extends { name: string }>(items: readonly T[], sort: NameSort): T[] {
     return [...items].sort((a, b) => (sort === 'name-asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)))
@@ -385,10 +419,10 @@ export function lastEditedLabel(
     const time = clockTime(skill.updated_at)
     const actor =
         skill.provenance === 'agent'
-            ? 'Last edited by agent'
+            ? t('Last edited by agent')
             : skill.updated_by_user_id !== skill.created_by_user_id
-              ? 'Last edited by a teammate'
-              : 'Last edited by you'
+              ? t('Last edited by a teammate')
+              : t('Last edited by you')
     return time === '' ? actor : `${actor} · ${time}`
 }
 
@@ -575,18 +609,34 @@ export type FileNameProblem =
     | 'reserved'
     | 'duplicate'
 
-const PROBLEM_TEXT: Record<FileNameProblem, string> = {
-    empty: 'Name the file.',
-    'has-separator': 'Put the folder in the folder field — the name cannot contain “/”.',
-    traversal: '“.” and “..” are not file names.',
-    backslash: 'Use a forward slash between folders, not a backslash.',
-    control: 'That name contains characters a file cannot have.',
-    padded: 'Remove the leading or trailing space.',
-    'bad-folder': 'That folder cannot be used — try a plain name like “references”.',
-    reserved: `${SKILL_ENTRY_FILE} is the skill itself and always exists.`,
-    duplicate: 'A file with that path already exists.',
+/**
+ * Why a path cannot be used, in the operator's language.
+ *
+ * A function rather than a record constant: the text is operator-facing copy, and
+ * a constant would freeze it at import time, before the locale is known.
+ */
+function problemText(problem: FileNameProblem): string {
+    switch (problem) {
+        case 'empty':
+            return t('Name the file.')
+        case 'has-separator':
+            return t('Put the folder in the folder field — the name cannot contain “/”.')
+        case 'traversal':
+            return t('“.” and “..” are not file names.')
+        case 'backslash':
+            return t('Use a forward slash between folders, not a backslash.')
+        case 'control':
+            return t('That name contains characters a file cannot have.')
+        case 'padded':
+            return t('Remove the leading or trailing space.')
+        case 'bad-folder':
+            return t('That folder cannot be used — try a plain name like “references”.')
+        case 'reserved':
+            return t('SKILL.md is the skill itself and always exists.')
+        case 'duplicate':
+            return t('A file with that path already exists.')
+    }
 }
-
 /** The characters a stored path may not contain, per the server's own rule. */
 // eslint-disable-next-line no-control-regex -- the same range `isSafePath` rejects.
 const CONTROL_CHARACTERS = /[\x00-\x1F\x7F]/
@@ -644,7 +694,7 @@ export function fileNameProblem(
 }
 
 export function fileNameProblemText(problem: FileNameProblem): string {
-    return PROBLEM_TEXT[problem]
+    return problemText(problem)
 }
 
 /** One choice in the dialog's folder picker. The root is the empty path. */
@@ -664,7 +714,7 @@ export interface FileFolderOption {
  * one entry, not two.
  */
 export function fileFolderOptions(existingFolders: readonly string[]): FileFolderOption[] {
-    const options: FileFolderOption[] = [{ value: '', label: 'Skill root' }]
+    const options: FileFolderOption[] = [{ value: '', label: t('Skill root') }]
 
     for (const folder of [...existingFolders].sort((a, b) => a.localeCompare(b, 'en'))) {
         options.push({ value: folder, label: `${folder}/` })
@@ -831,13 +881,12 @@ export function plural(count: number, singular: string, pluralForm = `${singular
  */
 export function restoreLabel(skill: Pick<CustomSkillResource, 'previous_at'>): string {
     const when = skill.previous_at ? updatedLabel(skill.previous_at) : ''
-    return when === '' ? 'Restore previous version' : `Restore the version from ${when}`
+    return when === '' ? t('Restore previous version') : `${t('Restore the version from')} ${when}`
 }
 
 /**
  * The same sentence as a title, for the surfaces that only have the hover.
  */
 export function restoreExplanation(skill: Pick<CustomSkillResource, 'previous_at'>): string {
-    return `${restoreLabel(skill)}. This is the only earlier version kept, and restoring swaps the two — `
-    + 'restore again to come back to what you have now. Sidecar files are restored with it.'
+    return `${restoreLabel(skill)}. ${t('This is the only earlier version kept, and restoring swaps the two — restore again to come back to what you have now. Sidecar files are restored with it.')}`
 }

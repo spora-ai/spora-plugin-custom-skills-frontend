@@ -282,7 +282,7 @@ describe('skills store → the delete confirmation is read-then-write', () => {
 
         await store.requestDelete('invoice-drafting')
         expect(await store.confirmDelete()).toBe('invoice-drafting')
-        expect(store.notice).toBe('Deleted invoice-drafting and removed it from 1 agent: Invoicer.')
+        expect(store.notice).toBe('Deleted invoice-drafting. Removed from 1 agent: Invoicer.')
         expect(store.skills).toHaveLength(0)
     })
 

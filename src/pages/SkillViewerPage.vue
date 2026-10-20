@@ -10,6 +10,7 @@
  * what _Duplicate_ writes the copy onto (`lib/paths.ts → viewerPath`).
  */
 import { computed, inject, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft } from 'lucide-vue-next'
 import SkillViewer from '../components/SkillViewer.vue'
@@ -23,6 +24,7 @@ const route = useRoute()
 const router = useRouter()
 const principals = usePrincipalsStore()
 const hostContext = inject<PluginHostContext>(HOST_CONTEXT_KEY)
+const { t } = useI18n()
 
 const principalId = computed(() => principals.selectedPrincipalId)
 
@@ -103,7 +105,7 @@ function duplicate(): void {
             data-test="viewer-back"
         >
             <ArrowLeft class="h-3.5 w-3.5" />
-            Back to the catalogue
+            {{ t('Back to the catalogue') }}
         </RouterLink>
 
         <p
@@ -111,7 +113,7 @@ function duplicate(): void {
             class="mt-6 text-sm text-muted-foreground"
             data-test="viewer-loading"
         >
-            Loading {{ name }}…
+            {{ t('Loading') }} {{ name }}…
         </p>
 
         <p
@@ -119,7 +121,7 @@ function duplicate(): void {
             class="mt-6 text-sm text-muted-foreground"
             data-test="viewer-failed"
         >
-            The host has no skill named “{{ name }}”.
+            {{ t('The host has no skill named “') }}{{ name }}{{ t('”.') }}
         </p>
 
         <SkillViewer

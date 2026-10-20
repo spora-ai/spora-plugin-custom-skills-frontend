@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { AlertTriangle, Inbox, Trash2 } from 'lucide-vue-next'
 
 /**
@@ -25,6 +26,8 @@ const emit = defineEmits<{
     confirm: []
     cancel: []
 }>()
+
+const { t } = useI18n()
 </script>
 
 <template>
@@ -53,8 +56,8 @@ const emit = defineEmits<{
                 data-test="confirm-blast-radius"
             >
                 <p class="text-xs font-medium text-destructive">
-                    This removes the skill from {{ affectedAgents.length }}
-                    {{ affectedAgents.length === 1 ? 'agent' : 'agents' }}:
+                    {{ t('This removes the skill from') }} {{ affectedAgents.length }}
+                    {{ affectedAgents.length === 1 ? t('agent') : t('agents') }}:
                 </p>
                 <ul class="mt-1.5 space-y-0.5">
                     <li
@@ -66,13 +69,13 @@ const emit = defineEmits<{
                     </li>
                 </ul>
                 <p class="mt-2 text-xs text-muted-foreground">
-                    You can re-add it to each agent afterwards with “Enable on agent…”.
+                    {{ t('You can re-add it to each agent afterwards with “Enable on agent…”.') }}
                 </p>
             </div>
 
             <div v-else class="mt-3 flex items-start gap-2 text-xs text-muted-foreground">
                 <Inbox class="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span>No agent currently has this skill on its allowlist.</span>
+                <span>{{ t('No agent currently has this skill on its allowlist.') }}</span>
             </div>
 
             <div class="mt-5 flex justify-end gap-2">
@@ -82,7 +85,7 @@ const emit = defineEmits<{
                     data-test="confirm-cancel"
                     @click="emit('cancel')"
                 >
-                    Cancel
+                    {{ t('Cancel') }}
                 </button>
                 <button
                     type="button"
@@ -92,7 +95,7 @@ const emit = defineEmits<{
                     @click="emit('confirm')"
                 >
                     <Trash2 class="h-3.5 w-3.5" />
-                    {{ busy ? 'Deleting…' : (confirmLabel ?? 'Delete') }}
+                    {{ busy ? t('Deleting…') : (confirmLabel ?? t('Delete')) }}
                 </button>
             </div>
         </div>

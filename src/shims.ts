@@ -25,6 +25,13 @@ export interface PluginHostContext {
     }
     pinia: unknown
     theme: 'light' | 'dark'
+    /**
+     * The host's active interface language, e.g. `'de'`.
+     *
+     * The plugin builds its own i18n instance from its own catalogue and
+     * initialises it with this.
+     */
+    locale: string
     route: { path: string; params: Record<string, unknown>; query: Record<string, unknown> } | null
     /** The host exposes the full Router; plugins only see this surface. */
     router: {

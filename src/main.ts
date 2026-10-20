@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter, type LocationQueryRaw } from 'vue-ro
 import App from './App.vue'
 import { panelRoutes } from './lib/routes'
 import { setApi } from './api/client'
+import { createPluginI18n } from './i18n'
 import { appSlugFrom, localPathForHostRoute } from './lib/hostRoute'
 import { HOST_CONTEXT_KEY, type PluginHostContext } from './shims'
 
@@ -11,6 +12,9 @@ import { HOST_CONTEXT_KEY, type PluginHostContext } from './shims'
  * Plugin mount/unmount contract, installed on `window.SporaAppCustomSkills`; the host's
  * `apps/registry.ts` calls it. A *local* Pinia and a *local* router (`createMemoryHistory`, since the
  * host owns the address bar) keep plugin-only state out of host stores.
+ *
+ * The i18n instance is local too: the host does not publish its own, so the plugin builds one from
+ * its own catalogue and seeds it with `hostContext.locale`.
  *
  * **The host URL is the source of truth; the local router mirrors it.** `replace` in, `push` out: a
  * host navigation has *already* been pushed onto the browser's stack, so replacing the local route
@@ -58,6 +62,8 @@ const SporaApp: MountContract = {
         app.provide(HOST_CONTEXT_KEY, hostContext)
 
         app.use(createPinia())
+
+        app.use(createPluginI18n(hostContext.locale))
 
         const router = createRouter({
             history: createMemoryHistory(),

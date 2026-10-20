@@ -18,6 +18,7 @@
  * `ConfirmDialog`: `showModal()` is unreliable in happy-dom and in the host's slot.
  */
 import { computed, nextTick, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { FileText, Folder } from 'lucide-vue-next'
 import {
     CONVENTIONAL_SKILL_FOLDERS,
@@ -25,8 +26,18 @@ import {
     fileNameProblem,
     fileNameProblemText,
     joinFilePath,
+    SKILL_ENTRY_FILE,
     type FileFolderOption,
 } from '../lib/skillFormat'
+
+/**
+ * A file name and a file extension are technical identifiers: they are never
+ * translated, so they are not in the catalogue. They are constants rather than
+ * template text because the extractor's raw-text rule would report a literal
+ * here as untranslated copy.
+ */
+const FILE_NAME_EXAMPLE = 'REFERENCE.md'
+const MARKDOWN_EXTENSION = '.md'
 
 const props = defineProps<{
     open: boolean
@@ -49,6 +60,8 @@ const emit = defineEmits<{
     cancel: []
 }>()
 
+const { t } = useI18n()
+
 const name = ref('')
 const folder = ref('')
 const nameInput = ref<HTMLInputElement | null>(null)
@@ -70,8 +83,8 @@ const problem = computed(() =>
 )
 const error = computed(() => (touched.value && problem.value ? fileNameProblemText(problem.value) : null))
 
-const title = computed(() => (props.mode === 'create' ? 'Add a file' : 'Rename file'))
-const submitLabel = computed(() => (props.mode === 'create' ? 'Add file' : 'Save name'))
+const title = computed(() => (props.mode === 'create' ? t('Add a file') : t('Rename file')))
+const submitLabel = computed(() => (props.mode === 'create' ? t('Add file') : t('Save name')))
 
 watch(
     () => props.open,
@@ -119,7 +132,7 @@ function submit(): void {
         <button
             type="button"
             tabindex="-1"
-            aria-label="Cancel"
+            :aria-label="t('Cancel')"
             class="absolute inset-0 h-full w-full cursor-default bg-black/50"
             data-test="file-dialog-backdrop"
             @click="emit('cancel')"
@@ -142,14 +155,14 @@ function submit(): void {
                 <h2 class="text-base font-semibold">{{ title }}</h2>
             </div>
             <p class="text-xs text-muted-foreground">
-                A skill is a folder: <span class="font-mono">SKILL.md</span> plus whatever else it
-                needs. Files in a subfolder are referenced relative to the skill root.
+                {{ t('A skill is a folder:') }} <span class="font-mono">{{ SKILL_ENTRY_FILE }}</span>
+                {{ t('plus whatever else it needs. Files in a subfolder are referenced relative to the skill root.') }}
             </p>
 
             <div class="mt-4 space-y-3">
                 <div>
                     <label :for="`${mode}-folder`" class="mb-1 block text-xs font-medium">
-                        Folder
+                        {{ t('Folder') }}
                     </label>
                     <div class="relative">
                         <Folder
@@ -162,7 +175,7 @@ function submit(): void {
                             list="file-dialog-folders"
                             spellcheck="false"
                             autocomplete="off"
-                            placeholder="Skill root"
+                            :placeholder="t('Skill root')"
                             class="h-9 w-full rounded-lg border border-border bg-background pl-8 pr-2 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
                             data-test="file-dialog-folder"
                             @keydown="onKeydown"
@@ -176,16 +189,15 @@ function submit(): void {
                         </datalist>
                     </div>
                     <p class="mt-1 text-[11px] text-muted-foreground" data-test="folder-hint">
-                        Leave empty for the skill root.
+                        {{ t('Leave empty for the skill root.') }}
                         <span class="font-mono">{{ CONVENTIONAL_SKILL_FOLDERS.join('/') }}</span>, <span class="font-mono">{{ CONVENTIONAL_SKILL_FOLDERS.join(' ') }}</span>
-                        are the spec's own names for the three usual cases; anything else is
-                        allowed.
+                        {{ t("are the spec's own names for the three usual cases; anything else is allowed.") }}
                     </p>
                 </div>
 
                 <div>
                     <label :for="`${mode}-name`" class="mb-1 block text-xs font-medium">
-                        File name
+                        {{ t('File name') }}
                     </label>
                     <input
                         :id="`${mode}-name`"
@@ -194,7 +206,7 @@ function submit(): void {
                         type="text"
                         spellcheck="false"
                         autocomplete="off"
-                        placeholder="REFERENCE.md"
+                        :placeholder="FILE_NAME_EXAMPLE"
                         :aria-invalid="error !== null"
                         :aria-describedby="error !== null ? `${mode}-name-error` : undefined"
                         class="h-9 w-full rounded-lg border border-border bg-background px-2.5 font-mono text-sm outline-none focus:ring-2 focus:ring-ring"
@@ -211,8 +223,8 @@ function submit(): void {
                         {{ error }}
                     </p>
                     <p v-else class="mt-1 text-[11px] text-muted-foreground">
-                        With an extension, so the right editor opens —
-                        <span class="font-mono">.md</span> for prose, anything else as source.
+                        {{ t('With an extension, so the right editor opens —') }}
+                        <span class="font-mono">{{ MARKDOWN_EXTENSION }}</span> {{ t('for prose, anything else as source.') }}
                     </p>
                 </div>
             </div>
@@ -224,7 +236,7 @@ function submit(): void {
                     data-test="file-dialog-cancel"
                     @click="emit('cancel')"
                 >
-                    Cancel
+                    {{ t('Cancel') }}
                 </button>
                 <button
                     type="button"

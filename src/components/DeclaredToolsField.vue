@@ -30,8 +30,11 @@
  * because `v-else` and `v-for` on one element is a precedence trap.
  */
 import { computed, useId } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { declaredToolNames, serializeToolNames, toolOptions } from '../lib/skillFormat'
 import type { SkillValidationEntry, ToolSummary } from '../types'
+
+const { t } = useI18n()
 
 const props = withDefaults(
     defineProps<{
@@ -106,7 +109,7 @@ function nameIsRedundant(label: string, name: string): boolean {
              Spora implements no pre-approval and enforces nothing. A label promising
              either would be a promise the system does not keep. -->
         <legend class="mb-1.5 block text-xs font-medium">
-            Tools this skill uses
+            {{ t('Tools this skill uses') }}
         </legend>
 
         <!-- Only a registry that was actually read may claim the instance has no
@@ -117,14 +120,14 @@ function nameIsRedundant(label: string, name: string): boolean {
             class="text-[11px] text-muted-foreground"
             data-test="allowed-tools-empty"
         >
-            No tools are registered on this instance.
+            {{ t('No tools are registered on this instance.') }}
         </div>
         <div
             v-else-if="rows.length === 0"
             class="text-[11px] text-muted-foreground"
             data-test="allowed-tools-unavailable"
         >
-            The tool registry could not be read. Declared tools are shown as stored.
+            {{ t('The tool registry could not be read. Declared tools are shown as stored.') }}
         </div>
         <template v-else>
             <!-- A real instance has dozens of tools, so the list scrolls inside its
@@ -188,16 +191,15 @@ function nameIsRedundant(label: string, name: string): boolean {
                     <span
                         v-if="!row.available"
                         class="ml-auto shrink-0 rounded-full bg-amber-500/15 px-1.5 py-px text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-500/25 dark:text-amber-300"
-                        title="Kept as declared — this instance cannot resolve it, but the next save will not drop it."
+                        :title="t('Kept as declared — this instance cannot resolve it, but the next save will not drop it.')"
                         data-test="tool-unavailable-note"
-                    >Not available on this instance</span>
+                    >{{ t('Not available on this instance') }}</span>
                 </label>
             </div>
         </template>
 
         <p class="mt-1 text-[11px] text-muted-foreground">
-            A hint for whoever reads this skill. Spora grants no pre-approval from it and
-            enforces nothing — an agent can still call a tool that is not on this list.
+            {{ t('A hint for whoever reads this skill. Spora grants no pre-approval from it and enforces nothing — an agent can still call a tool that is not on this list.') }}
         </p>
 
         <ul

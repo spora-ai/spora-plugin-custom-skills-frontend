@@ -23,6 +23,7 @@
  * A fact, not a control — the route has no write path.
  */
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { MdPreview } from 'md-editor-v3'
 import DOMPurify from 'dompurify'
 import { ChevronRight, Copy, FileText, Folder, Pencil, TriangleAlert } from 'lucide-vue-next'
@@ -60,6 +61,8 @@ const emit = defineEmits<{
 }>()
 
 const activePath = ref<string>(SKILL_ENTRY_FILE)
+
+const { t } = useI18n()
 
 const title = computed(() => props.skill?.name ?? props.shipped?.name ?? '')
 /**
@@ -107,16 +110,16 @@ const facts = computed(() => {
     if (!d) return []
     const out: Array<{ label: string; value: string }> = []
     const licence = 'license' in d ? d.license : null
-    if (licence) out.push({ label: 'License', value: licence })
-    if (d.compatibility) out.push({ label: 'Compatibility', value: d.compatibility })
+    if (licence) out.push({ label: t('License'), value: licence })
+    if (d.compatibility) out.push({ label: t('Compatibility'), value: d.compatibility })
     // The declaration, as written. A shipped skill's tools are visible here but
     // not editable — the viewer's route has no write path — so this is a fact row
     // and nothing more; whether an agent has the tool is a per-agent question this
     // surface has no context to answer.
-    if (d.allowed_tools) out.push({ label: 'Tools this skill uses', value: d.allowed_tools })
+    if (d.allowed_tools) out.push({ label: t('Tools this skill uses'), value: d.allowed_tools })
     const meta = Object.entries(d.metadata ?? {})
     if (meta.length > 0) {
-        out.push({ label: 'Metadata', value: meta.map(([k, v]) => `${k}: ${v}`).join('  ·  ') })
+        out.push({ label: t('Metadata'), value: meta.map(([k, v]) => `${k}: ${v}`).join('  ·  ') })
     }
     return out
 })
@@ -202,7 +205,7 @@ watch(
                         class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
                         data-test="viewer-readonly-badge"
                     >
-                        Pre-shipped · read-only
+                        {{ t('Pre-shipped · read-only') }}
                     </span>
                 </div>
                 <p class="mt-1 text-sm text-muted-foreground" data-test="viewer-description">
@@ -249,7 +252,7 @@ watch(
                 <h3
                     class="border-b border-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
                 >
-                    Files
+                    {{ t('Files') }}
                 </h3>
                 <nav class="scroll-quiet overflow-auto p-1.5 text-sm" data-test="viewer-rail-nav">
                     <button
@@ -310,17 +313,14 @@ watch(
                     class="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground"
                     data-test="viewer-contents-unavailable"
                 >
-                    <span class="font-mono">{{ activePath }}</span> could not be read.
-                    Its size is listed in the rail. A file the host will not serve is
-                    either missing or over the 50 KB per-file limit. Duplicate the
-                    skill to get an editable copy.
+                    <span class="font-mono">{{ activePath }}</span> {{ t('could not be read. Its size is listed in the rail. A file the host will not serve is either missing or over the 50 KB per-file limit. Duplicate the skill to get an editable copy.') }}
                 </p>
                 <p
                     v-else-if="activeContent === undefined && isPending"
                     class="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground"
                     data-test="viewer-contents-loading"
                 >
-                    Reading <span class="font-mono">{{ activePath }}</span>…
+                    {{ t('Reading') }} <span class="font-mono">{{ activePath }}</span>…
                 </p>
                 <div
                     v-else
@@ -333,8 +333,7 @@ watch(
                         data-test="viewer-binary"
                     >
                         <span class="font-mono">{{ activePath }}</span>
-                        is not a text format, so it cannot be shown here. Its size is
-                        listed in the rail.
+                        {{ t('is not a text format, so it cannot be shown here. Its size is listed in the rail.') }}
                     </div>
 
                     <template v-else>
@@ -343,7 +342,7 @@ watch(
                             class="mb-3 text-xs text-amber-700"
                             data-test="viewer-json-invalid"
                         >
-                            This file is not valid JSON, so it is shown as written.
+                            {{ t('This file is not valid JSON, so it is shown as written.') }}
                         </p>
                         <MdPreview
                             v-if="previewMode === 'markdown'"
@@ -385,7 +384,7 @@ watch(
                 @click="emit('edit', title)"
             >
                 <Pencil class="h-3.5 w-3.5" />
-                Edit skill
+                {{ t('Edit skill') }}
             </button>
             <button
                 v-else
@@ -395,7 +394,7 @@ watch(
                 @click="emit('duplicate', title)"
             >
                 <Copy class="h-3.5 w-3.5" />
-                Duplicate to make it mine
+                {{ t('Duplicate to make it mine') }}
             </button>
         </footer>
     </section>
