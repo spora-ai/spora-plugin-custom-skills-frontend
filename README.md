@@ -208,6 +208,63 @@ Two signals mean the contract drifted:
 - `tests/buildAssets.spec.ts` failing on the externals list, or on a hand-written
   selector in `src/style.css` that is not scoped by hand.
 
+## Languages
+
+The panel ships its own vue-i18n instance and its own catalogue. It does not
+share the host's: the host does not publish its instance, so reaching into it
+would couple the panel's catalogue lifetime to the host's.
+
+The locale comes from the host — `PluginHostContext.locale` — so the panel
+follows the operator's choice without asking for it. The dev sandbox has no
+host, so it reads `?locale=de` from the query string and falls back to
+English.
+
+```
+src/locales/en.json   generated
+src/locales/de.json   hand-edited German
+```
+
+**The key is the English source text.** `"Save": "Save"` in `en.json`, and
+`de.json` carries the same key with the German value. A semantic key would
+make every copy edit a silent no-op: the English changes, the key does not,
+and the panel keeps rendering the old German. The same key in two catalogues
+also means the host can add a translation for a string this panel shares with
+it, without the two ever disagreeing about what the string is.
+
+```bash
+npm run i18n:extract   # regenerate src/locales/en.json from the source
+npm run i18n:check     # the CI gate: catalogue drift, missing keys, untranslated copy
+```
+
+`npm run i18n:check` also fails on operator-facing copy that is not wrapped in
+`t()`, so a new string cannot ship untranslated by accident.
+
+### Catalogue grammar
+
+The extractor accepts vue-i18n's interpolation syntax — `{name}`, `{0}` — as
+long as the braces are a well-formed placeholder. A JSON snippet pasted into
+help text is not: `{"tier": "pro"}` carries quotes and a colon, so its braces
+are still rejected. The `|` plural separator is still rejected here.
+
+The **host's** extractor is stricter — it rejects any key carrying a raw `{`,
+`}` or `|`, so the host's own catalogue holds no placeholder at all. The two
+grammars never meet: this panel's catalogue is read by this panel's extractor,
+and the host's `i18n:check` harvests the framework's own sources and never
+opens a plugin's catalogue. The difference is safe — vue-i18n compiles at
+render either way — and stable under the merge, because a key *is* the English
+source text, so a string present in both catalogues carries the same
+placeholders in both. Do not rewrite this panel's keys to satisfy the host's
+rule, and do not loosen the host's rule to match this one.
+
+### What stays English, and why
+
+- **The skill's description and body** — model input. A German description
+  degrades the model's choice of the skill.
+- **The host's tool registry** — server data. The names and descriptions come
+  from the host's own catalogue, not from this panel's.
+- **Technical identifiers** — `SKILL.md`, `REFERENCE.md`, `/api/v1/skills`, and
+  the file paths themselves. They are names the contract fixes, not copy.
+
 ## Commands
 
 ```bash
@@ -220,6 +277,8 @@ npm run test:coverage  # vitest run --coverage → coverage/lcov.info
 npm run build          # vue-tsc --noEmit && vite build → frontend/
 npm run smoke          # asserts the IIFE + the #spora-plugin-custom-skills CSS scope
 npm run clean          # removes frontend/main.js + frontend/style.css
+npm run i18n:extract   # regenerate src/locales/en.json from the source
+npm run i18n:check     # the CI gate: catalogue drift, missing keys, untranslated copy
 ```
 
 `npm run build` writes `frontend/main.js` and `frontend/style.css`.
