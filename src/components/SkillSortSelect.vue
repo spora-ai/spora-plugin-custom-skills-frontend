@@ -11,6 +11,7 @@
  * wrong order.
  */
 import { ChevronDown } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 
 defineProps<{
     id: string
@@ -20,6 +21,8 @@ defineProps<{
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 
+const { t } = useI18n()
+
 function onChange(event: Event): void {
     emit('update:modelValue', (event.target as HTMLSelectElement).value)
 }
@@ -27,7 +30,7 @@ function onChange(event: Event): void {
 
 <template>
     <div class="flex items-center gap-2">
-        <label :for="id" class="text-xs text-muted-foreground">Sort</label>
+        <label :for="id" class="text-xs text-muted-foreground">{{ t('Sort') }}</label>
         <div class="relative">
             <select
                 :id="id"

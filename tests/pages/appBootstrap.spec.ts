@@ -14,6 +14,7 @@ import CreateSkillPage from '../../src/pages/CreateSkillPage.vue'
 import { PANEL_ROUTES } from '../../src/lib/routes'
 import { HOST_CONTEXT_KEY, type PluginHostContext } from '../../src/shims'
 import { setApi } from '../../src/api/client'
+import { createPluginI18n } from '../../src/i18n'
 import * as api from '../../src/api/customSkills'
 import * as preshippedApi from '../../src/api/preshippedSkills'
 import { usePrincipalsStore } from '../../src/stores/principals'
@@ -38,6 +39,7 @@ function mountLikeMain() {
         api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() },
         pinia: null,
         theme: 'light',
+        locale: 'en',
         route: null,
         router: null,
     }
@@ -45,6 +47,9 @@ function mountLikeMain() {
     const app = createApp(App as never, { hostContext })
     app.provide(HOST_CONTEXT_KEY, hostContext)
     app.use(createPinia())
+    // The panel's own i18n instance, exactly as `main.ts` installs it: the components call
+    // `useI18n()`, which throws without one.
+    app.use(createPluginI18n(hostContext.locale))
 
     // The real route map, so a spec resolves a route the app installs. Home and the create form are
     // real *including their scoped twins*, since the layout scopes `/`.

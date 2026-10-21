@@ -22,7 +22,14 @@
    without pulling in the real `md-editor-v3` types (which would drag
    in CodeMirror 6 type defs the test runner can't satisfy). */
 
+import { config } from '@vue/test-utils'
 import { vi } from 'vitest'
+import { createPluginI18n } from '../src/i18n'
+
+// Components call `useI18n()`, which needs an i18n instance in the app. The locale is pinned to
+// `en` — `en.json` is an identity map, so the English assertions in the suite keep asserting
+// English.
+config.global.plugins = [createPluginI18n('en')]
 
 vi.mock('md-editor-v3', async () => {
     const { defineComponent, h } = await import('vue')

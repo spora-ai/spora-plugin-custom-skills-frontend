@@ -15,6 +15,7 @@
  * happens, on demand.
  */
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { AlertTriangle, MoreHorizontal, Sparkles, Trash2, Users } from 'lucide-vue-next'
 import { restoreExplanation, restoreLabel, updatedLabel } from '../lib/skillFormat'
 import { deskPath } from '../lib/paths'
@@ -41,6 +42,7 @@ const emit = defineEmits<{
 
 const menuOpen = ref(false)
 const selectedAgentId = ref<number | null>(null)
+const { t } = useI18n()
 
 /**
  * Where this row's skill lives, from the row's own `principal_id` rather than the
@@ -58,7 +60,7 @@ const candidates = computed(() => {
 })
 
 function scopeLabel(scope: SkillAllowlistEntry['scope']): string {
-    return scope === 'principal' ? 'inherited default' : 'agent override'
+    return scope === 'principal' ? t('inherited default') : t('agent override')
 }
 
 function toggleMenu(): void {
@@ -109,7 +111,7 @@ function submitDelete(): void {
                 >
                     <AlertTriangle class="h-3 w-3" />
                     {{ skill.warning_count }}
-                    {{ skill.warning_count === 1 ? 'warning' : 'warnings' }}
+                    {{ skill.warning_count === 1 ? t('warning') : t('warnings') }}
                 </span>
                 <!-- Agent-authored: the panel is also how you find out an agent
                      rewrote one of your skills. -->
@@ -118,19 +120,19 @@ function submitDelete(): void {
                     class="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border"
                     data-test="row-agent-pill"
                 >
-                    last edited by agent
+                    {{ t('last edited by agent') }}
                 </span>
             </div>
             <p class="mt-0.5 truncate text-sm text-muted-foreground" data-test="skill-description">
-                {{ skill.description || 'No description — agents match skills on it, so add one.' }}
+                {{ skill.description || t('No description — agents match skills on it, so add one.') }}
             </p>
         </div>
 
         <div class="hidden shrink-0 items-center gap-5 text-xs text-muted-foreground sm:flex">
-            <span data-test="skill-updated">updated {{ updated }}</span>
+            <span data-test="skill-updated">{{ t('updated') }} {{ updated }}</span>
             <span data-test="skill-files">
                 {{ skill.files.length }}
-                {{ skill.files.length === 1 ? 'file' : 'files' }}
+                {{ skill.files.length === 1 ? t('file') : t('files') }}
             </span>
         </div>
 
@@ -139,14 +141,14 @@ function submitDelete(): void {
                 v-if="menuOpen"
                 type="button"
                 class="fixed inset-0 z-10 cursor-default"
-                aria-label="Close the menu"
+                :aria-label="t('Close the menu')"
                 data-test="row-menu-backdrop"
                 @click="closeMenu"
             />
             <button
                 type="button"
                 class="relative rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted focus:opacity-100 group-hover:opacity-100"
-                :aria-label="`More actions for ${skill.name}`"
+                :aria-label="`${t('More actions for')} ${skill.name}`"
                 data-test="row-actions"
                 @click="toggleMenu"
             >
@@ -159,7 +161,7 @@ function submitDelete(): void {
                 data-test="row-menu"
             >
                 <p class="border-b border-border px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Agents using this skill
+                    {{ t('Agents using this skill') }}
                 </p>
 
                 <!-- Gated on the read having landed, not on the array being empty:
@@ -172,15 +174,14 @@ function submitDelete(): void {
                     class="px-3 py-2 text-[11px] leading-snug text-muted-foreground"
                     data-test="allowlist-loading"
                 >
-                    Reading the agents that use this skill…
+                    {{ t('Reading the agents that use this skill…') }}
                 </p>
                 <p
                     v-else-if="allowlist.length === 0"
                     class="px-3 py-2 text-[11px] leading-snug text-muted-foreground"
                     data-test="allowlist-empty"
                 >
-                    Not enabled for any agent yet — add it to an agent's Skill tool
-                    settings before the agent can use it.
+                    {{ t("Not enabled for any agent yet — add it to an agent's Skill tool settings before the agent can use it.") }}
                 </p>
                 <ul v-else class="px-3 py-2" data-test="allowlist-list">
                     <li
@@ -194,18 +195,18 @@ function submitDelete(): void {
                             type="button"
                             :disabled="busy"
                             class="text-muted-foreground underline underline-offset-2 transition-colors hover:text-destructive disabled:opacity-50"
-                            :aria-label="`Disable on ${entry.name}`"
+                            :aria-label="`${t('Disable on')} ${entry.name}`"
                             :data-test="`disable-on-${entry.id}`"
                             @click="emit('disable', skill.name, entry.id)"
                         >
-                            remove
+                            {{ t('remove') }}
                         </button>
                     </li>
                 </ul>
 
                 <div class="border-t border-border p-2" data-test="agent-picker">
                     <label :for="`row-agent-${skill.name}`" class="mb-1 block px-1 text-[11px] text-muted-foreground">
-                        Agent
+                        {{ t('Agents') }}
                     </label>
                     <div class="flex items-center gap-1.5">
                         <select
@@ -214,7 +215,7 @@ function submitDelete(): void {
                             class="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-xs"
                             data-test="agent-select"
                         >
-                            <option :value="null" disabled>Choose an agent…</option>
+                            <option :value="null" disabled>{{ t('Choose an agent…') }}</option>
                             <option v-for="agent in candidates" :key="agent.id" :value="agent.id">
                                 {{ agent.name }}
                             </option>
@@ -227,7 +228,7 @@ function submitDelete(): void {
                             @click="submitEnable"
                         >
                             <Users class="h-3 w-3" />
-                            Enable
+                            {{ t('Enable') }}
                         </button>
                     </div>
                 </div>
@@ -261,7 +262,7 @@ function submitDelete(): void {
                     @click="submitDelete"
                 >
                     <Trash2 class="h-3.5 w-3.5" />
-                    Delete
+                    {{ t('Delete') }}
                 </button>
             </div>
         </div>

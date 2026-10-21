@@ -26,6 +26,7 @@
  * byte for byte: the plugin is storage, core judges, and the editor shows.
  */
 import { computed, ref, useId, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import DOMPurify from 'dompurify'
@@ -57,13 +58,24 @@ import type { CustomSkillResource, SkillValidationEntry, ToolSummary, UpdateSkil
 const METADATA_PLACEHOLDER = '{"tier": "pro"}'
 
 /**
+ * A licence id, a version constraint and an encoding are technical identifiers:
+ * they are never translated, so they are not in the catalogue. They are
+ * constants rather than template text because the extractor's raw-text rule
+ * would report a literal here as untranslated copy.
+ */
+const LICENSE_EXAMPLE = 'MIT'
+const COMPATIBILITY_EXAMPLE = 'spora>=0.28'
+const FILE_ENCODING = 'UTF-8'
+
+const { t } = useI18n()
+
+/**
  * Why the name is fixed, and what to do instead. One string so the tooltip and the
  * accessible name cannot drift apart.
  */
-const NAME_LOCK_REASON =
-    'The name cannot be changed: every agent that allows this skill refers to it by name, '
-    + 'so a rename would orphan those entries. Use Duplicate to copy it under a new name, '
-    + 'then delete this one.'
+const nameLockReason = computed(() =>
+    t('The name cannot be changed: every agent that allows this skill refers to it by name, so a rename would orphan those entries. Use Duplicate to copy it under a new name, then delete this one.'),
+)
 const EDITOR_LOCALE = MARKDOWN_LOCALE
 
 /**
@@ -262,13 +274,15 @@ const moreSummary = computed<string>(() => {
     if (compatibility.value.trim() !== '') parts.push(compatibility.value.trim())
 
     const tools = declaredToolNames(allowedTools.value)
-    if (tools.length > 0) parts.push(`${tools.length} ${tools.length === 1 ? 'tool' : 'tools'}`)
+    if (tools.length > 0) {
+        parts.push(`${tools.length} ${tools.length === 1 ? t('tool') : t('tools')}`)
+    }
 
-    if (metadataJson.value.trim() !== '') parts.push('metadata')
+    if (metadataJson.value.trim() !== '') parts.push(t('metadata'))
 
     return parts.length > 0
         ? parts.join(' · ')
-        : 'license, compatibility, tools, metadata'
+        : t('license, compatibility, tools, metadata')
 })
 
 /**
@@ -300,7 +314,9 @@ watch(moreHasError, (hasError) => {
  * list a file it cannot open, and saying so beats an empty editor that looks
  * like a failed load.
  */
-const shippedSidecarNote = 'Shipped sidecar contents are not served — only their size is.'
+const shippedSidecarNote = computed(() =>
+    t('Shipped sidecar contents are not served — only their size is.'),
+)
 
 /**
  * How the metadata textarea is derived from a stored skill.
@@ -533,11 +549,15 @@ function parseMetadata(): { value: Record<string, unknown> } | { error: string }
     try {
         const parsed: unknown = JSON.parse(raw)
         if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-            return { error: 'Metadata must be a JSON object, e.g. {"tier": "pro"}.' }
+            // The braces are escaped: vue-i18n reads an unescaped `{` as the start of a
+            // named interpolation, and the extractor rejects a key that carries one.
+            // `String.raw` keeps the backslash in the source instead of doubling it,
+            // which is what the escape needs and what the catalogue key carries.
+            return { error: t(String.raw`Metadata must be a JSON object, e.g. \{"tier": "pro"\}.`) }
         }
         return { value: parsed as Record<string, unknown> }
     } catch {
-        return { error: 'Metadata is not valid JSON.' }
+        return { error: t('Metadata is not valid JSON.') }
     }
 }
 
@@ -599,8 +619,8 @@ function handleSubmit(): void {
             -->
             <Lock
                 class="h-3.5 w-3.5 text-muted-foreground"
-                :title="NAME_LOCK_REASON"
-                :aria-label="NAME_LOCK_REASON"
+                :title="nameLockReason"
+                :aria-label="nameLockReason"
                 role="img"
                 data-test="desk-name-lock"
             />
@@ -613,7 +633,7 @@ function handleSubmit(): void {
                         : 'bg-muted text-muted-foreground ring-border')"
                 data-test="desk-state"
             >
-                {{ readOnly ? 'read-only' : (dirty ? 'unsaved changes' : 'saved') }}
+                {{ readOnly ? t('read-only') : (dirty ? t('unsaved changes') : t('saved')) }}
             </span>
 
             <div class="ml-auto flex items-center gap-1.5">
@@ -625,7 +645,7 @@ function handleSubmit(): void {
                     @click="emit('duplicate', skill.name)"
                 >
                     <Copy class="h-3.5 w-3.5" />
-                    Duplicate
+                    {{ t('Duplicate') }}
                 </button>
                 <template v-else>
                     <button
@@ -646,7 +666,7 @@ function handleSubmit(): void {
                         data-test="desk-cancel"
                         @click="emit('cancel')"
                     >
-                        Cancel
+                        {{ t('Cancel') }}
                     </button>
                     <button
                         type="button"
@@ -656,14 +676,14 @@ function handleSubmit(): void {
                         @click="handleSubmit"
                     >
                         <Save class="h-3.5 w-3.5" />
-                        {{ saving ? 'Saving…' : 'Save skill' }}
+                        {{ saving ? t('Saving…') : t('Save skill') }}
                     </button>
                     <div class="relative shrink-0">
                         <button
                             v-if="menuOpen"
                             type="button"
                             class="fixed inset-0 z-10 cursor-default"
-                            aria-label="Close the menu"
+                            :aria-label="t('Close the menu')"
                             data-test="desk-menu-backdrop"
                             @click="closeMenu"
                         />
@@ -671,7 +691,7 @@ function handleSubmit(): void {
                             type="button"
                             :disabled="saving"
                             class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-                            aria-label="More actions for this skill"
+                            :aria-label="t('More actions for this skill')"
                             data-test="desk-menu-trigger"
                             @click="menuOpen = !menuOpen"
                         >
@@ -690,7 +710,7 @@ function handleSubmit(): void {
                                 @click="closeMenu(); emit('delete', skill.name)"
                             >
                                 <Trash2 class="h-3.5 w-3.5" />
-                                Delete skill
+                                {{ t('Delete skill') }}
                             </button>
                         </div>
                     </div>
@@ -710,13 +730,13 @@ function handleSubmit(): void {
                 data-test="file-rail"
             >
                 <div class="flex items-center justify-between px-3 py-2.5">
-                    <h2 class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Files</h2>
+                    <h2 class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{{ t('Files') }}</h2>
                     <button
                         v-if="!readOnly"
                         type="button"
                         class="flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-                        title="Add a file"
-                        aria-label="Add a file"
+                        :title="t('Add a file')"
+                        :aria-label="t('Add a file')"
                         data-test="add-file"
                         @click="openCreateDialog"
                     >
@@ -788,8 +808,8 @@ function handleSubmit(): void {
                                 v-if="activePath === row.path"
                                 type="button"
                                 class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                :aria-label="`Rename ${row.path}`"
-                                title="Rename or move"
+                                :aria-label="`${t('Rename')} ${row.path}`"
+                                :title="t('Rename or move')"
                                 data-test="rename-file"
                                 @click.stop="openRenameDialog"
                             >
@@ -803,8 +823,8 @@ function handleSubmit(): void {
                  looked for a delete on SKILL.md is already looking. -->
                 <div class="mt-auto border-t border-border p-3">
                     <p class="text-[11px] leading-snug text-muted-foreground">
-                        Every skill has a <span class="font-mono text-foreground">SKILL.md</span>. Add
-                        sidecars for references and examples.
+                        {{ t('Every skill has a') }} <span class="font-mono text-foreground">{{ SKILL_ENTRY_FILE }}</span>.
+                        {{ t('Add sidecars for references and examples.') }}
                     </p>
                 </div>
             </aside>
@@ -823,8 +843,8 @@ function handleSubmit(): void {
                         v-if="activeSidecar && !readOnly"
                         type="button"
                         class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                        :aria-label="`Rename ${activeSidecar.path}`"
-                        title="Rename or move"
+                        :aria-label="`${t('Rename')} ${activeSidecar.path}`"
+                        :title="t('Rename or move')"
                         data-test="open-file-rename"
                         @click="openRenameDialog"
                     >
@@ -842,7 +862,7 @@ function handleSubmit(): void {
                             @click="removeActiveSidecar"
                         >
                             <Trash2 class="h-3.5 w-3.5" />
-                            Remove {{ activeSidecar.path }}
+                            {{ t('Remove') }} {{ activeSidecar.path }}
                         </button>
                         <span v-else class="ml-auto text-[11px] text-muted-foreground" data-test="sidecar-unavailable">
                             {{ shippedSidecarNote }}
@@ -857,9 +877,8 @@ function handleSubmit(): void {
                     class="shrink-0 border-b border-border bg-muted/30 px-4 py-2 text-[11px] text-muted-foreground"
                     data-test="desk-readonly-note"
                 >
-                    Shipped with Spora{{ shippedSource ? ` (${shippedSource})` : '' }}. It lives in the
-                    installation, not on a principal, so it cannot be edited here — duplicate it to make
-                    your own.
+                    {{ t('Shipped with Spora') }}{{ shippedSource ? ` (${shippedSource})` : '' }}.
+                    {{ t('It lives in the installation, not on a principal, so it cannot be edited here — duplicate it to make your own.') }}
                 </p>
 
                 <!--
@@ -885,16 +904,16 @@ function handleSubmit(): void {
                         data-test="frontmatter-toggle"
                     >
                         <ChevronDown class="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
-                        SKILL.md frontmatter
+                        {{ t('SKILL.md frontmatter') }}
                         <span class="font-normal text-muted-foreground">
-                            the fields an agent matches and restricts itself by
+                            {{ t('the fields an agent matches and restricts itself by') }}
                         </span>
                     </summary>
 
                     <div class="space-y-3 border-t border-border px-4 py-3">
                         <div>
                             <label :for="idFor('description')" class="mb-1.5 block text-xs font-medium">
-                                Description <span class="text-destructive">*</span>
+                                {{ t('Description') }} <span class="text-destructive">*</span>
                             </label>
                             <!--
                             A textarea, not an input: the contract allows 1024
@@ -913,8 +932,7 @@ function handleSubmit(): void {
                                 data-test="field-description"
                             />
                             <p class="mt-1 text-[11px] text-muted-foreground">
-                                What the skill does and when to use it — this is the text a matching
-                                system reads to decide whether the skill applies.
+                                {{ t('What the skill does and when to use it — this is the text a matching system reads to decide whether the skill applies.') }}
                                 <span class="tabular-nums">{{ description.length }}/1024</span>
                             </p>
                             <ul
@@ -954,7 +972,7 @@ function handleSubmit(): void {
                                 @click.prevent="moreOpen = !moreOpen"
                             >
                                 <ChevronDown class="h-3.5 w-3.5 shrink-0 transition-transform" :class="moreOpen ? 'rotate-180' : ''" />
-                                More frontmatter
+                                {{ t('More frontmatter') }}
                                 <span
                                     class="min-w-0 truncate font-mono text-[11px] font-normal text-muted-foreground"
                                     data-test="frontmatter-more-summary"
@@ -969,19 +987,19 @@ function handleSubmit(): void {
                                     class="ml-auto shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold text-destructive"
                                     data-test="frontmatter-more-error"
                                 >
-                                    needs attention
+                                    {{ t('needs attention') }}
                                 </span>
                             </summary>
 
                             <div class="space-y-3 border-t border-border bg-background px-3 py-3">
                                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                     <div>
-                                        <label :for="idFor('license')" class="mb-1.5 block text-xs font-medium">License</label>
+                                        <label :for="idFor('license')" class="mb-1.5 block text-xs font-medium">{{ t('License') }}</label>
                                         <input
                                             :id="idFor('license')"
                                             v-model="license"
                                             type="text"
-                                            placeholder="MIT"
+                                            :placeholder="LICENSE_EXAMPLE"
                                             :readonly="readOnly"
                                             class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
                                             :aria-invalid="fieldErrors('license').length > 0"
@@ -990,13 +1008,13 @@ function handleSubmit(): void {
                                     </div>
                                     <div>
                                         <label :for="idFor('compatibility')" class="mb-1.5 block text-xs font-medium">
-                                            Compatibility
+                                            {{ t('Compatibility') }}
                                         </label>
                                         <input
                                             :id="idFor('compatibility')"
                                             v-model="compatibility"
                                             type="text"
-                                            placeholder="spora>=0.28"
+                                            :placeholder="COMPATIBILITY_EXAMPLE"
                                             :readonly="readOnly"
                                             class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
                                             :aria-invalid="fieldErrors('compatibility').length > 0"
@@ -1014,7 +1032,7 @@ function handleSubmit(): void {
 
                                 <div>
                                     <label :for="idFor('metadata')" class="mb-1.5 block text-xs font-medium">
-                                        Metadata <span class="text-muted-foreground">(JSON object)</span>
+                                        {{ t('Metadata') }} <span class="text-muted-foreground">{{ t('(JSON object)') }}</span>
                                     </label>
                                     <textarea
                                         :id="idFor('metadata')"
@@ -1104,18 +1122,20 @@ function handleSubmit(): void {
                     data-test="desk-footer"
                 >
                     <span class="font-mono" data-test="desk-footer-file">{{ activePath }}</span>
-                    <span>UTF-8</span>
-                    <span v-if="activeIsMarkdown">Markdown</span>
-                    <span v-else>{{ fileKind(activePath) }}</span>
+                    <span>{{ FILE_ENCODING }}</span>
+                    <!-- `fileKind()` answers "Markdown" for a markdown path and the
+                         extension for everything else, so the two branches this
+                         replaces were the same expression. -->
+                    <span>{{ fileKind(activePath) }}</span>
                     <!--
                     Below the editor rather than above it. The cap is per file and
                     only matters while writing, and a size readout pinned above the
                     body pushed the thing being written down the screen.
                 -->
                     <span class="text-muted-foreground" data-test="desk-size">
-                        {{ totalLines }} lines · {{ formatBytes(totalBytes) }}
+                        {{ totalLines }} {{ t('lines') }} · {{ formatBytes(totalBytes) }}
                         <span class="text-muted-foreground/60">
-                            / {{ MAX_FILE_BYTES / 1000 }} KB per file
+                            / {{ MAX_FILE_BYTES / 1000 }} {{ t('KB per file') }}
                         </span>
                     </span>
                     <!-- Below `md` the rail stacks above the editor rather than beside it,
@@ -1124,19 +1144,19 @@ function handleSubmit(): void {
                      hidden at any width. -->
                     <select
                         v-model="activePath"
-                        aria-label="File"
+                        :aria-label="t('File')"
                         class="h-6 min-w-0 rounded border border-border bg-background px-1.5 font-mono text-[11px] md:hidden"
                         data-test="file-select"
                     >
-                        <option :value="SKILL_ENTRY_FILE">SKILL.md</option>
+                        <option :value="SKILL_ENTRY_FILE">{{ SKILL_ENTRY_FILE }}</option>
                         <option v-for="row in sidecars" :key="row.path" :value="row.path">{{ row.path }}</option>
                     </select>
                     <span class="ml-auto">
                         <template v-if="readOnly">
-                            shipped<span v-if="shippedSource"> · {{ shippedSource }}</span>
+                            {{ t('shipped') }}<span v-if="shippedSource"> · {{ shippedSource }}</span>
                         </template>
                         <template v-else>
-                            in <span class="font-medium text-foreground">{{ principalName || 'this principal' }}</span>
+                            {{ t('in') }} <span class="font-medium text-foreground">{{ principalName || t('this principal') }}</span>
                         </template>
                     </span>
                 </footer>

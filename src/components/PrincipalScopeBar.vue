@@ -11,6 +11,7 @@
  * this one strictly narrower.
  */
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { Check, ChevronDown, Plus, Users } from 'lucide-vue-next'
 import { useSkillsStore } from '../stores/skills'
@@ -23,6 +24,7 @@ const principals = usePrincipalsStore()
 const store = useSkillsStore()
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 
 const open = ref(false)
 
@@ -54,7 +56,7 @@ function isUser(principal: Principal): boolean {
 
 /** `/principals/me` carries no membership role, so the read/write split is stated once. */
 function sublabel(principal: Principal): string {
-    return isUser(principal) ? 'Personal' : 'Group'
+    return isUser(principal) ? t('Personal') : t('Group')
 }
 
 function countFor(id: number): number | null {
@@ -117,12 +119,12 @@ watch(
                 >
                     <Users class="h-3.5 w-3.5" />
                 </span>
-                <span class="font-medium">{{ selected?.name ?? 'No principal' }}</span>
+                <span class="font-medium">{{ selected?.name ?? t('No principal') }}</span>
                 <span
                     v-if="selected && isUser(selected)"
                     class="rounded-full bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground ring-1 ring-border"
                 >
-                    you
+                    {{ t('you') }}
                 </span>
                 <ChevronDown class="h-3.5 w-3.5 text-muted-foreground" />
             </button>
@@ -131,11 +133,11 @@ watch(
                 v-if="open"
                 class="absolute left-0 top-11 z-40 w-80 overflow-hidden rounded-xl border border-border bg-card shadow-xl"
                 role="menu"
-                aria-label="Choose a principal"
+                :aria-label="t('Choose a principal')"
                 data-test="scope-menu"
             >
                 <p class="border-b border-border px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Skills owned by
+                    {{ t('Skills owned by') }}
                 </p>
 
                 <button
@@ -169,7 +171,7 @@ watch(
                         class="shrink-0 text-[11px] text-muted-foreground"
                         :data-test="`scope-count-${principal.id}`"
                     >
-                        {{ countFor(principal.id) }} skills
+                        {{ countFor(principal.id) }} {{ t('skills') }}
                     </span>
                     <Check
                         v-if="principals.selectedPrincipalId === principal.id"
@@ -181,15 +183,14 @@ watch(
                      membership is not ownership, and suppressing a group you cannot
                      write to would be a lie about what exists. -->
                 <p class="border-t border-border bg-muted/40 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
-                    You can read every group you belong to. Writing needs to be an
-                    owner or an admin.
+                    {{ t('You can read every group you belong to. Writing needs to be an owner or an admin.') }}
                 </p>
             </div>
         </div>
 
         <!-- Two tabs, not a rail: with this few destinations a rail costs 200px to say
              the same thing, and the desk needs that width. -->
-        <nav class="flex items-center gap-0.5 rounded-lg bg-muted p-0.5" aria-label="Sections">
+        <nav class="flex items-center gap-0.5 rounded-lg bg-muted p-0.5" :aria-label="t('Sections')">
             <RouterLink
                 :to="{ path: skillsPath }"
                 :aria-current="section === 'skills' ? 'page' : undefined"
@@ -198,7 +199,7 @@ watch(
                     : 'rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground'"
                 data-test="section-skills"
             >
-                Skills
+                {{ t('Skills') }}
             </RouterLink>
             <RouterLink
                 :to="{ path: cataloguePath }"
@@ -208,7 +209,7 @@ watch(
                     : 'rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground'"
                 data-test="section-catalogue"
             >
-                Catalogue
+                {{ t('Catalogue') }}
             </RouterLink>
         </nav>
 
@@ -219,7 +220,7 @@ watch(
                 data-test="new-skill"
             >
                 <Plus class="h-4 w-4" />
-                New skill
+                {{ t('New skill') }}
             </RouterLink>
         </div>
     </div>

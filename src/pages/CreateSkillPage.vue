@@ -21,6 +21,7 @@
  * to find out.
  */
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Check, ChevronRight, Layers, Lock, X } from 'lucide-vue-next'
 import AlertBanner from '../components/AlertBanner.vue'
@@ -33,6 +34,7 @@ import {
     isValidSkillName,
     skillNameConflict,
     starterBody,
+    SKILL_ENTRY_FILE,
     SKILL_LIMIT,
 } from '../lib/skillFormat'
 import { deskPath, homePath, libraryPath, newSkillPath } from '../lib/paths'
@@ -42,6 +44,10 @@ const store = useSkillsStore()
 const principals = usePrincipalsStore()
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
+
+/** A slug example, and a slug is a technical identifier: it is never translated. */
+const NAME_EXAMPLE = 'invoice-drafting'
 
 const name = ref('')
 const description = ref('')
@@ -85,7 +91,7 @@ watch(
             }
             if (description.value.trim() === '') description.value = detail.description
         } catch {
-            templateError.value = `The host has no skill named “${wanted}”.`
+            templateError.value = `${t('The host has no skill named “')}${wanted}”.`
         } finally {
             templateLoading.value = false
         }
@@ -134,10 +140,10 @@ const canSubmit = computed(
 
 function nameError(): string | null {
     if (trimmedName.value === '') return null
-    if (conflict.value === 'own') return `${trimmedName.value} already exists on this principal.`
-    if (conflict.value === 'shipped') return `${trimmedName.value} is a shipped skill, so the name is reserved.`
+    if (conflict.value === 'own') return `${trimmedName.value} ${t('already exists on this principal.')}`
+    if (conflict.value === 'shipped') return `${trimmedName.value} ${t('is a shipped skill, so the name is reserved.')}`
     if (!isValidSkillName(trimmedName.value)) {
-        return 'Lowercase letters, digits and single hyphens, 1–64 characters, no leading or trailing hyphen.'
+        return t('Lowercase letters, digits and single hyphens, 1–64 characters, no leading or trailing hyphen.')
     }
     return null
 }
@@ -167,11 +173,12 @@ async function submit(): Promise<void> {
         // finds out when the rail is missing files the skill they copied had.
         if (sidecarsToReAdd.value.length > 0) {
             store.setNotice(
-                `Created “${created.name}” from ${from?.name}. The host has no per-file read for `
-                + `shipped skills, so re-add ${sidecarsToReAdd.value.length} `
-                + `${sidecarsToReAdd.value.length === 1 ? 'sidecar file' : 'sidecar files'} `
+                `${t('Created')} “${created.name}” ${t('from')} ${from?.name}. `
+                + `${t('The host has no per-file read for shipped skills, so re-add')} `
+                + `${sidecarsToReAdd.value.length} `
+                + `${sidecarsToReAdd.value.length === 1 ? t('sidecar file') : t('sidecar files')} `
                 + `(${sidecarsToReAdd.value.map((f) => f.path).join(', ')}). `
-                + 'It is not on any agent\'s allowlist yet.',
+                + `${t('It is not on any agent’s allowlist yet.')}`,
             )
         }
         await router.push({ path: deskPath(principalId.value, created.name) })
@@ -190,26 +197,26 @@ async function submit(): Promise<void> {
             data-test="create-back"
         >
             <ArrowLeft class="h-3.5 w-3.5" />
-            Back to skills
+            {{ t('Back to skills') }}
         </RouterLink>
 
-        <h2 class="mt-4 text-2xl font-semibold tracking-tight">New skill</h2>
+        <h2 class="mt-4 text-2xl font-semibold tracking-tight">{{ t('New skill') }}</h2>
         <p class="mt-1 text-sm text-muted-foreground">
-            In <span class="font-medium text-foreground">{{ principal?.name ?? 'no principal' }}</span>.
-            <template v-if="principal?.type === 'user'">Only you can see and edit these.</template>
-            <template v-else>Everyone in the group can read these; writing needs to be an owner or an admin.</template>
+            {{ t('In') }} <span class="font-medium text-foreground">{{ principal?.name ?? t('no principal') }}</span>.
+            <template v-if="principal?.type === 'user'">{{ t('Only you can see and edit these.') }}</template>
+            <template v-else>{{ t('Everyone in the group can read these; writing needs to be an owner or an admin.') }}</template>
         </p>
 
         <AlertBanner
             v-if="atCap"
             type="error"
-            :message="`This principal already has ${SKILL_LIMIT} skills, which is the cap. Delete one, or switch principal.`"
+            :message="`${t('This principal already has')} ${SKILL_LIMIT} ${t('skills, which is the cap. Delete one, or switch principal.')}`"
         />
 
         <form class="mt-8 space-y-5" data-test="create-form" @submit.prevent="submit">
             <div>
                 <label for="skill-name" class="block text-sm font-medium">
-                    Name <span class="text-destructive">*</span>
+                    {{ t('Name') }} <span class="text-destructive">*</span>
                 </label>
                 <div
                     class="mt-1.5 flex items-stretch overflow-hidden rounded-lg border border-border bg-background focus-within:ring-2 focus-within:ring-ring/20"
@@ -222,7 +229,7 @@ async function submit(): Promise<void> {
                         type="text"
                         spellcheck="false"
                         autocomplete="off"
-                        placeholder="invoice-drafting"
+                        :placeholder="NAME_EXAMPLE"
                         class="min-w-0 flex-1 bg-transparent px-2.5 py-2 font-mono text-sm outline-none"
                         :aria-invalid="nameError() !== null"
                         data-test="field-name"
@@ -237,13 +244,12 @@ async function submit(): Promise<void> {
                     {{ nameError() }}
                 </p>
                 <p class="mt-1.5 text-[11px] text-muted-foreground">
-                    Lowercase letters, digits and hyphens. Shown to the agent as its identifier, so name it
-                    for what it does —
+                    {{ t('Lowercase letters, digits and hyphens. Shown to the agent as its identifier, so name it for what it does —') }}
                     <span class="inline-flex items-center gap-1.5 font-medium text-foreground">
                         <Lock class="h-3 w-3" />
-                        cannot be changed
+                        {{ t('cannot be changed') }}
                     </span>
-                    once created.
+                    {{ t('once created.') }}
                 </p>
                 <ul
                     v-for="entry in errorsForField(store.validationErrors, 'name')"
@@ -257,7 +263,7 @@ async function submit(): Promise<void> {
 
             <div>
                 <label for="skill-description" class="block text-sm font-medium">
-                    Description <span class="text-destructive">*</span>
+                    {{ t('Description') }} <span class="text-destructive">*</span>
                 </label>
                 <!--
                     A textarea, matching the desk and the contract: `description` allows
@@ -270,7 +276,7 @@ async function submit(): Promise<void> {
                     v-model="description"
                     rows="3"
                     maxlength="1024"
-                    placeholder="How to draft an invoice for a customer, including VAT treatment."
+                    :placeholder="t('How to draft an invoice for a customer, including VAT treatment.')"
                     class="mt-1.5 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-ring/20"
                     :aria-invalid="errorsForField(store.validationErrors, 'description').length > 0"
                     data-test="field-description"
@@ -279,9 +285,7 @@ async function submit(): Promise<void> {
                      reads to decide whether this skill applies. An empty description
                      does not fail loudly at activation, it just never matches. -->
                 <p class="mt-1.5 text-[11px] text-muted-foreground">
-                    What this skill does and when to use it. This is what an agent reads to
-                    decide whether it applies — an empty description does not fail loudly, it
-                    simply never matches.
+                    {{ t('What this skill does and when to use it. This is what an agent reads to decide whether it applies — an empty description does not fail loudly, it simply never matches.') }}
                     <span class="tabular-nums">{{ description.length }}/1024</span>
                 </p>
                 <ul
@@ -300,7 +304,7 @@ async function submit(): Promise<void> {
                  same choice, so this radio is a way back to it rather than a second
                  option. -->
             <fieldset>
-                <legend class="text-sm font-medium">Start from</legend>
+                <legend class="text-sm font-medium">{{ t('Start from') }}</legend>
                 <div class="mt-2 space-y-2">
                     <label
                         class="flex items-start gap-2.5 rounded-lg border p-3"
@@ -317,11 +321,11 @@ async function submit(): Promise<void> {
                         />
                         <span class="min-w-0">
                             <span class="flex items-center gap-2 text-sm font-medium">
-                                The starter
-                                <span class="font-mono text-[11px] font-normal text-muted-foreground">SKILL.md</span>
+                                {{ t('The starter') }}
+                                <span class="font-mono text-[11px] font-normal text-muted-foreground">{{ SKILL_ENTRY_FILE }}</span>
                             </span>
                             <span class="mt-0.5 block text-[11px] text-muted-foreground">
-                                A short starter outline. You can delete any part of it.
+                                {{ t('A short starter outline. You can delete any part of it.') }}
                             </span>
                         </span>
                     </label>
@@ -342,12 +346,12 @@ async function submit(): Promise<void> {
                         </span>
                         <span class="min-w-0 flex-1">
                             <span class="flex items-center gap-2 text-sm font-medium">
-                                A shipped skill
+                                {{ t('A shipped skill') }}
                                 <ChevronRight class="h-3 w-3 text-muted-foreground" />
                             </span>
                             <span class="mt-0.5 block text-[11px] text-muted-foreground">
-                                Pick one in the catalogue and copy it into this form.
-                                {{ store.preShipped.length }} available.
+                                {{ t('Pick one in the catalogue and copy it into this form.') }}
+                                {{ store.preShipped.length }} {{ t('available.') }}
                             </span>
                         </span>
                     </RouterLink>
@@ -368,12 +372,12 @@ async function submit(): Promise<void> {
                                     class="text-[11px] font-normal text-muted-foreground underline"
                                     data-test="template-change"
                                 >
-                                    choose another
+                                    {{ t('choose another') }}
                                 </RouterLink>
                             </span>
                             <span class="mt-0.5 block text-[11px] text-muted-foreground">
-                                Its description, licence and <span class="font-mono">SKILL.md</span>
-                                come across. You can change all of them before creating.
+                                {{ t('Its description, licence and') }} <span class="font-mono">{{ SKILL_ENTRY_FILE }}</span>
+                                {{ t('come across. You can change all of them before creating.') }}
                             </span>
                         </span>
                     </div>
@@ -389,13 +393,13 @@ async function submit(): Promise<void> {
                     class="mt-1.5 text-[11px] text-muted-foreground"
                     data-test="template-loading"
                 >
-                    Loading {{ templateName }}…
+                    {{ t('Loading') }} {{ templateName }}…
                 </p>
                 <!-- Stated before the create, not only in the notice after it. -->
                 <AlertBanner
                     v-if="sidecarsToReAdd.length > 0"
                     type="warning"
-                    :message="`${template?.name ?? 'That skill'} also has ${sidecarsToReAdd.length} ${sidecarsToReAdd.length === 1 ? 'sidecar file' : 'sidecar files'} (${sidecarsToReAdd.map((f) => f.path).join(', ')}). The host serves no per-file read for shipped skills, so they will not come across — re-add them on the desk.`"
+                    :message="`${template?.name ?? t('That skill')} ${t('also has')} ${sidecarsToReAdd.length} ${sidecarsToReAdd.length === 1 ? t('sidecar file') : t('sidecar files')} (${sidecarsToReAdd.map((f) => f.path).join(', ')}). ${t('The host serves no per-file read for shipped skills, so they will not come across — re-add them on the desk.')}`"
                 />
             </fieldset>
 
@@ -406,7 +410,7 @@ async function submit(): Promise<void> {
                     class="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                     data-test="create-submit"
                 >
-                    {{ store.saving ? 'Creating…' : 'Create and start writing' }}
+                    {{ store.saving ? t('Creating…') : t('Create and start writing') }}
                     <ChevronRight class="h-4 w-4" />
                 </button>
                 <RouterLink
@@ -414,7 +418,7 @@ async function submit(): Promise<void> {
                     class="inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     data-test="create-cancel"
                 >
-                    Cancel
+                    {{ t('Cancel') }}
                 </RouterLink>
             </div>
         </form>

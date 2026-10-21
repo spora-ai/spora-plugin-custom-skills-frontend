@@ -11,6 +11,7 @@
  * `?principal_id=` resolves to the caller's own, so a panel that read first calls a group skill missing.
  */
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import PrincipalScopeBar from './components/PrincipalScopeBar.vue'
 import AlertBanner from './components/AlertBanner.vue'
@@ -31,6 +32,7 @@ const store = useSkillsStore()
 const principals = usePrincipalsStore()
 const router = useRouter()
 const route = useRoute()
+const { t } = useI18n()
 
 const pathPrincipalId = computed(() => principalIdInLocalPath(route.path))
 
@@ -48,10 +50,11 @@ function reconcilePrincipal(): void {
     const resolved = principals.isVisible(named) ? named : principals.defaultPrincipalId()
 
     if (!principals.isVisible(named)) {
-        principalNotice.value =
-            named === null
-                ? null
-                : `That principal is not one of yours — showing ${principals.principals.find((p) => p.id === resolved)?.name ?? 'your own skills'} instead.`
+        principalNotice.value = named === null
+            ? null
+            : `${t('That principal is not one of yours — showing')} `
+                + `${principals.principals.find((p) => p.id === resolved)?.name ?? t('your own skills')}`
+                + `${t(' instead.')}`
     }
 
     // Only act once there *is* one — `/p/null` means nothing.
@@ -141,9 +144,9 @@ watch(pathPrincipalId, () => {
         <ConfirmDialog
             :open="store.pendingDelete !== null"
             :busy="store.saving"
-            title="Delete this skill?"
+            :title="t('Delete this skill?')"
             :body="store.pendingDelete
-                ? `“${store.pendingDelete}” is removed from this principal, together with its sidecar files.`
+                ? t('“{name}” is removed from this principal, together with its sidecar files.', { name: store.pendingDelete })
                 : ''"
             :affected-agents="store.deleteBlastRadius"
             @confirm="confirmDelete"

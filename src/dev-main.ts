@@ -11,6 +11,7 @@ import App from './App.vue'
 import { panelRoutes } from './lib/routes'
 import { HOST_CONTEXT_KEY, type PluginHostContext } from './shims'
 import { setApi } from './api/client'
+import { createPluginI18n } from './i18n'
 import { createMockApi } from './dev-mock'
 import { hostPathForLocalPath, localPathForHostPath } from './lib/hostRoute'
 
@@ -55,6 +56,9 @@ const hostContext: PluginHostContext = {
     api: mockApi,
     pinia: createPinia(),
     theme: 'light',
+    // The host tells a plugin which language is active; the sandbox has no host, so it reads it
+    // from the query string (`?locale=de`) and falls back to English.
+    locale: new URLSearchParams(location.search).get('locale') ?? 'en',
     route: { path: INITIAL_HOST_PATH, params: { appName: APP_SLUG }, query: {} },
     router: createDevHostRouter(),
 }
@@ -92,6 +96,7 @@ const target = document.getElementById('app')
 if (target) {
     const app = createApp(App, { hostContext })
     app.use(createPinia())
+    app.use(createPluginI18n(hostContext.locale))
     app.use(router)
     app.provide(HOST_CONTEXT_KEY, hostContext)
     app.config.globalProperties.$host = hostContext

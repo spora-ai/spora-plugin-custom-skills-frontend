@@ -7,6 +7,7 @@
  * own rather than refusing: the silent default behind a group-owned skill reporting "No skill named".
  */
 import { computed, inject, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft } from 'lucide-vue-next'
 import SkillDesk from '../components/SkillDesk.vue'
@@ -32,6 +33,7 @@ const router = useRouter()
 const store = useSkillsStore()
 const principals = usePrincipalsStore()
 const hostContext = inject<PluginHostContext>(HOST_CONTEXT_KEY)
+const { t } = useI18n()
 
 const name = computed(() => {
     const param = route.params.name
@@ -207,7 +209,7 @@ async function save(data: UpdateSkillDto): Promise<void> {
         savedDeclaration.value = saved.allowed_tools
         store.setNotice(
             saved.warning_count > 0
-                ? `Saved with ${plural(saved.warning_count, 'warning')} — they are listed above the file.`
+                ? `${t('Saved with')} ${plural(saved.warning_count, t('warning'), t('warnings'))} ${t('— they are listed above the file.')}`
                 : null,
         )
     } catch {
@@ -220,7 +222,7 @@ function restore(): void {
         .restoreSkill(name.value)
         .then((skill) => {
             savedDeclaration.value = skill.allowed_tools
-            store.setNotice(`Restored the previous version of ${skill.name}.`)
+            store.setNotice(`${t('Restored the previous version of')} ${skill.name}.`)
         })
         .catch(() => {
             // `error` carries the message.
@@ -241,14 +243,14 @@ function duplicate(): void {
     <div class="flex min-h-0 flex-1 flex-col" data-test="desk-page">
         <p v-if="name === '' || missing" class="mx-auto w-full max-w-5xl px-6 py-10" data-test="desk-missing">
             <span class="text-sm text-muted-foreground">
-                No skill named “{{ name }}” on this principal.
+                {{ t('No skill named “') }}{{ name }}{{ t('” on this principal.') }}
             </span>
             <RouterLink
                 :to="{ path: homePath(principals.selectedPrincipalId) }"
                 class="mt-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
                 <ArrowLeft class="h-3.5 w-3.5" />
-                Back to skills
+                {{ t('Back to skills') }}
             </RouterLink>
         </p>
 
@@ -262,12 +264,12 @@ function duplicate(): void {
                 data-test="declared-tools-summary"
             >
                 <p v-if="declaredTools.length === 0" data-test="declared-tools-none">
-                    Saved. This skill declares no tools.
+                    {{ t('Saved. This skill declares no tools.') }}
                 </p>
                 <p v-else>
-                    Saved. This skill declares
+                    {{ t('Saved. This skill declares') }}
                     <span class="font-medium text-foreground" data-test="declared-tools-count">
-                        {{ plural(declaredTools.length, 'tool') }}
+                        {{ plural(declaredTools.length, t('tool'), t('tools')) }}
                     </span>:
                     <span
                         v-for="row in declaredTools"
@@ -277,21 +279,21 @@ function duplicate(): void {
                     >
                         <span class="font-mono font-medium text-foreground">{{ row.name }}</span>
                         <span v-if="!row.available" data-test="declared-tool-unavailable-note">
-                            — not available on this instance
+                            {{ t('— not available on this instance') }}
                         </span>
                     </span>
                 </p>
                 <p v-if="unavailableDeclared.length > 0" class="mt-0.5" data-test="declared-tools-unavailable-note">
-                    {{ plural(unavailableDeclared.length, 'name') }}
-                    {{ unavailableDeclared.length === 1 ? 'resolves' : 'resolve' }} to no tool
-                    installed here. The declaration is kept as written.
+                    {{ unavailableDeclared.length }}
+                    {{ unavailableDeclared.length === 1
+                        ? t('name resolves to no tool installed here. The declaration is kept as written.')
+                        : t('names resolve to no tool installed here. The declaration is kept as written.') }}
                 </p>
                 <!-- Says what it does not know: a reader who just saved a declaration is exactly the person
                      who will assume it is live, and no route to the per-agent Tools page exists
                      from here. -->
                 <p class="mt-0.5" data-test="declared-tools-scope">
-                    This is a declaration only: Spora grants no pre-approval from it and enforces
-                    nothing. Whether an agent has any of these tools is set per agent, not here.
+                    {{ t('This is a declaration only: Spora grants no pre-approval from it and enforces nothing. Whether an agent has any of these tools is set per agent, not here.') }}
                 </p>
             </output>
 

@@ -239,7 +239,7 @@ describe('HomePage → delete names the blast radius before the write', () => {
         const store = useSkillsStore()
         await store.requestDelete('invoice-drafting')
         await store.confirmDelete()
-        expect(store.notice).toBe('Deleted invoice-drafting and removed it from 1 agent: Invoicer.')
+        expect(store.notice).toBe('Deleted invoice-drafting. Removed from 1 agent: Invoicer.')
     })
 })
 

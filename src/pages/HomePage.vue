@@ -11,13 +11,14 @@
  * about whose skills you are reading.
  */
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ChevronRight, Layers, Plus } from 'lucide-vue-next'
 import SkillRow from '../components/SkillRow.vue'
 import SkillSortSelect from '../components/SkillSortSelect.vue'
 import { useSkillsStore } from '../stores/skills'
 import { usePrincipalsStore } from '../stores/principals'
 import {
-    HOME_SORT_OPTIONS,
+    homeSortOptions,
     principalScopeBlurb,
     sortSkills,
     type SkillSort,
@@ -26,6 +27,7 @@ import { libraryPath, newSkillPath } from '../lib/paths'
 
 const store = useSkillsStore()
 const principals = usePrincipalsStore()
+const { t } = useI18n()
 
 const sort = ref<SkillSort>('updated')
 
@@ -62,7 +64,7 @@ function restore(name: string): void {
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="min-w-0">
                 <h2 class="text-2xl font-semibold tracking-tight" data-test="home-principal">
-                    {{ principal?.name ?? 'No principal selected' }}
+                    {{ principal?.name ?? t('No principal selected') }}
                 </h2>
                 <p class="mt-1 text-sm text-muted-foreground" data-test="home-scope-blurb">
                     {{ principalScopeBlurb(principal) }}
@@ -80,9 +82,9 @@ function restore(name: string): void {
                     <Layers class="h-4 w-4" />
                 </span>
                 <span class="text-left">
-                    <span class="block text-sm font-medium">Start from a shipped skill</span>
+                    <span class="block text-sm font-medium">{{ t('Start from a shipped skill') }}</span>
                     <span class="block text-[11px] text-muted-foreground">
-                        {{ store.preShipped.length }} skills to read and copy
+                        {{ store.preShipped.length }} {{ t('skills to read and copy') }}
                     </span>
                 </span>
                 <ChevronRight class="ml-1 h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
@@ -92,12 +94,12 @@ function restore(name: string): void {
         <section class="mt-8">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div class="flex items-baseline gap-2">
-                    <h3 class="text-sm font-semibold">All skills</h3>
+                    <h3 class="text-sm font-semibold">{{ t('All skills') }}</h3>
                     <span class="text-xs text-muted-foreground" data-test="home-count">
-                        {{ store.skills.length }} in {{ principal?.name ?? 'this principal' }}
+                        {{ store.skills.length }} {{ t('in') }} {{ principal?.name ?? t('this principal') }}
                     </span>
                 </div>
-                <SkillSortSelect id="skill-sort" v-model="sort" :options="HOME_SORT_OPTIONS" />
+                <SkillSortSelect id="skill-sort" v-model="sort" :options="homeSortOptions()" />
             </div>
 
             <p
@@ -105,7 +107,7 @@ function restore(name: string): void {
                 class="mt-3 text-sm text-muted-foreground"
                 data-test="home-loading"
             >
-                Loading your skills…
+                {{ t('Loading your skills…') }}
             </p>
 
             <!--
@@ -119,15 +121,13 @@ function restore(name: string): void {
                 class="mt-8 rounded-xl border border-dashed border-border px-6 py-12 text-center"
                 data-test="home-empty"
             >
-                <h4 class="text-sm font-semibold">No skills yet</h4>
+                <h4 class="text-sm font-semibold">{{ t('No skills yet') }}</h4>
                 <p class="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
                     <template v-if="principal?.type === 'user'">
-                        Skills you write here are yours alone. To adapt one that already
-                        exists, copy it from the catalogue instead of starting over.
+                        {{ t('Skills you write here are yours alone. To adapt one that already exists, copy it from the catalogue instead of starting over.') }}
                     </template>
                     <template v-else>
-                        This group has no skills yet. Anyone in the group can write one;
-                        writing needs to be an owner or an admin.
+                        {{ t('This group has no skills yet. Anyone in the group can write one; writing needs to be an owner or an admin.') }}
                     </template>
                 </p>
                 <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
@@ -137,14 +137,14 @@ function restore(name: string): void {
                         data-test="home-empty-new"
                     >
                         <Plus class="h-4 w-4" />
-                        New skill
+                        {{ t('New skill') }}
                     </RouterLink>
                     <RouterLink
                         :to="{ path: cataloguePath }"
                         class="inline-flex h-9 items-center rounded-lg border border-border px-3.5 text-sm font-medium transition-colors hover:bg-muted"
                         data-test="home-empty-catalogue"
                     >
-                        Browse the catalogue
+                        {{ t('Browse the catalogue') }}
                     </RouterLink>
                 </div>
             </div>

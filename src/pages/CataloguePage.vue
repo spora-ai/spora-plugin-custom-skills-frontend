@@ -9,18 +9,23 @@
  * only way a reader can tell a core skill from one a plugin shipped.
  */
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { AlertTriangle, Copy, Eye, FileText, Package } from 'lucide-vue-next'
 import SkillSortSelect from '../components/SkillSortSelect.vue'
 import { useSkillsStore } from '../stores/skills'
 import { usePrincipalsStore } from '../stores/principals'
-import { CATALOGUE_SORT_OPTIONS, sortByName, type NameSort } from '../lib/skillFormat'
+import { catalogueSortOptions, sortByName, type NameSort } from '../lib/skillFormat'
 import { newSkillPath, viewerPath } from '../lib/paths'
 import type { PreShippedSkillSummary } from '../types'
 
 const store = useSkillsStore()
 const principals = usePrincipalsStore()
 const router = useRouter()
+const { t } = useI18n()
+
+/** The host's catalogue endpoint — a URL, so it is never translated. */
+const SKILLS_ENDPOINT = '/api/v1/skills'
 
 const sort = ref<NameSort>('name-asc')
 
@@ -61,13 +66,12 @@ function duplicate(skill: PreShippedSkillSummary): void {
     <div class="mx-auto w-full max-w-5xl px-6 py-8" data-test="catalogue-page">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="min-w-0">
-                <h2 class="text-2xl font-semibold tracking-tight">Catalogue</h2>
+                <h2 class="text-2xl font-semibold tracking-tight">{{ t('Catalogue') }}</h2>
                 <p class="mt-1 max-w-xl text-sm text-muted-foreground">
-                    Every skill the host ships, whatever the plugin. Read one, then start from it to make
-                    it yours — a shipped name is reserved, so a copy is always renamed.
+                    {{ t('Every skill the host ships, whatever the plugin. Read one, then start from it to make it yours — a shipped name is reserved, so a copy is always renamed.') }}
                 </p>
             </div>
-            <SkillSortSelect id="library-sort" v-model="sort" :options="CATALOGUE_SORT_OPTIONS" />
+            <SkillSortSelect id="library-sort" v-model="sort" :options="catalogueSortOptions()" />
         </div>
 
         <p
@@ -75,7 +79,7 @@ function duplicate(skill: PreShippedSkillSummary): void {
             class="mt-8 text-sm text-muted-foreground"
             data-test="catalogue-loading"
         >
-            Loading the host catalogue…
+            {{ t('Loading the host catalogue…') }}
         </p>
 
         <div
@@ -83,10 +87,10 @@ function duplicate(skill: PreShippedSkillSummary): void {
             class="mt-8 rounded-xl border border-dashed border-border px-6 py-12 text-center"
             data-test="catalogue-empty"
         >
-            <h3 class="text-sm font-semibold">This host ships no skills</h3>
+            <h3 class="text-sm font-semibold">{{ t('This host ships no skills') }}</h3>
             <p class="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-                The catalogue is served by the host at <code class="font-mono">/api/v1/skills</code>.
-                Install a plugin that registers skills, or write your own.
+                {{ t('The catalogue is served by the host at') }} <code class="font-mono">{{ SKILLS_ENDPOINT }}</code>.
+                {{ t('Install a plugin that registers skills, or write your own.') }}
             </p>
         </div>
 
@@ -135,11 +139,11 @@ function duplicate(skill: PreShippedSkillSummary): void {
                                     data-test="preshipped-warnings"
                                 >
                                     <AlertTriangle class="h-3 w-3" />
-                                    has warnings
+                                    {{ t('has warnings') }}
                                 </span>
                             </div>
                             <p class="mt-0.5 truncate text-sm text-muted-foreground">
-                                {{ skill.description || 'No description.' }}
+                                {{ skill.description || t('No description.') }}
                             </p>
                         </div>
 
@@ -150,7 +154,7 @@ function duplicate(skill: PreShippedSkillSummary): void {
                             <span class="inline-flex items-center gap-1">
                                 <FileText class="h-3.5 w-3.5" />
                                 {{ skill.files_count }}
-                                {{ skill.files_count === 1 ? 'file' : 'files' }}
+                                {{ skill.files_count === 1 ? t('file') : t('files') }}
                             </span>
                             <span v-if="skill.license" class="font-mono">{{ skill.license }}</span>
                         </div>
@@ -162,7 +166,7 @@ function duplicate(skill: PreShippedSkillSummary): void {
                                 data-test="view-shipped"
                             >
                                 <Eye class="h-3.5 w-3.5" />
-                                Read
+                                {{ t('Read') }}
                             </RouterLink>
                             <button
                                 type="button"
@@ -171,7 +175,7 @@ function duplicate(skill: PreShippedSkillSummary): void {
                                 @click="duplicate(skill)"
                             >
                                 <Copy class="h-3.5 w-3.5" />
-                                Duplicate
+                                {{ t('Duplicate') }}
                             </button>
                         </div>
                     </li>
@@ -180,7 +184,7 @@ function duplicate(skill: PreShippedSkillSummary): void {
 
             <p class="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Package class="h-3.5 w-3.5" />
-                Served by the host at <code class="font-mono">/api/v1/skills</code> — read-only here.
+                {{ t('Served by the host at') }} <code class="font-mono">{{ SKILLS_ENDPOINT }}</code> {{ t('— read-only here.') }}
             </p>
         </div>
     </div>
