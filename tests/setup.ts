@@ -3,18 +3,18 @@
  * the runner can't support.
  *
  * - `md-editor-v3` mounts CodeMirror 6 + highlight.js / katex / mermaid, none of
- *   which work under happy-dom (it would fetch CSS from unpkg.com). `<MdEditor>`
- *   and `<MdPreview>` become lightweight stubs that support `v-model` and emit
- *   `update:modelValue`, so consumers still exercise their handlers. The
- *   `<MdEditor>` stub mirrors the props the desk binds, and surfaces `readOnly`
- *   and `toolbars` as data attributes so a test can assert the read-only
- *   contract without mounting CodeMirror.
+ *   which work under happy-dom (it would fetch the highlight.js bundle from
+ *   unpkg.com). `<MdEditor>` and `<MdPreview>` become lightweight stubs that
+ *   support `v-model` and emit `update:modelValue`, so consumers still exercise
+ *   their handlers. The `<MdEditor>` stub mirrors the props the desk binds, and
+ *   surfaces `readOnly` and `toolbars` as data attributes so a test can assert the
+ *   read-only contract without mounting CodeMirror.
  *
  * - `lucide-vue-next` and `dompurify` are real here (the bundle also
  *   bundles them — the host publishes neither). Keeping the real
- *   DOMPurify is deliberate: `SkillEditor` passes `DOMPurify.sanitize`
- *   straight into the editor's `sanitize` prop, and stubbing it would
- *   make the preview assertions meaningless.
+ *   DOMPurify is deliberate: `SkillDesk` and `SkillViewer` pass
+ *   `DOMPurify.sanitize` straight into the editor's `sanitize` prop, and stubbing
+ *   it would make the preview assertions meaningless.
  */
 /* eslint-disable vue/one-component-per-file, vue/require-prop-types --
    These are Vitest stubs for an external library; they intentionally

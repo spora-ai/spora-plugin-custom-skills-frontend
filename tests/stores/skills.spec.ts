@@ -200,7 +200,7 @@ describe('skills store → validation feedback', () => {
 })
 
 describe('skills store → allowlist affordance', () => {
-    it('caches the allowlist per skill so the card can render it', async () => {
+    it('caches the allowlist per skill so the row can render it', async () => {
         mockedApi.getSkillAllowlist.mockResolvedValueOnce([makeAllowlistEntry()])
         await store.loadAllowlist('invoice-drafting')
         expect(mockedApi.getSkillAllowlist).toHaveBeenCalledWith('invoice-drafting', 7)

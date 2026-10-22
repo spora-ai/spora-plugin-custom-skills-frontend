@@ -279,7 +279,7 @@ describe('CreateSkillPage → the page around the form', () => {
 })
 
 describe('CreateSkillPage → starting from a shipped skill', () => {
-    /** A detail the host would serve for `?template=`, sidecars listed but unreadable. */
+    /** A detail the host would serve for `?template=`, sidecars listed but not fetched. */
     function shippedDetail() {
         return makePreShippedDetail({
             name: 'code-review',
@@ -339,9 +339,9 @@ describe('CreateSkillPage → starting from a shipped skill', () => {
             // Carried from the template, so a copy declares what the original
             // declares rather than arriving silent about it.
             allowed_tools: 'typst_compile',
-            // Empty on purpose: the host serves no per-file read for a shipped
-            // skill, and a blank file the operator did not write is worse than an
-            // absent one they have been told about.
+            // Empty on purpose: the sidecar contents are not fetched, and a blank
+            // file the operator did not write is worse than an absent one they have
+            // been told about.
             files: {},
         }))
         expect(useSkillsStore().notice).toContain('re-add 1 sidecar file (references/REFERENCE.md)')

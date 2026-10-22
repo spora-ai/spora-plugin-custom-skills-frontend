@@ -188,8 +188,8 @@ watch(
             </div>
         </div>
 
-        <!-- Two tabs, not a rail: with this few destinations a rail costs 200px to say
-             the same thing, and the desk needs that width. -->
+        <!-- Two tabs, not a rail: with this few destinations a rail costs a column
+             of width to say the same thing, and the desk needs that width. -->
         <nav class="flex items-center gap-0.5 rounded-lg bg-muted p-0.5" :aria-label="t('Sections')">
             <RouterLink
                 :to="{ path: skillsPath }"

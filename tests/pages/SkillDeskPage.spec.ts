@@ -213,8 +213,8 @@ describe('SkillDeskPage → opening', () => {
     })
 
     it('leaves an unreadable sidecar blank rather than pretending it loaded', async () => {
-        // 413 over the 50 000-byte cap, or removed underneath: the rail is still right.
-        mockedApi.getSkillFile.mockRejectedValue(new Error('413 FILE_TOO_LARGE'))
+        // Over the 50 000-byte cap, or removed underneath: the rail is still right.
+        mockedApi.getSkillFile.mockRejectedValue(new Error('FILE_NOT_FOUND'))
         const wrapper = await mountOn('invoice-drafting')
         await flushPromises()
         await wrapper.findAll('[data-test^="rail-file-"]')[0]?.trigger('click')

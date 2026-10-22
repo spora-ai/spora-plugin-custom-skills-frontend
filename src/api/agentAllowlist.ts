@@ -7,7 +7,7 @@
  * it, writes stringify it, and every write is a read-modify-write so slugs the
  * operator (or `recommendsSkills`) already added survive.
  *
- * This is the write behind the card's "Enable on agent…" control; without it the
+ * This is the write behind the row's "Enable on agent…" control; without it the
  * only feedback is the agent's "not in the allowed_skills list" rejection.
  */
 import { getApi } from './client'

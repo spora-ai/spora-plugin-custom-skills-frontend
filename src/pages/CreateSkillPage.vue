@@ -103,12 +103,12 @@ watch(
 const seedBody = computed(() => template.value?.body ?? starterBody(trimmedName.value))
 
 /**
- * What the host cannot carry across.
+ * The shipped skill's sidecars, listed so the operator knows to re-add them.
  *
- * `SkillController::detail()` returns `files` as `{path, bytes}` metadata with no
- * per-file read, so a shipped skill's sidecar *contents* are unavailable. Saying so
- * here is the difference between an operator re-adding three files and wondering
- * why the copy came out with one.
+ * The detail payload carries `files` as `{path, bytes}` metadata; the contents are
+ * behind the host's per-file read, and this form does not make it. Saying so here
+ * is the difference between an operator re-adding three files and wondering why
+ * the copy came out with one.
  */
 const sidecarsToReAdd = computed(() =>
     (template.value?.files ?? []).filter((file) => file.path !== 'SKILL.md'),
@@ -165,7 +165,7 @@ async function submit(): Promise<void> {
             // the new skill inherits and then reports on its own save.
             allowed_tools: from?.allowed_tools ?? null,
             metadata: from?.metadata ?? {},
-            // Empty: the sidecar contents are not served, and an empty file the
+            // Empty: the sidecar contents are not fetched, and an empty file the
             // operator did not write is worse than an absent one they are told about.
             files: {},
         })

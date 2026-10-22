@@ -82,10 +82,9 @@ describe('hand-written CSS stays inside the plugin boundary', () => {
     it.skipIf(!BUILT)("carries md-editor-v3's stylesheet, which is unscoped by nature", () => {
         // The desk writes in `<MdEditor>`, so `md-editor-v3/lib/style.css` ships with
         // it. That library's rules are not scoped to the plugin root and cannot be
-        // made so without a build step that rewrites a third party's CSS: the built
-        // sheet carries ~650 of them, 269 of them bare `div`. The host already
-        // tolerates exactly this from the memories panel, which imports the same
-        // stylesheet.
+        // made so without a build step that rewrites a third party's CSS. The host
+        // already tolerates exactly this from the memories panel, which imports the
+        // same stylesheet.
         //
         // So the guarantee is on the rules this plugin writes — the test above, on
         // `src/style.css` — plus proof that ours survived the library's CSS rather
@@ -113,9 +112,9 @@ describe('hand-written CSS stays inside the plugin boundary', () => {
     })
 
     it.skipIf(!BUILT)('ships CodeMirror’s stylesheet, because the desk mounts the editor', () => {
-        // `md-editor-v3/lib/style.css` is ~64 kB of editor styling. The desk writes
-        // in `<MdEditor>` — a skill body needs the markdown toolbar — so the
-        // stylesheet is what makes the source pane legible rather than unstyled.
+        // `md-editor-v3/lib/style.css` is the editor's styling. The desk writes in
+        // `<MdEditor>` — a skill body needs the markdown toolbar — so the stylesheet
+        // is what makes the source pane legible rather than unstyled.
         const css = stripComments(readFileSync(resolve(ROOT, 'frontend/style.css'), 'utf8'))
         expect(css).toContain('.cm-editor')
     })

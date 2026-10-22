@@ -413,7 +413,7 @@ describe('SkillDesk → the header', () => {
 
     it('puts exactly one delete on screen, so the two are never confused', async () => {
         // Removing a sidecar and deleting the skill were both a bare trash icon
-        // ~30px apart with the same shape. The worst case is a sidecar selected:
+        // one row apart with the same shape. The worst case is a sidecar selected:
         // its remove appears, directly under the skill's delete.
         const wrapper = mountDesk({
             skill: makeSkill({ files: [{ path: 'SKILL.md', bytes: 10 }, { path: 'examples/a.md', bytes: 4 }] }),

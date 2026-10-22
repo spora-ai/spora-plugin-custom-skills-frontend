@@ -3,7 +3,7 @@
  *
  * The principal is in every panel path, so a link built by concatenating a skill name silently
  * drops the scope. `deskPath(principalId, name)` cannot be called without a principal, where
- * `` `/skills/${skill.name}` `` could — and roughly fifteen call sites once did exactly that.
+ * `` `/skills/${skill.name}` `` could — and many call sites once did exactly that.
  */
 
 /** A skill name is user-supplied, so a `/` or a space would forge a different path. */

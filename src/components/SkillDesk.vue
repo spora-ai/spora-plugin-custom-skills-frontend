@@ -129,8 +129,8 @@ const props = withDefaults(
         /**
          * A shipped skill opened on this route. The desk is the writing surface,
          * so a shipped skill has nothing to write to — the host's catalogue
-         * endpoint returns file metadata with no per-file read and no write path
-         * at all. Rendering it read-only here beats bouncing to the plainer
+         * endpoint returns file metadata and there is no write path at all.
+         * Rendering it read-only here beats bouncing to the plainer
          * viewer, which is the other place this content is reachable.
          */
         readOnly?: boolean
@@ -187,8 +187,8 @@ const metadataError = ref<string | null>(null)
  * The skill-level menu, which exists so the desk has exactly one delete on
  * screen.
  *
- * Removing a sidecar and deleting the skill were both a bare trash icon about
- * 30 px apart, one in the row with the filename and one in the row below — same
+ * Removing a sidecar and deleting the skill were both a bare trash icon one row
+ * apart, one in the row with the filename and one in the row below — same
  * icon, same shape, and the difference between them is the whole skill. The
  * sidecar one names the file it removes; this one is behind a menu and says
  * "Delete skill" in words.
@@ -306,13 +306,13 @@ watch(moreHasError, (hasError) => {
 }, { immediate: true })
 
 /**
- * Why a shipped sidecar is blank.
+ * Why a shipped sidecar is blank here.
  *
- * `SkillController::detail()` returns `files` as `{path, bytes}` metadata and
- * there is no per-file read for a shipped skill — the plugin's own sidecar
- * endpoint is principal-scoped and knows nothing about them. So the rail can
- * list a file it cannot open, and saying so beats an empty editor that looks
- * like a failed load.
+ * The desk reads sidecars through the plugin's own endpoint, which is
+ * principal-scoped and knows nothing about a shipped skill. The host serves them
+ * at `GET /api/v1/skills/{slug}/files/{path}` — the viewer reads them there — but
+ * the desk has no shipped-skill path of its own. So the rail can list a file it
+ * cannot open, and saying so beats an empty editor that looks like a failed load.
  */
 const shippedSidecarNote = computed(() =>
     t('Shipped sidecar contents are not served — only their size is.'),
@@ -1139,8 +1139,8 @@ function handleSubmit(): void {
                         </span>
                     </span>
                     <!-- Below `md` the rail stacks above the editor rather than beside it,
-                     so a 224px column is a poor way to name the open file; this select is
-                     the one that reads properly in a narrow window. The rail is not
+                     so a narrow column is a poor way to name the open file; this select
+                     is the one that reads properly in a narrow window. The rail is not
                      hidden at any width. -->
                     <select
                         v-model="activePath"

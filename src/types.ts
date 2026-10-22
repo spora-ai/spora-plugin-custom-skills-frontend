@@ -6,7 +6,7 @@
  * re-type anything without updating the contract.
  */
 
-/** `SKILL.md` is always index 0 — the cards read the body size from `files[0]`. */
+/** `SKILL.md` is always index 0; the sidecars follow it. */
 export interface CustomSkillFile {
     path: string
     bytes: number
@@ -54,7 +54,7 @@ export interface CustomSkillResource {
     created_at: string
     updated_at: string
     files: CustomSkillFile[]
-    /** `previous_snapshot` exists → "Restore previous version" is offered. */
+    /** The server holds a rollback copy → "Restore previous version" is offered. */
     has_previous: boolean
     /**
      * When the rollback copy was taken, and who wrote it. Null on a row saved before
@@ -116,8 +116,11 @@ export interface SkillFileContent {
 
 /**
  * From the HOST (`GET /api/v1/skills`), never this plugin — the frozen contract
- * lists them under "Not endpoints". Mirrors `spora-frontend/src/types/skill.ts` so
- * both UIs agree on field names.
+ * lists them under "Not endpoints".
+ *
+ * The names match the host's `spora-frontend/src/types/skill.ts`, so the two UIs
+ * cannot drift on the fields they share. The host's `slug` and `required_tools`
+ * are not mirrored: nothing in this panel reads them.
  */
 export interface PreShippedSkillSummary {
     name: string
@@ -130,14 +133,11 @@ export interface PreShippedSkillSummary {
 }
 
 /**
- * Mirrors the host's `SkillDetail` key for key, so this panel's read shape and
- * `spora-frontend/src/types/skill.ts` agree on field names — including
- * `allowed_tools`.
+ * The host's catalogue detail payload (`GET /api/v1/skills/{slug}`), so a shipped
+ * skill carries the same fields as a principal-scoped one.
  *
- * A partial mirror was the earlier state, on the reasoning that declaring a field
- * nobody reads is an obligation with no reader. That was the wrong trade: the
- * omission *was* the divergence, and it was invisible. Declared, unread, and
- * honest beats undeclared and wrong.
+ * `required_tools` is not mirrored: it is the raw `allowed_tools` value parsed, and
+ * the panel edits the raw one.
  */
 export interface PreShippedSkillDetail {
     name: string
@@ -162,18 +162,17 @@ export interface PreShippedSkillDetail {
  * "a tool this instance does not have", and nothing else.
  *
  * Mirrored field for field like every other shape here, though the desk reads only
- * `tool_name`, `display_name` and `description`. `ToolSchemaPresenter` documents
- * `display_name` as non-nullable and defaults it to `''`; the `| null` here is this
- * repo's own widening for a presenter that has not shipped it yet.
+ * `tool_name`, `display_name` and `description`. The host sends `display_name` as a
+ * plain string; the `| null` is a widening, and the label falls back to the tool
+ * name when it is null.
  */
 export interface ToolSummary {
     tool_class: string
     tool_name: string
     display_name: string | null
     /**
-     * The `#[Tool]` attribute's own description. Emptied by `ToolController` until
-     * core copied it onto the resource, so this was structurally always `''`; the
-     * editor reads it and degrades to the name alone when it is empty.
+     * The `#[Tool]` attribute's own description. The editor reads it and degrades to
+     * the name alone when it is empty.
      */
     description: string
     category: string
@@ -202,7 +201,7 @@ export interface ToolSettingSchema {
 export interface ToolOperationSchema {
     name: string
     description: string
-    /** Operator-facing; falls back to the first sentence of `description`. */
+    /** Operator-facing; falls back to the operation's own description verbatim. */
     operator_description: string
     enabledByDefault: boolean
     requiresApprovalByDefault: boolean

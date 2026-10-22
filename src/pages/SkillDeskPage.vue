@@ -171,8 +171,8 @@ async function loadSidecarFiles(skillName: string): Promise<void> {
                 const content = await api.getSkillFile(skillName, file.path, principalId.value)
                 return [file.path, content.content] as const
             } catch {
-                // Left blank on a 413 over the 50 000-byte cap or a removal underneath: the manifest still
-                // lists it, and the save-time error is the signal.
+                // Left blank when the file is over the 50 000-byte cap or was removed underneath: the
+                // manifest still lists it, and the save-time error is the signal.
                 return [file.path, ''] as const
             }
         }),

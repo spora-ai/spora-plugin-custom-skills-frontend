@@ -13,7 +13,10 @@ import type { Principal } from '../api/principals'
 import type { CustomSkillResource, SkillValidationEntry, ToolSummary } from '../types'
 import { t } from '../i18n'
 
-/** Also the set of frontmatter keys a `SkillValidator` finding can anchor to. */
+/**
+ * The frontmatter keys a validator finding can anchor to. `metadata` is not one of
+ * them: a finding on it reaches the banner, not a field.
+ */
 export const SKILL_FIELDS = [
     'name',
     'description',
@@ -40,17 +43,17 @@ export const CUSTOM_SKILLS_SOURCE = 'custom-skills'
 
 /**
  * `SkillProviderInterface::MAX_FILE_BYTES`, restated only for the desk's size
- * readout. A 50 KB file is a 413 `FILE_TOO_LARGE` on read and a 422 on write, so
- * the ceiling is worth showing while there is still room to get under it.
+ * readout. A file over the cap is a 422 `FILE_TOO_LARGE` on write, so the ceiling
+ * is worth showing while there is still room to get under it.
  */
 export const MAX_FILE_BYTES = 50_000
 
 /**
- * The server's slug rule, mirrored from `SkillValidator::NAME_PATTERN`
- * (spora-core `app/Skills/SkillValidator.php:29`): 1–64 characters of lowercase
- * alphanumerics and single hyphens, no leading or trailing hyphen. Checked as the
- * operator types because a create rejected for its *name* is otherwise found out
- * about after the body has been written.
+ * The server's slug rule, mirrored from `SkillValidator::NAME_PATTERN` (spora-core
+ * `app/Skills/SkillValidator.php`): 1–64 characters of lowercase alphanumerics and
+ * single hyphens, no leading or trailing hyphen. Checked as the operator types
+ * because a create rejected for its *name* is otherwise found out about after the
+ * body has been written.
  */
 const SKILL_NAME_PATTERN = /^(?![a-z0-9-]*--)[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$/
 

@@ -19,7 +19,7 @@ const PLUGIN_ROOT = resolve(__dirname, '..')
 
 /**
  * Custom properties spora-frontend declares in `:root` and `.dark`
- * (spora-frontend/src/style.css, as of v0.29). Note what is NOT here: `--card`
+ * (spora-frontend/src/style.css). Note what is NOT here: `--card`
  * and `--card-foreground` — the host's card IS its background.
  */
 const HOST_TOKENS = [

@@ -2,16 +2,15 @@
  * The language modes the source editor loads, and why this list and not the
  * catalogue.
  *
- * `@codemirror/language-data` carries all 143 modes and resolves them by file
+ * `@codemirror/language-data` carries every mode it knows about and resolves them by file
  * extension — which is exactly the wrong shape here. It loads them with dynamic
  * `import()`, and `vite.config.ts` builds a single **IIFE** file, so there is no
  * code splitting to put them in: every dynamic import is inlined and the bundle
- * goes from 125 kB to 1 808 kB. Measured, not assumed.
+ * grows by more than an order of magnitude. Measured, not assumed.
  *
  * So the modes are static imports instead, and the set is chosen by what a skill
- * actually carries. The parser packages are small next to the catalogue:
- * json 1 kB, yaml 4 kB, python 13 kB, javascript 20 kB, css 15 kB, html 25 kB,
- * sql 52 kB — unminified, and the largest of them is the one most likely to be
+ * actually carries. The parser packages are small next to the catalogue — each a
+ * few tens of kilobytes — and the largest of them is the one most likely to be
  * wrong for a skill.
  *
  * A file with no mode here still gets the editor: line numbers, search, bracket
