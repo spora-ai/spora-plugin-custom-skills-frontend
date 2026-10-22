@@ -89,8 +89,8 @@ watch(name, () => {
  *
  * Same reasoning as the desk's Duplicate and the catalogue's: one word, one
  * meaning. The form takes the skill as a template, so the operator names the copy
- * before anything is written, and the create page states which sidecars the host
- * will not serve.
+ * before anything is written, and the create page states which sidecars it does
+ * not carry across.
  */
 function duplicate(): void {
     void router.push({ path: newSkillPath(principalId.value), query: { template: name.value } })

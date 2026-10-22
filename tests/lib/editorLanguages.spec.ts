@@ -3,8 +3,9 @@
  *
  * `@codemirror/language-data` resolves modes by extension and loads them with
  * dynamic `import()`. `vite.config.ts` builds a single **IIFE** file, so there is
- * no code splitting to put a dynamic import in: every one of its 136 becomes part
- * of the bundle. Measured — `main.js` went 125 kB → 1 808 kB.
+ * no code splitting to put a dynamic import in: every mode it holds becomes part
+ * of the bundle. Measured — the built bundle grows by more than an order of
+ * magnitude.
  *
  * So the modes are static imports, and this test is what keeps the cost honest: a
  * new entry has to be a deliberate choice, and the map must not quietly grow back

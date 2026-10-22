@@ -14,7 +14,7 @@ beforeEach(() => {
 })
 
 describe('dev-mock → envelopes the panel reads', () => {
-    it('serves the principals envelope the chip row unwraps', async () => {
+    it('serves the principals envelope the scope bar unwraps', async () => {
         const result = await api.get<{ principals: Array<{ id: number; type: string }> }>('/principals/me')
         expect(result.principals[0]?.type).toBe('user')
     })

@@ -18,7 +18,7 @@
  * bracket matching, search across the file, undo history, indent units and
  * autocompletion. Language modes come from `src/lib/editorLanguages.ts` — a
  * bounded static set, because the catalogue cannot be code-split out of an IIFE
- * bundle and costs 1.7 MB when it is not.
+ * bundle: every mode it holds would be inlined.
  */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { basicSetup, EditorView } from 'codemirror'

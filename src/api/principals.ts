@@ -1,6 +1,6 @@
 /**
  * Principals API client — `GET /api/v1/principals/me` returns the principals the
- * caller can act as, so the chip row can label them without a second round-trip.
+ * caller can act as, so the scope bar can label them without a second round-trip.
  */
 import { getApi } from './client'
 
