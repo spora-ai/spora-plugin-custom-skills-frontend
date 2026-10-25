@@ -256,6 +256,34 @@ const activeContent = computed<string>({
 
 const totalLines = computed(() => lineCount(activeContent.value))
 const totalBytes = computed(() => byteSize(activeContent.value))
+
+/**
+ * The files this write carries that are over the server's per-file cap.
+ *
+ * The cap is bytes — `CustomSkillWriter` measures `strlen()`, and so does
+ * the readout above. A character count cannot decide it: 30 000 German
+ * characters are 30 000 characters and over 45 000 bytes, which is how a
+ * file passed the editor's character cap and was then refused with a 422.
+ *
+ * Every file in the write is checked, not only the open one — the write
+ * carries them all, so an over-cap sidecar is refused whatever the
+ * operator has open.
+ *
+ * For `SKILL.md` this is the body's own size, which is a lower bound: the
+ * server composes the frontmatter into that file and measures the result,
+ * so it stays the authority on the entry file.
+ */
+const oversizedFiles = computed(() => {
+    const over: Array<{ path: string; bytes: number }> = []
+    const bodyBytes = byteSize(body.value)
+    if (bodyBytes > MAX_FILE_BYTES) over.push({ path: SKILL_ENTRY_FILE, bytes: bodyBytes })
+    for (const row of sidecars.value) {
+        const bytes = byteSize(row.content)
+        if (bytes > MAX_FILE_BYTES) over.push({ path: row.path, bytes })
+    }
+    return over
+})
+
 const activeIsMarkdown = computed(() => isMarkdownPath(activePath.value))
 const showRestore = computed(() => props.skill.has_previous)
 
@@ -562,6 +590,10 @@ function parseMetadata(): { value: Record<string, unknown> } | { error: string }
 }
 
 function handleSubmit(): void {
+    // The button is disabled while a file is over the cap; the guard is here
+    // so the write cannot leave the panel by another route either.
+    if (oversizedFiles.value.length > 0) return
+
     metadataError.value = null
     const metadata = parseMetadata()
     if ('error' in metadata) {
@@ -670,7 +702,7 @@ function handleSubmit(): void {
                     </button>
                     <button
                         type="button"
-                        :disabled="saving || !dirty"
+                        :disabled="saving || !dirty || oversizedFiles.length > 0"
                         class="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                         data-test="desk-save"
                         @click="handleSubmit"
@@ -1089,7 +1121,6 @@ function handleSubmit(): void {
                             :preview="true"
                             :read-only="readOnly"
                             :sanitize="DOMPurify.sanitize"
-                            :max-length="MAX_FILE_BYTES"
                             class="h-full min-h-[18rem]"
                             data-test="desk-editor"
                             @update:model-value="activeContent = $event"
@@ -1138,6 +1169,21 @@ function handleSubmit(): void {
                             / {{ MAX_FILE_BYTES / 1000 }} {{ t('KB per file') }}
                         </span>
                     </span>
+                    <!--
+                     The byte count, because the cap is in bytes and the readout
+                     above rounds to whole kilobytes — a file one kilobyte over
+                     the limit reads as exactly at it. The message names the
+                     file, so a sidecar that is not the open one is still
+                     identifiable.
+                -->
+                    <p
+                        v-for="file in oversizedFiles"
+                        :key="file.path"
+                        class="w-full text-destructive"
+                        data-test="desk-size-error"
+                    >
+                        {{ t('{path} is {bytes} bytes — over the {limit}-byte per-file limit.', { path: file.path, bytes: file.bytes, limit: MAX_FILE_BYTES }) }}
+                    </p>
                     <!-- Below `md` the rail stacks above the editor rather than beside it,
                      so a narrow column is a poor way to name the open file; this select
                      is the one that reads properly in a narrow window. The rail is not

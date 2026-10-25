@@ -225,6 +225,7 @@
   "you": "you",
   "your own skills": "your own skills",
   "{day} {month}": "{day} {month}",
+  "{path} is {bytes} bytes — over the {limit}-byte per-file limit.": "{path} is {bytes} bytes — over the {limit}-byte per-file limit.",
   "— not available on this instance": "— not available on this instance",
   "— read-only here.": "— read-only here.",
   "— they are listed above the file.": "— they are listed above the file.",

@@ -116,7 +116,7 @@ export async function listSkillFiles(
 }
 
 /**
- * A member over the 50 000-byte cap reads as 404 `FILE_NOT_FOUND` — the stored
+ * A member over the 50 000-byte cap reads as 404 `SKILL_FILE_NOT_FOUND` — the stored
  * content is refused, not served. The write that would have exceeded the cap is a
  * 422 `FILE_TOO_LARGE`.
  */

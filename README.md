@@ -265,6 +265,14 @@ rule, and do not loosen the host's rule to match this one.
 - **Technical identifiers** — `SKILL.md`, `REFERENCE.md`, `/api/v1/skills`, and
   the file paths themselves. They are names the contract fixes, not copy.
 
+## Node version
+
+`vue-i18n@11` declares `engines.node: ">= 22"` — Node 22 or newer is the
+version this panel is developed against. The CI jobs still pin Node 20, where
+npm reports the mismatch as a warning rather than an error, because this repo
+sets no `engine-strict`: the install, the build and the tests all pass on
+Node 20 as well.
+
 ## Commands
 
 ```bash
