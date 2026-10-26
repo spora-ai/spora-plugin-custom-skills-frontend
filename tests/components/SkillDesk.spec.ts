@@ -477,6 +477,44 @@ describe('SkillDesk → the file being written', () => {
         expect(readout).toContain('50 KB')
     })
 
+    // The cap is bytes: 30 000 'ä' are 60 000 bytes, over the 50 000-byte
+    // limit — the editor's own character cap let this through.
+    it('blocks the save when a file is over the cap in bytes', async () => {
+        const wrapper = mountDesk()
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('ä'.repeat(30_000))
+        expect(wrapper.get('[data-test="desk-save"]').attributes('disabled')).toBeDefined()
+        expect(wrapper.emitted('save')).toBeUndefined()
+    })
+
+    it('names the file and its byte count when the cap is exceeded', async () => {
+        const wrapper = mountDesk()
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('ä'.repeat(30_000))
+        const message = wrapper.get('[data-test="desk-size-error"]').text()
+        expect(message).toContain('SKILL.md')
+        expect(message).toContain('60000')
+        expect(message).toContain('50000')
+    })
+
+    it('lets a file through that is under the cap in bytes, however many characters it has', async () => {
+        const wrapper = mountDesk()
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('ä'.repeat(20_000))
+        expect(wrapper.find('[data-test="desk-size-error"]').exists()).toBe(false)
+        expect(wrapper.get('[data-test="desk-save"]').attributes('disabled')).toBeUndefined()
+        await wrapper.get('[data-test="desk-save"]').trigger('click')
+        expect(wrapper.emitted('save')).toHaveLength(1)
+    })
+
+    it('blocks the save for an over-cap sidecar too, not only for the open file', async () => {
+        const wrapper = mountDesk({
+            fileContents: { 'examples/invoice.md': 'ä'.repeat(30_000) },
+        })
+        // Dirty the desk, so the disabled state can only be the cap's doing.
+        await wrapper.get('[data-testid="md-editor-stub"]').setValue('# changed')
+        expect(wrapper.get('[data-test="desk-save"]').attributes('disabled')).toBeDefined()
+        expect(wrapper.emitted('save')).toBeUndefined()
+        expect(wrapper.get('[data-test="desk-size-error"]').text()).toContain('examples/invoice.md')
+    })
+
     it('opens on SKILL.md and can be pointed at a sidecar', async () => {
         const wrapper = mountDesk({ fileContents: { 'examples/invoice.md': '# Example body' } })
         expect(wrapper.get('[data-test="desk-source"]').attributes('aria-label')).toBe('SKILL.md source')

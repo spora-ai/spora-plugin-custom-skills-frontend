@@ -225,6 +225,7 @@
   "you": "Sie",
   "your own skills": "Ihre eigenen Skills",
   "{day} {month}": "{day}. {month}",
+  "{path} is {bytes} bytes — over the {limit}-byte per-file limit.": "{path} ist {bytes} Bytes — über dem Limit von {limit} Bytes pro Datei.",
   "— not available on this instance": "— auf dieser Instanz nicht verfügbar",
   "— read-only here.": "— hier schreibgeschützt.",
   "— they are listed above the file.": "— sie sind oberhalb der Datei aufgeführt.",

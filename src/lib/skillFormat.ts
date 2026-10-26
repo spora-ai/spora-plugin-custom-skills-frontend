@@ -420,21 +420,26 @@ export function clockTime(updatedAt: string): string {
 }
 
 /**
+ * The actor, without the timestamp.
+ *
  * `provenance` says *how* the last write happened; `updated_by_user_id`
  * disambiguates the `human` case — a human write by anyone other than the creator
  * (a teammate, or the operator on a shared principal) is attributed to them rather
  * than to "you".
  */
+function lastEditedActor(
+    skill: Pick<CustomSkillResource, 'provenance' | 'updated_by_user_id' | 'created_by_user_id'>,
+): string {
+    if (skill.provenance === 'agent') return t('Last edited by agent')
+    if (skill.updated_by_user_id !== skill.created_by_user_id) return t('Last edited by a teammate')
+    return t('Last edited by you')
+}
+
 export function lastEditedLabel(
     skill: Pick<CustomSkillResource, 'provenance' | 'updated_by_user_id' | 'created_by_user_id' | 'updated_at'>,
 ): string {
     const time = clockTime(skill.updated_at)
-    const actor =
-        skill.provenance === 'agent'
-            ? t('Last edited by agent')
-            : skill.updated_by_user_id !== skill.created_by_user_id
-              ? t('Last edited by a teammate')
-              : t('Last edited by you')
+    const actor = lastEditedActor(skill)
     return time === '' ? actor : `${actor} · ${time}`
 }
 
