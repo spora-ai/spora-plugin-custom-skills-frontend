@@ -258,20 +258,16 @@ const totalLines = computed(() => lineCount(activeContent.value))
 const totalBytes = computed(() => byteSize(activeContent.value))
 
 /**
- * The files this write carries that are over the server's per-file cap.
- *
  * The cap is bytes — `CustomSkillWriter` measures `strlen()`, and so does
- * the readout above. A character count cannot decide it: 30 000 German
- * characters are 30 000 characters and over 45 000 bytes, which is how a
- * file passed the editor's character cap and was then refused with a 422.
+ * the readout above. A file under the editor's character cap can still be
+ * over the byte cap.
  *
  * Every file in the write is checked, not only the open one — the write
- * carries them all, so an over-cap sidecar is refused whatever the
- * operator has open.
+ * carries them all, so an over-cap sidecar is refused too.
  *
- * For `SKILL.md` this is the body's own size, which is a lower bound: the
- * server composes the frontmatter into that file and measures the result,
- * so it stays the authority on the entry file.
+ * For `SKILL.md` this is the body's own size, a lower bound: the server
+ * composes the frontmatter in and measures the result, so it stays the
+ * authority on the entry file.
  */
 const oversizedFiles = computed(() => {
     const over: Array<{ path: string; bytes: number }> = []
@@ -590,8 +586,8 @@ function parseMetadata(): { value: Record<string, unknown> } | { error: string }
 }
 
 function handleSubmit(): void {
-    // The button is disabled while a file is over the cap; the guard is here
-    // so the write cannot leave the panel by another route either.
+    // The button is disabled while a file is over the cap; the guard keeps
+    // the write from leaving the panel by another route.
     if (oversizedFiles.value.length > 0) return
 
     metadataError.value = null
@@ -1171,11 +1167,9 @@ function handleSubmit(): void {
                     </span>
                     <!--
                      The byte count, because the cap is in bytes and the readout
-                     above rounds to whole kilobytes — a file one kilobyte over
-                     the limit reads as exactly at it. The message names the
-                     file, so a sidecar that is not the open one is still
-                     identifiable.
-                -->
+                     above rounds to whole kilobytes. The message names the file,
+                     so a sidecar is identifiable.
+                    -->
                     <p
                         v-for="file in oversizedFiles"
                         :key="file.path"

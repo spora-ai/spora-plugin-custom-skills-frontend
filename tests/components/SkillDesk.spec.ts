@@ -477,9 +477,8 @@ describe('SkillDesk → the file being written', () => {
         expect(readout).toContain('50 KB')
     })
 
-    // The cap is bytes: the server measures `strlen()`, and a file of 30 000
-    // German characters is 30 000 characters but 60 000 bytes. The editor's
-    // own character cap let that through, and the write was then refused.
+    // The cap is bytes: 30 000 'ä' are 60 000 bytes, over the 50 000-byte
+    // limit — the editor's own character cap let this through.
     it('blocks the save when a file is over the cap in bytes', async () => {
         const wrapper = mountDesk()
         await wrapper.get('[data-testid="md-editor-stub"]').setValue('ä'.repeat(30_000))
@@ -509,8 +508,7 @@ describe('SkillDesk → the file being written', () => {
         const wrapper = mountDesk({
             fileContents: { 'examples/invoice.md': 'ä'.repeat(30_000) },
         })
-        // Make the desk dirty, so the button's disabled state can only be the
-        // cap's doing.
+        // Dirty the desk, so the disabled state can only be the cap's doing.
         await wrapper.get('[data-testid="md-editor-stub"]').setValue('# changed')
         expect(wrapper.get('[data-test="desk-save"]').attributes('disabled')).toBeDefined()
         expect(wrapper.emitted('save')).toBeUndefined()

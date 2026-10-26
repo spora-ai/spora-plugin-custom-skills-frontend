@@ -420,7 +420,7 @@ export function clockTime(updatedAt: string): string {
 }
 
 /**
- * Who the last write is attributed to.
+ * The actor, without the timestamp.
  *
  * `provenance` says *how* the last write happened; `updated_by_user_id`
  * disambiguates the `human` case — a human write by anyone other than the creator
