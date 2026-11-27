@@ -29,7 +29,7 @@
         "@codemirror/state": "^6.5.0",
         "@lezer/highlight": "^1.2.0",
         "codemirror": "^6.0.2",
-        "dompurify": "^3.4.15",
+        "dompurify": "^3.4.17",
         "lucide-vue-next": "^0.487.0",
         "md-editor-v3": "^6.5.4",
         "pinia": "^2.3.0",
